@@ -1,0 +1,534 @@
+project:
+  name: "flatwhite"
+  version: "0.1.0"
+
+two_lane_architecture:
+  pulse_lane_sources:
+    - "google_trends"
+    - "market_hiring"
+    - "employer_hiring_breadth"
+    - "employer_req_freshness"
+    - "employer_net_delta"
+    - "salary_pressure"
+    - "resume_anxiety"
+    - "news_velocity_count"
+    - "contractor_proxy"
+    - "consumer_confidence"
+    - "asx_volatility"
+    - "asx_momentum"
+    - "reddit_topic_velocity"
+    - "auslaw_velocity"
+  editorial_lane_sources:
+    - "reddit_rss"
+    - "google_news_editorial"
+    - "twitter_rss"
+    - "manual_whispers"
+
+pulse_weights:
+  consumer_confidence: 0.08
+  salary_pressure: 0.08
+  job_anxiety: 0.07
+  layoff_news_velocity: 0.07
+  market_hiring: 0.07
+  indeed_job_postings: 0.08
+  reddit_topic_velocity: 0.07
+  career_mobility: 0.06
+  contractor_proxy: 0.06
+  asx_volatility: 0.06
+  employer_hiring_breadth: 0.05
+  asx_momentum: 0.05
+  indeed_remote_pct: 0.04
+  employer_req_freshness: 0.04
+  asic_insolvency: 0.04
+  employer_net_delta: 0.03
+  resume_anxiety: 0.03
+  auslaw_velocity: 0.02
+
+pulse_smoothing:
+  method: "ema"
+  span_weeks: 3
+
+anomaly_detection:
+  baseline_weeks: 10
+  method: "median_mad"
+  threshold_mads: 2.0
+
+direction_threshold_points: 2.0
+
+signal_reference_ranges:
+  min_weeks_for_self_calibration: 10
+  signals:
+    market_hiring:
+      floor: 8000
+      ceiling: 32000
+      inverted: false
+    salary_pressure:
+      floor: 90000
+      ceiling: 135000
+      inverted: false
+    indeed_remote_pct:
+      floor: 4.0
+      ceiling: 20.0
+      inverted: false
+    asic_insolvency:
+      floor: 100
+      ceiling: 350
+      inverted: true
+    reddit_topic_velocity:
+      floor: 30.0
+      ceiling: 70.0
+      inverted: true
+    auslaw_velocity:
+      floor: 30.0
+      ceiling: 70.0
+      inverted: true
+    layoff_news_velocity:
+      floor: 3
+      ceiling: 40
+      inverted: true
+    job_anxiety:
+      floor: 3
+      ceiling: 25
+      inverted: true
+    career_mobility:
+      floor: 2
+      ceiling: 18
+      inverted: false
+
+signal_interactions:
+  patterns:
+    - name: "Defensive mobility"
+      description: "People searching for jobs out of anxiety, not confidence"
+      signals:
+        high: "career_mobility"
+        low: "consumer_confidence"
+      thresholds:
+        high_above: 60
+        low_below: 40
+      narrative: "Career search activity is elevated while consumer confidence is weak — this looks like defensive job-hunting, not confident talent movement."
+
+    - name: "Confident mobility"
+      description: "Genuine talent movement in a strong market"
+      signals:
+        high: "career_mobility"
+        also_high: "consumer_confidence"
+      thresholds:
+        high_above: 60
+        also_high_above: 60
+      narrative: "Career mobility and consumer confidence are both elevated — people are moving between roles by choice, not necessity."
+
+    - name: "News leading, public lagging"
+      description: "Layoff coverage accelerating but workers haven't noticed yet"
+      signals:
+        calm: "job_anxiety"
+        stressed: "layoff_news_velocity"
+      thresholds:
+        calm_above: 55
+        stressed_below: 40
+      narrative: "Layoff news coverage is accelerating but public search anxiety hasn't caught up yet — the newsroom knows something the workforce doesn't."
+
+    - name: "Confirmed anxiety"
+      description: "Both search intent and news coverage confirm stress"
+      signals:
+        anxious: "job_anxiety"
+        also_anxious: "layoff_news_velocity"
+      thresholds:
+        anxious_below: 40
+        also_anxious_below: 40
+      narrative: "Both layoff news coverage and public search anxiety are elevated — the stress is real and workers know it."
+
+    - name: "Broad pessimism"
+      description: "Markets and consumers aligned in downturn conviction"
+      signals:
+        market: "asx_momentum"
+        consumer: "consumer_confidence"
+      thresholds:
+        market_below: 35
+        consumer_below: 35
+      narrative: "Both ASX momentum and consumer confidence are deeply weak — markets and households are aligned in pessimism."
+
+    - name: "Corporate stress confirmed"
+      description: "Insolvencies rising while hiring contracts"
+      signals:
+        insolvency: "asic_insolvency"
+        hiring: "employer_hiring_breadth"
+      thresholds:
+        insolvency_below: 40
+        hiring_below: 40
+      narrative: "Company insolvencies are elevated and employer hiring is contracting — corporate distress is showing up in both the data and the job market."
+
+    - name: "Hiring resilience"
+      description: "Companies still hiring despite negative headlines"
+      signals:
+        hiring: "employer_hiring_breadth"
+        news: "layoff_news_velocity"
+      thresholds:
+        hiring_above: 60
+        news_below: 40
+      narrative: "Employer hiring remains strong despite escalating layoff headlines — the job market is absorbing the shock, at least for now."
+
+    - name: "Salary squeeze"
+      description: "Lots of jobs but wages compressing"
+      signals:
+        salary: "salary_pressure"
+        hiring: "market_hiring"
+      thresholds:
+        salary_below: 40
+        hiring_above: 60
+      narrative: "Job listings are plentiful but salary pressure is weakening — employers are hiring on their terms, not yours."
+
+google_trends:
+  geo: "AU"
+  timeframe: "today 3-m"
+  sleep_between_calls_seconds: 65
+  keyword_groups:
+    job_anxiety:
+      - "layoffs australia"
+      - "redundancy"
+      - "job cuts australia"
+      - "retrenchment"
+    career_mobility:
+      - "recruiter sydney"
+      - "salary guide australia"
+      - "career change australia"
+      - "resign from job"
+    contractor_proxy_positive:
+      - "consulting jobs australia"
+      - "contract work australia"
+      - "freelance jobs sydney"
+    contractor_proxy_negative:
+      - "hiring freeze"
+    resume_anxiety:
+      - "update resume"
+      - "linkedin open to work"
+      - "update linkedin profile"
+
+seek:
+  categories:
+    - name: "Accounting"
+      url: "https://www.seek.com.au/accounting-jobs"
+    - name: "Banking & Financial Services"
+      url: "https://www.seek.com.au/banking-financial-services-jobs"
+    - name: "Consulting & Strategy"
+      url: "https://www.seek.com.au/consulting-strategy-jobs"
+    - name: "Legal"
+      url: "https://www.seek.com.au/legal-jobs"
+    - name: "Information & Communication Technology"
+      url: "https://www.seek.com.au/information-communication-technology-jobs"
+
+reddit:
+  subreddits:
+    - name: "auscorp"
+      url: "https://www.reddit.com/r/auscorp/.rss"
+      priority: "primary"
+    - name: "AusFinance"
+      url: "https://www.reddit.com/r/AusFinance/.rss"
+      priority: "secondary"
+    - name: "australia"
+      url: "https://www.reddit.com/r/australia/.rss"
+      priority: "secondary"
+    - name: "auslaw"
+      url: "https://www.reddit.com/r/auslaw/.rss"
+      priority: "primary"
+  delay_between_pulls_seconds: 5
+  max_posts_per_subreddit: 25
+
+google_news:
+  pulse_queries:
+    - "layoffs australia"
+    - "redundancies australia"
+    - "job cuts australia"
+  macro_queries:
+    - "RBA interest rates australia"
+    - "Australia economy outlook"
+    - "Australia trade war tariffs"
+    - "geopolitical risk markets australia"
+    - "ASX market outlook"
+    - "Australia federal budget policy"
+    - "Australia immigration visa skilled worker"
+    - "Australia cost of living crisis"
+    - "AI jobs australia automation"
+    - "Australia business news this week"
+    - "global economy impact australia"
+  editorial_queries:
+    # Existing
+    - "australian corporate hiring"
+    - "big 4 australia"
+    - "law firm australia hiring"
+    - "ASX CEO appointment"
+    # Regulatory/enforcement (covers ASIC, ACCC, FWC — none have working RSS)
+    - "ASIC enforcement penalty"
+    - "ASIC civil proceedings australia"
+    - "Fair Work Commission australia"
+    - "ACCC enforcement australia"
+    # Sector-specific / AFR coverage
+    - "site:afr.com big four"
+    - "site:afr.com banking restructure"
+    - "australia corporate restructure redundancy"
+    - "partner promotion australia consulting law"
+
+employer_watchlist:
+  - name: "Deloitte Australia"
+    sector: "big4"
+    careers_url: "https://www.seek.com.au/deloitte-jobs/in-All-Australia/at-this-company"
+  - name: "PwC Australia"
+    sector: "big4"
+    careers_url: "https://www.seek.com.au/pwc-jobs/in-All-Australia/at-this-company"
+  - name: "EY Australia"
+    sector: "big4"
+    careers_url: "https://www.seek.com.au/ernst-young-jobs/in-All-Australia/at-this-company"
+  - name: "KPMG Australia"
+    sector: "big4"
+    careers_url: "https://www.seek.com.au/kpmg-jobs/in-All-Australia/at-this-company"
+  - name: "King & Wood Mallesons"
+    sector: "law"
+    careers_url: "https://www.seek.com.au/king-wood-mallesons-jobs/in-All-Australia/at-this-company"
+  - name: "Allens"
+    sector: "law"
+    careers_url: "https://www.seek.com.au/allens-jobs/in-All-Australia/at-this-company"
+  - name: "Herbert Smith Freehills"
+    sector: "law"
+    careers_url: "https://www.seek.com.au/herbert-smith-freehills-jobs/in-All-Australia/at-this-company"
+  - name: "Clayton Utz"
+    sector: "law"
+    careers_url: "https://www.seek.com.au/clayton-utz-jobs/in-All-Australia/at-this-company"
+  - name: "CBA"
+    sector: "banking"
+    careers_url: "https://www.seek.com.au/commonwealth-bank-jobs/in-All-Australia/at-this-company"
+  - name: "NAB"
+    sector: "banking"
+    careers_url: "https://www.seek.com.au/nab-jobs/in-All-Australia/at-this-company"
+  - name: "Westpac"
+    sector: "banking"
+    careers_url: "https://www.seek.com.au/westpac-jobs/in-All-Australia/at-this-company"
+  - name: "ANZ"
+    sector: "banking"
+    careers_url: "https://www.seek.com.au/anz-jobs/in-All-Australia/at-this-company"
+  - name: "Macquarie"
+    sector: "banking"
+    careers_url: "https://www.seek.com.au/macquarie-jobs/in-All-Australia/at-this-company"
+  - name: "Canva"
+    sector: "tech"
+    careers_url: "https://www.seek.com.au/canva-jobs/in-All-Australia/at-this-company"
+  - name: "Atlassian"
+    sector: "tech"
+    careers_url: "https://www.seek.com.au/atlassian-jobs/in-All-Australia/at-this-company"
+  - name: "REA Group"
+    sector: "tech"
+    careers_url: "https://www.seek.com.au/rea-group-jobs/in-All-Australia/at-this-company"
+
+adzuna:
+  employers:
+    - name: "Deloitte Australia"
+      query: "Deloitte"
+    - name: "PwC Australia"
+      query: "PwC"
+    - name: "EY Australia"
+      query: "Ernst+Young"
+    - name: "KPMG Australia"
+      query: "KPMG"
+    - name: "King & Wood Mallesons"
+      query: "King+Wood+Mallesons"
+    - name: "Allens"
+      query: "Allens"
+    - name: "Herbert Smith Freehills"
+      query: "Herbert+Smith+Freehills"
+    - name: "Clayton Utz"
+      query: "Clayton+Utz"
+    - name: "CBA"
+      query: "Commonwealth+Bank"
+    - name: "NAB"
+      query: "NAB"
+    - name: "Westpac"
+      query: "Westpac"
+    - name: "ANZ"
+      query: "ANZ"
+    - name: "Macquarie"
+      query: "Macquarie"
+    - name: "Canva"
+      query: "Canva"
+    - name: "Atlassian"
+      query: "Atlassian"
+    - name: "REA Group"
+      query: "REA+Group"
+
+adzuna_salary:
+  sectors:
+    - name: "Accounting"
+      query: "accounting"
+    - name: "Consulting"
+      query: "consulting"
+    - name: "Banking"
+      query: "banking"
+    - name: "Legal"
+      query: "legal"
+    - name: "IT"
+      query: "IT+jobs"
+
+model_routing:
+  classification_model: "gemini-2.5-flash"
+  editorial_model: "claude-haiku-4.5"
+
+twitter:
+  enabled: false
+  rss_proxy_base: ""
+  rss_key: ""
+  delay_between_pulls_seconds: 3
+  max_posts_per_account: 10
+  accounts:
+    - handle: "BBCBusiness"
+      category: "corporate"
+    - handle: "FaborDays"
+      category: "layoffs"
+    - handle: "TechCrunch"
+      category: "tech"
+    - handle: "FinancialTimes"
+      category: "corporate"
+
+rss_feeds:
+  delay_between_pulls_seconds: 2
+  max_items_per_feed: 15
+  feeds:
+    - name: "Grattan Institute"
+      url: "https://grattan.edu.au/feed/"
+      source_tag: "grattan_institute"
+    - name: "Australia Institute"
+      url: "https://australiainstitute.org.au/feed/"
+      source_tag: "australia_institute"
+    - name: "e61 Institute"
+      url: "https://e61.in/feed/"
+      source_tag: "e61_institute"
+    - name: "CIS"
+      url: "https://www.cis.org.au/feed/"
+      source_tag: "cis"
+    - name: "RBA Speeches"
+      url: "https://www.rba.gov.au/rss/rss-cb-speeches.xml"
+      source_tag: "rba"
+    - name: "RBA Media Releases"
+      url: "https://www.rba.gov.au/rss/rss-cb-media-releases.xml"
+      source_tag: "rba"
+    - name: "Federal Court Judgments"
+      url: "https://www.judgments.fedcourt.gov.au/rss/fca-judgments"
+      source_tag: "federal_court"
+    - name: "Consultancy.com.au"
+      url: "https://www.consultancy.com.au/rss/consultancy_rssfeed.xml"
+      source_tag: "consultancy_au"
+    - name: "SmartCompany"
+      url: "https://smartcompany.com.au/feed/"
+      source_tag: "smartcompany"
+    - name: "Lawyers Weekly"
+      url: "https://www.lawyersweekly.com.au/breaking-news?format=feed&type=rss"
+      source_tag: "lawyers_weekly"
+    - name: "Accountants Daily"
+      url: "https://www.accountantsdaily.com.au/news?format=feed&type=rss"
+      source_tag: "accountants_daily"
+    - name: "HRD Australia"
+      url: "https://www.hcamag.com/au/rss"
+      source_tag: "hrd_australia"
+    - name: "Business News Australia"
+      url: "https://www.businessnewsaustralia.com/rss.xml"
+      source_tag: "business_news_au"
+    - name: "IT News Australia"
+      url: "https://www.itnews.com.au/RSS/rss.ashx"
+      source_tag: "itnews_au"
+    - name: "Financial Standard"
+      url: "https://www.financialstandard.com.au/feed"
+      source_tag: "financial_standard"
+    - name: "InnovationAus"
+      url: "https://www.innovationaus.com/feed/"
+      source_tag: "innovationaus"
+    - name: "Alan Kohler"
+      url: "https://alankohler.substack.com/feed"
+      source_tag: "substack"
+    - name: "Michael Pascoe"
+      url: "https://michaelpascoe.substack.com/feed"
+      source_tag: "substack"
+
+scoring:
+  dimension_weights:
+    relevance: 0.25
+    novelty: 0.15
+    reliability: 0.25
+    tension: 0.20
+    usefulness: 0.15
+
+linkedin_newsletters:
+  enabled: true
+  delay_between_pulls_seconds: 3
+  max_items_per_newsletter: 5
+  newsletters:
+    - name: "LinkedIn News AU - Get Hired"
+      url: "http://localhost:8787/7026423261823475712"
+      source_tag: "linkedin_news_au"
+    - name: "LinkedIn News AU - Tech Wrap-Up"
+      url: "http://localhost:8787/7039363266480889856"
+      source_tag: "linkedin_news_au"
+    - name: "AFR Success"
+      url: "http://localhost:8787/7051825456802648064"
+      source_tag: "linkedin_afr_success"
+      # Note: AFR Success currently returns 0 items from LinkedIn — may need different ID
+    - name: "AFR Performance"
+      url: "http://localhost:8787/7214453460602171393"
+      source_tag: "linkedin_afr_performance"
+    - name: "Kirstin Ferguson - Impact Loop"
+      url: "http://localhost:8787/6597310974393446400"
+      source_tag: "linkedin_kirstin_ferguson"
+
+email_ingest:
+  enabled: false  # Enable after setting up dedicated newsletter Gmail + subscriptions
+  credentials_path: "gmail_credentials.json"
+  token_path: "gmail_token.json"
+  sources:
+    - label: "flatwhite/afr-street-talk"
+      source_tag: "afr_street_talk"
+      sender_filter: "noreply@afr.com"
+      parse_mode: "headlines"
+    - label: "flatwhite/afr-rear-window"
+      source_tag: "afr_rear_window"
+      sender_filter: "noreply@afr.com"
+      parse_mode: "headlines"
+    - label: "flatwhite/afr-chanticleer"
+      source_tag: "afr_chanticleer"
+      sender_filter: "noreply@afr.com"
+      parse_mode: "headlines"
+    - label: "flatwhite/crikey-worm"
+      source_tag: "crikey_worm"
+      sender_filter: "worm@crikey.com.au"
+      parse_mode: "headlines"
+    - label: "flatwhite/australasian-lawyer"
+      source_tag: "australasian_lawyer"
+      sender_filter: "@thelawyermag.com"
+      parse_mode: "headlines"
+
+ats_pull:
+  concurrency: 10
+  timeout_seconds: 30
+  skip_after_consecutive_failures: 4
+
+indeed_hiring:
+  job_postings_csv: "job_postings_tracker/master/AU/aggregate_job_postings_AU.csv"
+  remote_tracker_csv: "remote-tracker/main/remote_postings.csv"
+
+asic_insolvency:
+  series1_url: "https://asic.gov.au/regulatory-resources/find-a-document/statistics/insolvency-statistics/"
+  baseline_weeks: 8
+
+youtube_transcripts:
+  enabled: true
+  max_episodes_per_channel: 3
+  channels:
+    - name: "Fear & Greed"
+      channel_id: "UC_A-LRBY8AXkfPPFix-yApA"
+      source_tag: "podcast_fear_greed"
+    - name: "Financial Review"
+      channel_id: "UCML-IRb2g66A44iK1y_OLeQ"
+      source_tag: "podcast_afr"
+    - name: "AICD"
+      channel_id: "UCBI1TcqkBVJOba6G3YbsoGw"
+      source_tag: "podcast_aicd"
+    - name: "InvestSMART (Money Cafe)"
+      channel_id: "UCeq7CD8b3HCMW8Xyrl3L07w"
+      source_tag: "podcast_money_cafe"
+    - name: "Deloitte Australia"
+      channel_id: "UC2oGuYrR4xsymRmPMF_bRVQ"
+      source_tag: "podcast_deloitte"
