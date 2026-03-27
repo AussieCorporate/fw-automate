@@ -80,3 +80,33 @@ def test_load_signal_trends_returns_all_signal_deltas(populated_db):
         assert all_deltas["consumer_confidence"]["delta"] == pytest.approx(-18.0, abs=0.5)
         # Must return more than 5 signals (not just biggest_movers)
         assert len(all_deltas) >= 10
+
+
+def test_driver_bullets_prompt_includes_wow_delta(populated_db, mock_gemini):
+    """generate_driver_bullets should pass WoW delta data to the LLM prompt."""
+    import json
+    with patch.object(db_module, "DB_PATH", populated_db), \
+         patch("flatwhite.pulse.summary.get_current_week_iso", return_value="2026-W12"):
+        from flatwhite.db import insert_signal
+
+        # Insert prev week signals so delta can be computed
+        for name, lane, area, raw, norm, sw in [
+            ("consumer_confidence", "pulse", "economic", 82.0, 75.0, 1.0),
+            ("job_anxiety", "pulse", "labour_market", 60.0, 70.0, 1.0),
+        ]:
+            insert_signal(name, lane, area, raw, norm, sw, "2026-W11")
+
+        mock_gemini.return_value = json.dumps([
+            {"signal": "consumer_confidence", "direction": "down", "bullet": "Consumer confidence dropped sharply"},
+            {"signal": "job_anxiety", "direction": "up", "bullet": "Job anxiety rising"},
+            {"signal": "asx_momentum", "direction": "up", "bullet": "ASX holding firm"},
+        ])
+
+        from flatwhite.pulse.summary import generate_driver_bullets
+        bullets = generate_driver_bullets()
+
+        assert len(bullets) == 3
+        # Verify the prompt passed to the LLM included delta info
+        call_args = mock_gemini.call_args
+        prompt_used = call_args[1].get("prompt") or (call_args[0][0] if call_args[0] else "")
+        assert "prev:" in prompt_used or "Δ:" in prompt_used or "delta" in prompt_used.lower()

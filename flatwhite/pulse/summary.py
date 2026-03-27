@@ -58,10 +58,39 @@ def generate_pulse_summary() -> str:
 
     macro_context = fetch_macro_headlines()
 
+    # Build delta-annotated signal context for the summary prompt
+    conn2 = get_connection()
+    curr_signals = conn2.execute(
+        "SELECT signal_name, normalised_score, source_weight FROM signals WHERE week_iso = ? AND lane = 'pulse'",
+        (week_iso,),
+    ).fetchall()
+    import datetime as _dt
+    year_s, wn_s = int(week_iso[:4]), int(week_iso[6:])
+    dt_s = _dt.datetime.strptime(f"{year_s}-W{wn_s:02d}-1", "%G-W%V-%u")
+    prev_wk = (dt_s - _dt.timedelta(weeks=1)).strftime("%G-W%V")
+    prev_signals_rows = conn2.execute(
+        "SELECT signal_name, normalised_score FROM signals WHERE week_iso = ? AND lane = 'pulse'",
+        (prev_wk,),
+    ).fetchall()
+    conn2.close()
+    prev_sig_map = {s["signal_name"]: s["normalised_score"] for s in prev_signals_rows}
+    signal_lines = []
+    for s in curr_signals:
+        name = s["signal_name"]
+        score = round(s["normalised_score"], 1)
+        prev = prev_sig_map.get(name)
+        if prev is not None:
+            delta = round(score - prev, 1)
+            flag = " [FALLBACK]" if s["source_weight"] < 1.0 else ""
+            signal_lines.append(f"{name}: {score} (prev: {round(prev,1)}, Δ: {delta:+.1f}){flag}")
+        else:
+            signal_lines.append(f"{name}: {score}")
+    drivers_with_delta = "\n".join(signal_lines)
+
     prompt = PULSE_SUMMARY_PROMPT.format(
         smoothed=current["smoothed_score"],
         direction=current["direction"],
-        drivers=current["drivers_json"],
+        drivers=drivers_with_delta,
         prev_smoothed=prev_smoothed,
         interactions_block=interactions_block,
         macro_context=macro_context,
@@ -107,19 +136,47 @@ def generate_driver_bullets() -> list[dict]:
     """
     week_iso = get_current_week_iso()
     conn = get_connection()
+
+    # Current week signals
     signals = conn.execute(
-        "SELECT signal_name, normalised_score, raw_value FROM signals WHERE week_iso = ? AND lane = 'pulse'",
+        "SELECT signal_name, normalised_score, raw_value, source_weight FROM signals WHERE week_iso = ? AND lane = 'pulse'",
         (week_iso,),
+    ).fetchall()
+
+    # Previous week signals for WoW delta
+    import datetime
+    year, wn = int(week_iso[:4]), int(week_iso[6:])
+    dt = datetime.datetime.strptime(f"{year}-W{wn:02d}-1", "%G-W%V-%u")
+    prev_week_iso = (dt - datetime.timedelta(weeks=1)).strftime("%G-W%V")
+    prev_signals = conn.execute(
+        "SELECT signal_name, normalised_score, source_weight FROM signals WHERE week_iso = ? AND lane = 'pulse'",
+        (prev_week_iso,),
     ).fetchall()
     conn.close()
 
     if not signals:
         return [{"signal": "no_data", "direction": "stable", "bullet": "No signal data available this week"}]
 
-    signals_data = [dict(s) for s in signals]
+    prev_map = {s["signal_name"]: s["normalised_score"] for s in prev_signals}
 
-    week_iso_current = get_current_week_iso()
-    interactions = get_interactions(week_iso_current)
+    signals_data = []
+    for s in signals:
+        name = s["signal_name"]
+        score = s["normalised_score"]
+        prev = prev_map.get(name)
+        delta = round(score - prev, 1) if prev is not None else None
+        fallback = "[FALLBACK — data may be stale]" if s["source_weight"] < 1.0 else ""
+        entry = {
+            "signal": name,
+            "score": round(score, 1),
+            "prev_score": round(prev, 1) if prev is not None else None,
+            "delta": delta,
+        }
+        if fallback:
+            entry["note"] = fallback
+        signals_data.append(entry)
+
+    interactions = get_interactions(week_iso)
     if interactions:
         interaction_lines = ["Signal interactions detected this week:"]
         for ix in interactions:

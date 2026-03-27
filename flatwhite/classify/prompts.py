@@ -380,16 +380,18 @@ DRIVER_BULLETS_SYSTEM = (
 )
 
 DRIVER_BULLETS_PROMPT = (
-    "Given these Pulse signal scores for the week:\n"
+    "Given these Pulse signal scores for the week (score = current, prev_score = last week, delta = change):\n"
     "\n"
     "{signals_json}\n"
     "{interactions_block}"
     "\n"
-    "Identify the top 3 signals that moved most significantly compared to a neutral baseline of 50.\n"
+    "Identify the top 3 signals that are most noteworthy this week — prioritise signals with "
+    "large absolute deltas (|delta| > 10 is significant), and signals far from the neutral "
+    "baseline of 50. A signal that barely moved this week is less interesting than one that "
+    "dropped 18 points. If consumer_confidence, salary_pressure, or job_anxiety have large "
+    "deltas, they MUST be included.\n"
     "For each, write a short bullet point (max 15 words) describing the movement and what it means.\n"
-    "If signal interactions were detected, use them to add context — for example, "
-    "if career mobility is elevated alongside weak consumer confidence, "
-    "frame the mobility as defensive rather than confident.\n"
+    "If signal interactions were detected, use them to add context.\n"
     "\n"
     "Output as a JSON array of 3 objects, each with keys: signal, direction, bullet\n"
     "where direction is 'up' or 'down'\n"
