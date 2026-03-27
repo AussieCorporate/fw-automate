@@ -1175,52 +1175,73 @@ def api_reingest_status() -> JSONResponse:
 _section_state: dict[str, dict] = {}
 _section_lock = threading.Lock()
 
-_SECTION_RUNNERS = {
-    "pulse": lambda: (
-        __import__("flatwhite.signals.market_hiring", fromlist=["pull_market_hiring"]).pull_market_hiring(),
-        __import__("flatwhite.signals.salary_pressure", fromlist=["pull_salary_pressure"]).pull_salary_pressure(),
-        __import__("flatwhite.signals.news_velocity", fromlist=["pull_layoff_news_velocity"]).pull_layoff_news_velocity(),
-        __import__("flatwhite.signals.consumer_confidence", fromlist=["pull_consumer_confidence"]).pull_consumer_confidence(),
-        __import__("flatwhite.signals.asx_volatility", fromlist=["pull_asx_volatility"]).pull_asx_volatility(),
-        __import__("flatwhite.signals.asx_momentum", fromlist=["pull_asx_momentum"]).pull_asx_momentum(),
-        __import__("flatwhite.signals.indeed_hiring", fromlist=["pull_indeed_hiring"]).pull_indeed_hiring(),
-        __import__("flatwhite.signals.asic_insolvency", fromlist=["pull_asic_insolvency"]).pull_asic_insolvency(),
-        __import__("flatwhite.pulse.composite", fromlist=["calculate_pulse"]).calculate_pulse(),
-    ),
-    "editorial": lambda: (
-        __import__("flatwhite.editorial.reddit_rss", fromlist=["pull_reddit_editorial"]).pull_reddit_editorial(),
-        __import__("flatwhite.editorial.google_news_editorial", fromlist=["pull_google_news_editorial"]).pull_google_news_editorial(),
-        __import__("flatwhite.editorial.rss_feeds", fromlist=["pull_rss_feeds"]).pull_rss_feeds(),
-        __import__("flatwhite.editorial.podcast_feeds", fromlist=["pull_podcast_feeds"]).pull_podcast_feeds(),
-    ),
-    "classify": lambda: __import__("flatwhite.classify.classifier", fromlist=["classify_all_unclassified"]).classify_all_unclassified(),
-    "finds": lambda: (
-        __import__("flatwhite.editorial.reddit_rss", fromlist=["pull_reddit_editorial"]).pull_reddit_editorial(),
-        __import__("flatwhite.editorial.google_news_editorial", fromlist=["pull_google_news_editorial"]).pull_google_news_editorial(),
-        __import__("flatwhite.editorial.rss_feeds", fromlist=["pull_rss_feeds"]).pull_rss_feeds(),
-        __import__("flatwhite.editorial.podcast_feeds", fromlist=["pull_podcast_feeds"]).pull_podcast_feeds(),
-        __import__("flatwhite.classify.classifier", fromlist=["classify_all_unclassified"]).classify_all_unclassified(),
-    ),
-    "lobby": lambda: __import__("flatwhite.signals.hiring_pulse", fromlist=["pull_hiring_pulse"]).pull_hiring_pulse(),
-    "thread": lambda: (
-        __import__("flatwhite.editorial.reddit_rss", fromlist=["pull_reddit_editorial"]).pull_reddit_editorial(),
-        __import__("flatwhite.classify.classifier", fromlist=["classify_all_unclassified"]).classify_all_unclassified(),
-    ),
-    "off_the_clock": lambda: (
-        __import__("flatwhite.editorial.off_the_clock", fromlist=["pull_off_the_clock"]).pull_off_the_clock(),
-        __import__("flatwhite.classify.classifier", fromlist=["classify_all_otc_unclassified"]).classify_all_otc_unclassified(),
-    ),
-    "classify_otc": lambda: __import__("flatwhite.classify.classifier", fromlist=["classify_all_otc_unclassified"]).classify_all_otc_unclassified(),
+_SECTION_RUNNERS: dict[str, list[tuple[str, "Callable"]]] = {
+    "pulse": [
+        ("Market hiring",       lambda: __import__("flatwhite.signals.market_hiring",   fromlist=["pull_market_hiring"]).pull_market_hiring()),
+        ("Salary pressure",     lambda: __import__("flatwhite.signals.salary_pressure", fromlist=["pull_salary_pressure"]).pull_salary_pressure()),
+        ("News velocity",       lambda: __import__("flatwhite.signals.news_velocity",   fromlist=["pull_layoff_news_velocity"]).pull_layoff_news_velocity()),
+        ("Consumer confidence", lambda: __import__("flatwhite.signals.consumer_confidence", fromlist=["pull_consumer_confidence"]).pull_consumer_confidence()),
+        ("ASX volatility",      lambda: __import__("flatwhite.signals.asx_volatility",  fromlist=["pull_asx_volatility"]).pull_asx_volatility()),
+        ("ASX momentum",        lambda: __import__("flatwhite.signals.asx_momentum",    fromlist=["pull_asx_momentum"]).pull_asx_momentum()),
+        ("Indeed hiring",       lambda: __import__("flatwhite.signals.indeed_hiring",   fromlist=["pull_indeed_hiring"]).pull_indeed_hiring()),
+        ("ASIC insolvency",     lambda: __import__("flatwhite.signals.asic_insolvency", fromlist=["pull_asic_insolvency"]).pull_asic_insolvency()),
+        ("Signal intelligence", lambda: __import__("flatwhite.signals.signal_intelligence", fromlist=["run_signal_intelligence"]).run_signal_intelligence()),
+        ("Composite",           lambda: __import__("flatwhite.pulse.composite",         fromlist=["calculate_pulse"]).calculate_pulse()),
+    ],
+    "editorial": [
+        ("Reddit RSS",    lambda: __import__("flatwhite.editorial.reddit_rss",              fromlist=["pull_reddit_editorial"]).pull_reddit_editorial()),
+        ("Google News",   lambda: __import__("flatwhite.editorial.google_news_editorial",   fromlist=["pull_google_news_editorial"]).pull_google_news_editorial()),
+        ("RSS feeds",     lambda: __import__("flatwhite.editorial.rss_feeds",               fromlist=["pull_rss_feeds"]).pull_rss_feeds()),
+        ("Podcast feeds", lambda: __import__("flatwhite.editorial.podcast_feeds",           fromlist=["pull_podcast_feeds"]).pull_podcast_feeds()),
+    ],
+    "classify": [
+        ("Classify items", lambda: __import__("flatwhite.classify.classifier", fromlist=["classify_all_unclassified"]).classify_all_unclassified()),
+    ],
+    "finds": [
+        ("Reddit RSS",    lambda: __import__("flatwhite.editorial.reddit_rss",            fromlist=["pull_reddit_editorial"]).pull_reddit_editorial()),
+        ("Google News",   lambda: __import__("flatwhite.editorial.google_news_editorial", fromlist=["pull_google_news_editorial"]).pull_google_news_editorial()),
+        ("RSS feeds",     lambda: __import__("flatwhite.editorial.rss_feeds",             fromlist=["pull_rss_feeds"]).pull_rss_feeds()),
+        ("Podcast feeds", lambda: __import__("flatwhite.editorial.podcast_feeds",         fromlist=["pull_podcast_feeds"]).pull_podcast_feeds()),
+        ("Classify",      lambda: __import__("flatwhite.classify.classifier",             fromlist=["classify_all_unclassified"]).classify_all_unclassified()),
+    ],
+    "lobby": [
+        ("Employer snapshots", lambda: __import__("flatwhite.signals.hiring_pulse", fromlist=["pull_hiring_pulse"]).pull_hiring_pulse()),
+    ],
+    "thread": [
+        ("Reddit RSS", lambda: __import__("flatwhite.editorial.reddit_rss",    fromlist=["pull_reddit_editorial"]).pull_reddit_editorial()),
+        ("Classify",   lambda: __import__("flatwhite.classify.classifier",     fromlist=["classify_all_unclassified"]).classify_all_unclassified()),
+    ],
+    "off_the_clock": [
+        ("Off the Clock", lambda: __import__("flatwhite.editorial.off_the_clock", fromlist=["pull_off_the_clock"]).pull_off_the_clock()),
+        ("Classify OTC",  lambda: __import__("flatwhite.classify.classifier",     fromlist=["classify_all_otc_unclassified"]).classify_all_otc_unclassified()),
+    ],
+    "classify_otc": [
+        ("Classify OTC", lambda: __import__("flatwhite.classify.classifier", fromlist=["classify_all_otc_unclassified"]).classify_all_otc_unclassified()),
+    ],
 }
 
 
 def _run_section_background(section: str) -> None:
-    """Run a section in a background thread."""
+    """Run a section's steps sequentially, updating _section_state after each step."""
+    steps = _SECTION_RUNNERS[section]
+    total = len(steps)
+    if section not in _section_state:
+        _section_state[section] = {"running": True, "done": False, "error": None, "step": 0, "total": total, "step_name": "", "completed_at": None}
     try:
-        _SECTION_RUNNERS[section]()
-        _section_state[section] = {"running": False, "done": True, "error": None, "completed_at": _time.strftime("%H:%M:%S")}
+        for i, (label, fn) in enumerate(steps):
+            _section_state[section].update({"step": i, "total": total, "step_name": label})
+            fn()
+        _section_state[section] = {
+            "running": False, "done": True, "error": None,
+            "step": total, "total": total, "step_name": "",
+            "completed_at": _time.strftime("%H:%M:%S"),
+        }
     except Exception as e:
-        _section_state[section] = {"running": False, "done": True, "error": str(e), "completed_at": _time.strftime("%H:%M:%S")}
+        _section_state[section] = {
+            "running": False, "done": True, "error": str(e),
+            "step": _section_state[section].get("step", 0), "total": total, "step_name": "",
+            "completed_at": _time.strftime("%H:%M:%S"),
+        }
 
 
 @app.post("/api/run-section")
@@ -1243,7 +1264,12 @@ async def api_run_section(request: Request) -> JSONResponse:
         state = _section_state.get(section, {})
         if state.get("running"):
             return JSONResponse({"started": False, "message": f"{section} already running"}, status_code=409)
-        _section_state[section] = {"running": True, "done": False, "error": None, "completed_at": None}
+        steps = _SECTION_RUNNERS[section]
+        _section_state[section] = {
+            "running": True, "done": False, "error": None,
+            "step": 0, "total": len(steps), "step_name": steps[0][0] if steps else "",
+            "completed_at": None,
+        }
 
     thread = threading.Thread(target=_run_section_background, args=(section,), daemon=True)
     thread.start()

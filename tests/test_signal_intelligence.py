@@ -47,3 +47,31 @@ def test_signal_intelligence_unique_constraint(si_db):
         conn.close()
         assert len(rows) == 1
         assert rows[0][0] == "Commentary B"
+
+
+def test_section_state_has_step_fields():
+    """After _run_section_background, state should have step/total/step_name."""
+    from flatwhite.dashboard.api import _section_state, _run_section_background
+    call_log = []
+
+    import flatwhite.dashboard.api as api_module
+    original_runners = api_module._SECTION_RUNNERS
+
+    # Temporarily replace classify (1-step) runner with a controlled one
+    api_module._SECTION_RUNNERS = {
+        "test_section": [
+            ("Step one", lambda: call_log.append("one")),
+            ("Step two", lambda: call_log.append("two")),
+        ]
+    }
+
+    _run_section_background("test_section")
+
+    api_module._SECTION_RUNNERS = original_runners
+
+    state = _section_state["test_section"]
+    assert state["done"] is True
+    assert state["running"] is False
+    assert state["step"] == 2
+    assert state["total"] == 2
+    assert call_log == ["one", "two"]
