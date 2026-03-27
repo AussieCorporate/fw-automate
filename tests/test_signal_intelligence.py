@@ -125,3 +125,25 @@ def test_run_signal_intelligence_generates_for_movers(si_db):
         assert "market_hiring" not in signal_names  # delta < 5
         asx_row = next(r for r in rows if r["signal_name"] == "asx_volatility")
         assert "ASX" in asx_row["commentary"]
+
+
+def test_api_get_signal_intelligence(si_db):
+    """GET /api/signal-intelligence/{week_iso} should return records keyed by signal."""
+    import json as _json
+    with patch.object(db_module, "DB_PATH", si_db):
+        conn = db_module.get_connection()
+        articles = _json.dumps([{"title": "Test", "url": "http://x.com", "published": "2026-03-20", "snippet": "foo"}])
+        conn.execute(
+            """INSERT INTO signal_intelligence (signal_name, week_iso, delta, articles, commentary, generated_at)
+               VALUES (?, ?, ?, ?, ?, datetime('now'))""",
+            ("asx_volatility", "2026-W13", 8.2, articles, "ASX rose sharply."),
+        )
+        conn.commit()
+        conn.close()
+
+        from flatwhite.dashboard.api import api_get_signal_intelligence
+        result = api_get_signal_intelligence("2026-W13")
+        data = _json.loads(result.body)
+        assert "asx_volatility" in data
+        assert data["asx_volatility"]["commentary"] == "ASX rose sharply."
+        assert isinstance(data["asx_volatility"]["articles"], list)

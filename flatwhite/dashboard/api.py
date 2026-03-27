@@ -1351,6 +1351,70 @@ def api_run_log() -> JSONResponse:
     return JSONResponse({"lines": lines[-100:], "exists": True})
 
 
+# ── Signal Intelligence endpoints ─────────────────────────────────────────
+
+@app.get("/api/signal-intelligence/{week_iso}")
+def api_get_signal_intelligence(week_iso: str) -> JSONResponse:
+    """Return signal intelligence records for a week, keyed by signal_name."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT signal_name, delta, articles, commentary, generated_at FROM signal_intelligence WHERE week_iso = ?",
+        (week_iso,),
+    ).fetchall()
+    conn.close()
+    result = {}
+    for r in rows:
+        result[r["signal_name"]] = {
+            "delta":        r["delta"],
+            "articles":     json.loads(r["articles"]) if r["articles"] else [],
+            "commentary":   r["commentary"],
+            "generated_at": r["generated_at"],
+        }
+    return JSONResponse(result)
+
+
+@app.post("/api/signal-intelligence/refresh")
+async def api_refresh_signal_intelligence(request: Request) -> JSONResponse:
+    """Re-run signal intelligence for a single signal/week pair.
+
+    Body: {"signal_name": str, "week_iso": str}
+    """
+    body = await request.json()
+    signal_name = body.get("signal_name", "")
+    week_iso = body.get("week_iso", "")
+
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT delta FROM signal_intelligence WHERE signal_name = ? AND week_iso = ?",
+        (signal_name, week_iso),
+    ).fetchone()
+    conn.close()
+
+    if not row:
+        return JSONResponse({"error": "No existing record to refresh"}, status_code=404)
+
+    def _refresh():
+        from flatwhite.signals.signal_intelligence import _fetch_articles, _synthesise
+        year, wn = int(week_iso[:4]), int(week_iso[6:])
+        dt = _dt.datetime.strptime(f"{year}-W{wn:02d}-1", "%G-W%V-%u")
+        month = dt.strftime("%B")
+        delta = row["delta"]
+        articles = _fetch_articles(signal_name, month, str(year))
+        commentary = _synthesise(signal_name, delta, articles)
+        c = get_connection()
+        c.execute(
+            """INSERT OR REPLACE INTO signal_intelligence
+               (signal_name, week_iso, delta, articles, commentary, generated_at)
+               VALUES (?, ?, ?, ?, ?, datetime('now'))""",
+            (signal_name, week_iso, delta, json.dumps(articles), commentary),
+        )
+        c.commit()
+        c.close()
+
+    threading.Thread(target=_refresh, daemon=True).start()
+    return JSONResponse({"refreshing": True, "signal_name": signal_name, "week_iso": week_iso})
+
+
 # ── Extraction Health & Feedback endpoints ────────────────────────────────
 
 @app.get("/api/extraction-health")
