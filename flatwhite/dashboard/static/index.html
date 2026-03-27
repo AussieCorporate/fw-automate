@@ -4,276 +4,281 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Flat White — Editor Dashboard</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:ital,opsz,wght@0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;1,14..32,400&display=swap" rel="stylesheet" />
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
-  --bg: #FFFCF5;
+  --bg: #F7F6F3;
   --surface: #FFFFFF;
-  --surface-warm: #FFF8EC;
-  --border: #F0E6D2;
-  --border-gold: #FFE9B8;
-  --divider: #F5EDE0;
+  --surface-warm: #FAF8F4;
+  --border: #E8E4DE;
+  --border-gold: #F0DFA8;
+  --divider: #EEEBE5;
   --text: #1A1A1A;
-  --text-2: #6B5E4F;
-  --text-3: #9B8E7E;
-  --amber: #E8A000;
-  --amber-light: #FFF2D5;
-  --amber-dark: #C48800;
+  --text-2: #5A5048;
+  --text-3: #7A6D60;
+  --amber: #D9920A;
+  --amber-light: #FEF3D8;
+  --amber-dark: #B87800;
   --green: #2D8A56;
   --green-bg: #E8F5E9;
   --red: #C62828;
   --red-bg: #FFEBEE;
   --blue: #2C6FC7;
-  --font-serif: 'Instrument Serif', Georgia, 'Times New Roman', serif;
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-serif: Arial, Helvetica, sans-serif;
+  --font-sans: Arial, Helvetica, sans-serif;
 }
-html { font-size: 16px; }
-body { font-family: var(--font-sans); background: var(--bg); color: var(--text); min-height: 100vh; display: flex; }
+html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+body { font-family: var(--font-sans); background: var(--bg); color: var(--text); min-height: 100vh; display: flex; font-size: 15px; }
 a { color: var(--blue); text-decoration: none; }
 a:hover { text-decoration: underline; }
 button { font-family: var(--font-sans); cursor: pointer; border: none; }
+input, textarea, select { font-family: var(--font-sans); font-size: 14px; }
 ::selection { background: var(--amber-light); }
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; background: var(--surface-warm); padding: 1px 5px; border-radius: 3px; }
 
+/* ── Sidebar ── */
 .sidebar {
-  width: 220px; min-height: 100vh; background: var(--surface);
+  width: 200px; min-height: 100vh; background: var(--surface);
   border-right: 1px solid var(--border); display: flex; flex-direction: column;
   padding: 24px 0; position: fixed; top: 0; left: 0; z-index: 10;
+  overflow-y: auto;
 }
-.main { flex: 1; margin-left: 220px; padding: 32px 40px; max-width: none; }
+.main { flex: 1; margin-left: 200px; padding: 36px 48px; max-width: none; }
 .sidebar-brand { padding: 0 20px; margin-bottom: 32px; }
-.sidebar-brand h1 { font-family: var(--font-serif); font-size: 22px; font-weight: 400; letter-spacing: -0.5px; }
-.sidebar-brand span { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1.5px; display: block; margin-top: 2px; }
-.sidebar-week { padding: 0 20px; margin-bottom: 24px; }
-.sidebar-week-inner { background: var(--amber-light); border-radius: 8px; padding: 10px 14px; border: 1px solid var(--border-gold); }
-.sidebar-week-inner .lbl { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; }
-.sidebar-week-inner .val { font-size: 15px; font-weight: 600; margin-top: 2px; }
-.sidebar-nav { flex: 1; padding: 0 12px; }
+.sidebar-brand h1 { font-family: var(--font-serif); font-size: 21px; font-weight: 700; letter-spacing: -0.5px; }
+.sidebar-brand span { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1.5px; display: block; margin-top: 2px; }
+.sidebar-week { padding: 0 16px; margin-bottom: 20px; }
+.sidebar-week-inner { background: var(--amber-light); border-radius: 10px; padding: 10px 14px; border: 1px solid var(--border-gold); }
+.sidebar-week-inner .lbl { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; }
+.sidebar-week-inner .val { font-size: 14px; font-weight: 600; margin-top: 2px; }
+.sidebar-nav { flex: 1; padding: 0 10px; }
 .nav-item {
-  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
-  border-radius: 8px; margin-bottom: 4px; cursor: pointer;
+  display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+  border-radius: 9px; margin-bottom: 3px; cursor: pointer;
   border-left: 3px solid transparent; transition: all 0.15s ease;
-  font-size: 14px; color: var(--text-2);
+  font-size: 13px; color: var(--text-2);
 }
 .nav-item:hover { background: var(--surface-warm); }
 .nav-item.active { background: var(--amber-light); border-left-color: var(--amber); color: var(--text); font-weight: 600; }
-.nav-icon { font-family: Georgia; font-size: 16px; width: 20px; text-align: center; color: var(--text-3); }
+.nav-item.greyed { opacity: 0.45; cursor: default; }
+.nav-icon { font-size: 15px; width: 20px; text-align: center; color: var(--text-3); }
 .nav-item.active .nav-icon { color: var(--amber); }
 .dot { margin-left: auto; width: 8px; height: 8px; border-radius: 50%; }
 .dot-done { background: var(--green); }
-.sidebar-footer { padding: 0 20px; }
+.dot-amber { background: var(--amber); }
+.sidebar-footer { padding: 16px 20px 0; }
 .sidebar-footer .lbl { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
 .pbar { width: 100%; height: 3px; background: var(--divider); border-radius: 3px; overflow: hidden; }
 .pbar-fill { height: 100%; background: var(--amber); border-radius: 3px; transition: width 0.4s ease; }
-.sidebar-footer .status { font-size: 12px; color: var(--text-2); margin-top: 6px; }
 
-.sh { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid var(--border-gold); }
-.sh h2 { font-family: var(--font-serif); font-size: 24px; font-weight: 400; display: flex; align-items: center; gap: 8px; }
+/* ── Section header ── */
+.sh { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px; padding-bottom: 14px; border-bottom: 2px solid var(--border-gold); }
+.sh h2 { font-family: var(--font-sans); font-size: 24px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
 .sh .sub { font-size: 13px; color: var(--text-3); margin-top: 2px; }
 
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; transition: all 0.2s ease; }
-.card.hov:hover { border-color: var(--border-gold); box-shadow: 0 2px 12px rgba(200,170,100,0.08); }
+/* ── Card ── */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; transition: all 0.2s ease; }
+.card.hov:hover { border-color: var(--border-gold); box-shadow: 0 2px 16px rgba(180,150,80,0.09); }
 .card.sel { border-color: var(--amber); background: var(--amber-light); }
-.card.approved { border-left: 3px solid var(--green); }
-.card.rejected { border-left: 3px solid var(--red); opacity: 0.5; }
-.card.reserved { border-left: 3px solid var(--amber); }
 
-.chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+/* ── Chips ── */
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border-radius: 20px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
 .chip-green { background: var(--green-bg); color: var(--green); border: 1px solid #C8E6C9; }
 .chip-red { background: var(--red-bg); color: var(--red); border: 1px solid #FFCDD2; }
 .chip-amber { background: var(--amber-light); color: var(--amber-dark); border: 1px solid var(--border-gold); }
 .chip-default { background: var(--surface-warm); color: var(--text-2); border: 1px solid var(--border); }
 
-.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; border-radius: 6px; font-size: 13px; font-weight: 600; letter-spacing: 0.2px; transition: all 0.15s ease; }
-.btn-sm { padding: 5px 12px; font-size: 12px; }
+/* ── Buttons ── */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 20px; border-radius: 9px; font-size: 13px; font-weight: 600; letter-spacing: 0.2px; min-height: 40px; transition: all 0.15s ease; }
+.btn-sm { padding: 6px 13px; font-size: 12px; min-height: 32px; }
 .btn-primary { background: var(--amber); color: #fff; }
 .btn-primary:hover { background: var(--amber-dark); }
 .btn-success { background: var(--green); color: #fff; }
 .btn-success:hover { background: #2E7D32; }
 .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
 .btn-secondary:hover { background: var(--surface-warm); }
+.btn-danger { background: var(--red); color: #fff; }
+.btn-danger:hover { background: #B71C1C; }
 .btn-ghost { background: transparent; color: var(--text-2); border: 1px solid transparent; }
 .btn-ghost:hover { background: var(--surface-warm); }
 .btn:disabled { background: #E0D8CC !important; color: #AAA !important; cursor: not-allowed; }
 
+/* ── Spinner ── */
 .ingest-spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--text-3); border-top-color: var(--amber); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.sbar { width: 100%; height: 4px; background: var(--divider); border-radius: 4px; overflow: hidden; }
-.sbar-fill { height: 100%; border-radius: 4px; transition: width 0.6s ease; }
-.fill-green { background: var(--green); }
-.fill-amber { background: var(--amber); }
-.fill-red { background: var(--red); }
-
-.lu { font-size: 13px; font-weight: 600; color: var(--text-2); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
-.ls { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1.2px; }
-.sb { font-family: var(--font-serif); font-size: 17px; line-height: 1.6; }
-.shl { font-family: var(--font-serif); font-size: 22px; line-height: 1.35; }
-
+/* ── Gauge ── */
 .gauge-wrap { text-align: center; }
-.gauge-num { font-family: var(--font-serif); font-size: 48px; letter-spacing: -2px; margin-top: -8px; }
-.gauge-lbl { font-size: 12px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1.5px; }
-.dir-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; }
+.gauge-num { font-family: var(--font-sans); font-size: 60px; font-weight: 700; letter-spacing: -3px; margin-top: -12px; line-height: 1; }
+.gauge-lbl { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px; }
+.dir-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; }
 .dir-up { background: var(--red-bg); color: var(--red); border: 1px solid #FFCDD2; }
 .dir-down { background: var(--green-bg); color: var(--green); border: 1px solid #C8E6C9; }
 .dir-stable { background: var(--amber-light); color: var(--amber-dark); border: 1px solid var(--border-gold); }
 
-.tabs { display: flex; gap: 4px; margin-bottom: 20px; width: 100%; }
-.tab { flex: 1; text-align: center; padding: 10px 18px; border-radius: 8px 8px 0 0; cursor: pointer; font-size: 14px; color: var(--text-3); border-bottom: 2px solid transparent; transition: all 0.15s ease; }
-.tab:hover { color: var(--text-2); }
-.tab.active { background: var(--surface); border-bottom-color: var(--amber); color: var(--text); font-weight: 600; }
+/* ── Table ── */
+.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tbl th { text-align: left; padding: 10px 12px; font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid var(--border); font-weight: 600; }
+.tbl td { padding: 10px 12px; border-bottom: 1px solid var(--divider); vertical-align: top; }
+.tbl tr:hover td { background: var(--surface-warm); }
+.tbl input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--amber); }
 
-.anomaly { background: var(--red-bg); border: 1px solid #FFCDD2; border-radius: 8px; padding: 12px 16px; display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
-.frame-box { background: var(--surface-warm); border-radius: 8px; padding: 14px 18px; border-left: 3px solid var(--amber); }
-.thread-hdr { background: linear-gradient(135deg, var(--amber-light) 0%, var(--surface-warm) 100%); padding: 20px 24px; border-bottom: 1px solid var(--border-gold); border-radius: 10px 10px 0 0; }
+/* ── Forms ── */
+.form-group { margin-bottom: 14px; }
+.form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.8px; }
+.form-input { width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 9px; font-size: 14px; background: var(--surface); }
+.form-input:focus { outline: none; border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-light); }
+textarea.form-input { min-height: 100px; resize: vertical; font-family: var(--font-sans); }
+select.form-input { appearance: auto; }
 
-.g2 { display: grid; grid-template-columns: 260px 1fr; gap: 24px; }
-.g3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+/* ── Toolbar ── */
+.toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; padding: 14px 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
+.toolbar .model-select { padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--surface-warm); min-width: 180px; }
+.toolbar .model-select:focus { outline: none; border-color: var(--amber); }
+
+/* ── Output box ── */
+.output-box { margin-top: 20px; }
+.output-box textarea { width: 100%; min-height: 200px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; font-size: 14px; line-height: 1.7; font-family: var(--font-sans); resize: vertical; background: var(--surface-warm); }
+.output-box textarea:focus { outline: none; border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-light); }
+
+/* ── Radio ── */
+.radio { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px; color: #fff; transition: all 0.15s ease; cursor: pointer; }
+.radio.on { background: var(--amber); border-color: var(--amber); }
+
+/* ── Layout utils ── */
+.g2 { display: grid; grid-template-columns: 280px 1fr; gap: 28px; }
 .fc { display: flex; flex-direction: column; gap: 10px; }
 .fr { display: flex; align-items: center; gap: 8px; }
 .fb { display: flex; justify-content: space-between; align-items: center; }
-.g6 { gap: 6px; }
-.g12 { gap: 12px; }
+.fw { display: flex; flex-wrap: wrap; gap: 10px; }
+.mt8 { margin-top: 8px; }
 .mt12 { margin-top: 12px; }
 .mt20 { margin-top: 20px; }
 .mb8 { margin-bottom: 8px; }
 .mb16 { margin-bottom: 16px; }
 .mb20 { margin-bottom: 20px; }
 .mb24 { margin-bottom: 24px; }
-.pt16 { padding-top: 16px; }
 .bt { border-top: 1px solid var(--divider); }
-
-.radio { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px; color: #fff; transition: all 0.15s ease; }
-.radio.on { background: var(--amber); border-color: var(--amber); }
-
-.tip-wrap { position: relative; display: inline-flex; align-items: center; }
-.tip-icon { width: 16px; height: 16px; border-radius: 50%; background: var(--divider); color: var(--text-3); font-size: 10px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; cursor: help; margin-left: 6px; flex-shrink: 0; }
-.tip-icon:hover { background: var(--border-gold); color: var(--amber-dark); }
-.tip-bubble { display: none; position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); background: var(--text); color: #fff; font-size: 12px; font-weight: 400; line-height: 1.5; padding: 8px 12px; border-radius: 6px; width: 240px; z-index: 100; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-.tip-bubble::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 6px solid transparent; border-top-color: var(--text); }
-.tip-icon:hover + .tip-bubble { display: block; }
-
-@keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-.fu { animation: fadeUp 0.4s ease both; }
-.fu1 { animation-delay: 0.05s; }
-.fu2 { animation-delay: 0.1s; }
-.fu3 { animation-delay: 0.15s; }
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-.loading { animation: pulse 1.5s infinite; color: var(--text-3); font-size: 14px; }
-
-/* ── Loading skeletons ── */
-.skeleton {
-  background: linear-gradient(90deg, var(--surface-warm) 25%, var(--border) 50%, var(--surface-warm) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-  border-radius: 8px;
-  min-height: 20px;
-}
-@keyframes shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-.skeleton-card { height: 120px; margin-bottom: 12px; }
-.skeleton-line { height: 16px; margin-bottom: 8px; width: 80%; }
-.skeleton-line.short { width: 40%; }
 
 /* ── Toast notifications ── */
 .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 1000; }
 .toast {
   background: var(--surface); border: 1px solid var(--border-gold);
-  border-radius: 8px; padding: 12px 20px; margin-top: 8px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
-  animation: slideUp 0.3s ease;
-  font-size: 14px;
+  border-radius: 14px; padding: 13px 22px; margin-top: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.05);
+  animation: slideUp 0.3s ease; font-size: 14px;
 }
 .toast.success { border-left: 3px solid var(--green); }
 .toast.error { border-left: 3px solid var(--red); }
-@keyframes slideUp {
-  from { transform: translateY(20px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
-}
+@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
-/* ── Keyboard shortcut hint bar ── */
-.kbd-hint {
-  position: sticky; bottom: 0; background: var(--surface-warm);
-  border-top: 1px solid var(--border); padding: 8px 16px;
-  font-size: 12px; color: var(--text-3); text-align: center;
-  letter-spacing: 0.5px;
-}
-.kbd-hint kbd {
-  display: inline-block; background: var(--surface); border: 1px solid var(--border);
-  border-radius: 3px; padding: 1px 5px; font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 11px; margin: 0 2px;
-}
+/* ── Loading ── */
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.loading { animation: pulse 1.5s infinite; color: var(--text-3); font-size: 14px; }
 
-/* ── Focus ring for keyboard nav ── */
-.card.kb-focus { outline: 2px solid var(--amber); outline-offset: 2px; }
+/* ── Anomaly ── */
+.anomaly { background: var(--red-bg); border: 1px solid #FFCDD2; border-radius: 12px; padding: 14px 18px; display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 
-/* ── Health grid ── */
-.health-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
-.health-card { padding: 14px 16px; }
-.health-card.fail { background: var(--red-bg); border-color: #FFCDD2; }
-.health-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
-.health-dot.ok { background: var(--green); }
-.health-dot.fail { background: var(--red); }
+/* ── Mover cards ── */
+.movers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.mover-card { padding: 16px; }
+.mover-card .mc-name { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.mover-card .mc-sector { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
+.mover-card .mc-delta { font-size: 22px; font-weight: 700; }
+.mover-card .mc-delta.up { color: var(--green); }
+.mover-card .mc-delta.down { color: var(--red); }
+.mover-card .mc-detail { font-size: 12px; color: var(--text-2); margin-top: 4px; }
 
-.status-bar {
-  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-  padding: 12px 20px; margin-bottom: 24px; font-size: 13px;
-}
-.status-bar .sb-item { display: flex; align-items: center; gap: 6px; }
-.sb-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-.sb-dot.on { background: var(--green); }
-.sb-dot.off { background: var(--border); }
-.sb-dot.warn { background: var(--amber); }
-.sb-val { font-weight: 600; }
-.sb-lbl { color: var(--text-3); }
+/* ── Assemble status ── */
+.asm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.asm-item { padding: 14px 18px; display: flex; align-items: center; gap: 10px; }
+.asm-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.asm-dot.done { background: var(--green); }
+.asm-dot.pending { background: var(--border); }
+.asm-dot.amber { background: var(--amber); }
+.asm-name { font-size: 13px; font-weight: 600; }
+
+/* ── Candidate card list ── */
+.cand-list { display: flex; flex-direction: column; gap: 10px; }
+.cand-card { display: flex; gap: 14px; align-items: flex-start; cursor: pointer; }
+.cand-card .cand-body { flex: 1; }
+.cand-card .cand-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+.cand-card .cand-meta { font-size: 12px; color: var(--text-3); }
+.cand-card .cand-summary { font-size: 13px; color: var(--text-2); margin-top: 6px; line-height: 1.5; }
+
+/* ── OTC categories ── */
+.otc-cats { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.otc-cat-card { padding: 20px; }
+.otc-cat-title { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 12px; color: var(--amber-dark); }
 
 @media (max-width: 768px) {
   .sidebar { display: none; }
-  .main { margin-left: 0; padding: 16px; }
+  .main { margin-left: 0; padding: 20px; }
   .g2 { grid-template-columns: 1fr; }
-  .g3 { grid-template-columns: 1fr; }
 }
-.comment-bubble:hover .comment-tooltip { display: block !important; }
+.modal-overlay { position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:flex-start;justify-content:center;padding-top:60px; }
+.modal-box { background:var(--bg-2);border-radius:12px;padding:28px;width:720px;max-width:95vw;max-height:80vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,0.3); }
+.modal-box h3 { margin:0 0 16px;font-size:18px; }
+.modal-section-label { font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-3);margin:16px 0 6px; }
+.modal-footer { display:flex;gap:10px;justify-content:flex-end;margin-top:20px; }
+.cat-trends { display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px; }
+@media(max-width:700px){.cat-trends{grid-template-columns:1fr;}}
+.cat-card { background:var(--bg-2);border-radius:10px;padding:16px; }
+.cat-card-label { font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-3);margin-bottom:8px; }
+.cat-card-score { font-size:28px;font-weight:700;color:var(--text-1); }
+.cat-card-delta { display:inline-block;font-size:13px;font-weight:600;padding:2px 8px;border-radius:20px;margin-top:4px; }
+.cat-card-delta.up { background:#d4edda;color:#155724; }
+.cat-card-delta.down { background:#f8d7da;color:#721c24; }
+.cat-card-delta.stable { background:var(--bg-3);color:var(--text-3); }
+.chip-au { background:#d4edda;color:#155724; }
+.chip-low-au { background:var(--bg-3);color:var(--text-3); }
 </style>
 </head>
 <body>
 <nav class="sidebar" id="sidebar"></nav>
 <div class="main" id="main"><div class="loading" style="padding:40px;text-align:center;">Loading dashboard...</div></div>
+<div class="toast-container" id="toasts"></div>
+<div id="modal-root"></div>
 <script>
 /* ═══════════════════════════════════════════════════════════════════════
-   FLAT WHITE EDITOR DASHBOARD — Client Application
+   FLAT WHITE EDITOR DASHBOARD — Section-Oriented
    ═══════════════════════════════════════════════════════════════════════ */
 
 var S = {
-  page: "pulse", weekIso: "",
-  pulse: null, signals: [], hooks: [], selectedHook: null,
-  items: {}, decisions: {}, activeSection: "whisper",
-  threads: [], threadDecisions: {}, threadOurTakes: {}, threadSaved: {},
-  seeds: [], angles: [], selectedAngle: null,
-  seedItems: [], seedChecked: {}, seedTags: [], editorialDirection: "",
-  seedTopN: 30,
-  draft: "", draftSaved: false, savedDraft: null,
-  loading: {}, showAllSignals: false,
-  ingest: { running: false, step: "", error: null },
-  runLog: { lines: [], exists: false },
-  health: null, healthLoading: false,
-  feedbackData: null, feedbackLoading: false,
-  focusedItemIdx: -1, showSkipped: false,
-  status: null,
-  assemble: { loading: false, result: null, error: null, copied: false },
-  threadFilter: 1,
+  page: "pulse",
+  weekIso: "",
+  models: [],
+  pulse: null,
+  signals: [],
+  anomalies: [],
+  items: null,
+  threads: null,
+  lobby: null,
+  otcData: null,
+  bigConvCandidates: null,
+  ampFinest: null,
+  events: null,
+  sectionOutputs: {},
+  whispers: [],
+  threadComments: {},
   threadCommentsLoading: {},
-  threadPostScores: {}
+  selectedBigConv: null,
+  selectedThread: null,
+  customBigConv: null,
+  findsChecked: {},
+  findsBlurbs: {},
+  lobbyChecked: {},
+  pulseChecked: {},
+  otcPicks: {},
+  otcBlurbs: {},
+  otcSelected: {},
+  loading: {},
+  proceedModal: { open: false, section: null, prompt: "", lean: "", items: [], loading: false },
+  proceedData: {},
 };
 
-/* ── API ──────────────────────────────────────────────── */
+/* ── Helpers ───────────────────────────────────────────── */
 function api(path, opts) {
   opts = opts || {};
   var config = { headers: { "Content-Type": "application/json" } };
@@ -285,1259 +290,1217 @@ function api(path, opts) {
   });
 }
 
-/* ── Ingest polling ───────────────────────────────────── */
-function pollIngest() {
-  api("/api/reingest-status").then(function(d) {
-    S.ingest.running = d.running;
-    S.ingest.step = d.step || "";
-    S.ingest.error = d.error;
-    render();
-    if (d.running) {
-      setTimeout(pollIngest, 3000);
-    } else {
-      // Ingest finished — reload all data
-      Promise.all([loadPulse(), loadItems(), loadThread(), loadDraft(), loadStatus()]).then(function() { render(); });
-    }
-  }).catch(function() {
-    setTimeout(pollIngest, 5000);
-  });
+function sparkline(values, width, height) {
+  var clean = values.filter(function(v) { return v != null; });
+  if (clean.length < 2) return '<svg width="' + width + '" height="' + height + '"></svg>';
+  var min = Math.min.apply(null, clean);
+  var max = Math.max.apply(null, clean);
+  var range = max - min || 1;
+  var w = width / (clean.length - 1);
+  var points = clean.map(function(v, i) {
+    var x = Math.round(i * w);
+    var y = Math.round(height - ((v - min) / range * (height - 4)) - 2);
+    return x + "," + y;
+  }).join(" ");
+  return '<svg width="' + width + '" height="' + height + '" style="vertical-align:middle">'
+    + '<polyline points="' + points + '" fill="none" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'
+    + '</svg>';
 }
 
-/* ── Data loaders ─────────────────────────────────────── */
-function loadPulse() {
-  return api("/api/pulse").then(function(d) {
-    S.pulse = d.pulse; S.signals = d.signals || []; S.anomalies = d.anomalies || []; S.weekIso = d.week_iso || "";
-  });
+function barSparkline(values, width, height) {
+  var clean = values.filter(function(v) { return v != null; });
+  if (!clean.length) return '<svg width="' + width + '" height="' + height + '"></svg>';
+  var max = Math.max.apply(null, clean) || 1;
+  var barW = Math.max(2, Math.floor(width / clean.length) - 1);
+  var bars = clean.map(function(v, i) {
+    var h2 = Math.max(2, Math.round((v / max) * height));
+    var x = i * (barW + 1);
+    var y = height - h2;
+    return '<rect x="' + x + '" y="' + y + '" width="' + barW + '" height="' + h2 + '" fill="var(--accent)" opacity="0.7" rx="1"/>';
+  }).join("");
+  return '<svg width="' + width + '" height="' + height + '" style="vertical-align:middle">' + bars + '</svg>';
 }
-function loadItems() {
-  return api("/api/items").then(function(d) {
-    S.items = d.items || {};
-    Object.keys(S.items).forEach(function(sec) {
-      (S.items[sec] || []).forEach(function(item) {
-        if (item.decision) S.decisions[item.id] = item.decision;
+
+function esc(s) {
+  if (s == null) return "";
+  var d = document.createElement("div");
+  d.appendChild(document.createTextNode(String(s)));
+  return d.innerHTML;
+}
+
+function showToast(msg, type) {
+  var c = document.getElementById("toasts");
+  var t = document.createElement("div");
+  t.className = "toast " + (type || "success");
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(function() { t.remove(); }, 3500);
+}
+
+function $(id) { return document.getElementById(id); }
+
+/* ── Navigation ───────────────────────────────────────── */
+var NAV_ITEMS = [
+  { id: "editorial",   icon: "GM",  label: "Editorial" },
+  { id: "pulse",       icon: "\u25C9", label: "Pulse" },
+  { id: "big_conversation", icon: "\u00B6", label: "Big Conversation" },
+  { id: "whispers",    icon: "\uD83D\uDC41", label: "Whispers" },
+  { id: "lobby",       icon: "\uD83D\uDCCA", label: "The Lobby" },
+  { id: "finds",       icon: "\uD83D\uDD25", label: "Finds" },
+  { id: "thread",      icon: "\u00A7", label: "Thread" },
+  { id: "amp_finest",  icon: "\uD83D\uDCC8", label: "AMP's Finest" },
+  { id: "off_the_clock", icon: "\uD83C\uDF77", label: "Off the Clock" },
+  { id: "events",      icon: "\uD83D\uDCC5", label: "Events" },
+  { id: "salary_vault", icon: "\uD83D\uDCB0", label: "Salary Vault", greyed: true },
+  { id: "assemble",    icon: "\u2709", label: "Assemble" },
+];
+
+function nav(page) {
+  if (page === "salary_vault") return;
+  S.page = page;
+  renderSidebar();
+  loadPageData(page).then(function() { render(); });
+}
+
+function loadPageData(page) {
+  switch (page) {
+    case "pulse":
+      if (S.pulse) return Promise.resolve();
+      return Promise.all([api("/api/pulse"), api("/api/pulse/trends")]).then(function(r) {
+        S.pulse = r[0].pulse; S.signals = r[0].signals || []; S.anomalies = r[0].anomalies || []; S.weekIso = r[0].week_iso || "";
+        S.trends = r[1] || null;
       });
-    });
-  });
-}
-function loadThread(weeks) {
-  weeks = weeks || S.threadFilter || 1;
-  return api("/api/threads?limit=20&weeks=" + weeks).then(function(d) {
-    S.threads = d.threads || [];
-    S.threadDecisions = {};
-    S.threadOurTakes = {};
-    S.threadSaved = {};
-    S.threads.forEach(function(t) {
-      if (t.decision) {
-        var dec = t.decision === "approved" ? "feature" : t.decision === "reserve" ? "reserve" : t.decision === "rejected" ? "skip" : null;
-        if (dec) S.threadDecisions[t.id] = dec;
-      }
-      S.threadOurTakes[t.id] = t.our_take || "";
-    });
-    // Auto-fetch comments for threads that don't have any
-    autoFetchComments();
-  });
-}
-function autoFetchComments() {
-  var pending = S.threads.filter(function(t) {
-    return (!t.top_comments || t.top_comments.length === 0) && !S.threadCommentsLoading[t.id];
-  });
-  // Fetch sequentially with a small stagger to avoid hammering Reddit
-  function fetchNext(idx) {
-    if (idx >= pending.length) return;
-    var t = pending[idx];
-    S.threadCommentsLoading[t.id] = true;
-    api("/api/fetch-thread-comments", { method: "POST", body: { curated_item_id: t.id } })
-      .then(function(d) {
-        S.threadCommentsLoading[t.id] = false;
-        var thread = S.threads.find(function(th) { return th.id === t.id; });
-        if (thread && d.comments) { thread.top_comments = d.comments; }
-        if (d.post_score != null) { S.threadPostScores[t.id] = d.post_score; }
-        render();
-        fetchNext(idx + 1);
-      })
-      .catch(function() {
-        S.threadCommentsLoading[t.id] = false;
-        render();
-        fetchNext(idx + 1);
-      });
+    case "big_conversation":
+      return Promise.resolve(); // Don't auto-load — user must click RUN
+    case "whispers":
+      return api("/api/items").then(function(d) { S.whispers = (d.items && d.items.whisper) || []; S.weekIso = d.week_iso; });
+    case "lobby":
+      if (S.lobby) return Promise.resolve();
+      return api("/api/lobby").then(function(d) { S.lobby = d; S.weekIso = d.week_iso; });
+    case "finds":
+      if (S.items) return Promise.resolve();
+      return api("/api/items").then(function(d) { S.items = d.items || {}; S.weekIso = d.week_iso; });
+    case "thread":
+      if (S.threads) return Promise.resolve();
+      return api("/api/threads?limit=5").then(function(d) { S.threads = d.threads || []; S.weekIso = d.week_iso; });
+    case "amp_finest":
+      if (S.ampFinest !== null) return Promise.resolve();
+      return api("/api/amp-finest").then(function(d) { S.ampFinest = d.data; S.weekIso = d.week_iso; });
+    case "off_the_clock":
+      if (S.otcData) return Promise.resolve();
+      return api("/api/off-the-clock").then(function(d) { S.otcData = d; S.weekIso = d.week_iso; });
+    case "events":
+      if (S.events) return Promise.resolve();
+      return api("/api/events").then(function(d) { S.events = d.events || []; S.weekIso = d.week_iso; });
+    case "assemble":
+      return api("/api/section-outputs").then(function(d) { S.sectionOutputs = d.outputs || {}; S.weekIso = d.week_iso; });
+    case "editorial":
+      return api("/api/section-outputs").then(function(d) { S.sectionOutputs = d.outputs || {}; S.weekIso = d.week_iso; });
+    default: return Promise.resolve();
   }
-  fetchNext(0);
 }
-function loadSeeds() {
-  return api("/api/seeds").then(function(d) { S.seeds = d.seeds || []; });
-}
-function loadSeedItems() {
-  return api("/api/seed-items").then(function(d) {
-    S.seedItems = d.items || [];
-    S.seedChecked = {};
-    S.seedItems.slice(0, S.seedTopN).forEach(function(item) { S.seedChecked[item.id] = true; });
+
+/* ── Model dropdown helper ── */
+function modelSelect(id) {
+  if (!S.models.length) return "";
+  var h = '<select class="model-select" id="' + id + '">';
+  S.models.forEach(function(m) {
+    h += '<option value="' + esc(m.id) + '">' + esc(m.label || m.id) + '</option>';
   });
-}
-function loadSeedTags() {
-  return api("/api/seed-tags").then(function(d) { S.seedTags = d.tags || []; });
-}
-function loadDraft() {
-  return api("/api/draft").then(function(d) {
-    S.savedDraft = d.draft;
-    if (d.draft) { S.draft = d.draft.draft_text || ""; S.draftSaved = true; }
-  });
-}
-function loadRunLog() {
-  return api("/api/run-log").then(function(d) { S.runLog = d; });
-}
-function loadHealth() {
-  S.healthLoading = true;
-  return api("/api/extraction-health").then(function(d) { S.health = d; S.healthLoading = false; });
-}
-function loadFeedback() {
-  S.feedbackLoading = true;
-  return api("/api/feedback").then(function(d) { S.feedbackData = d; S.feedbackLoading = false; });
-}
-function loadStatus() {
-  return api("/api/status").then(function(d) { S.status = d; });
-}
-
-/* ── Signal metadata ──────────────────────────────────── */
-var SIG = {
-  asx_momentum:    { label: "ASX Momentum",       tip: "Tracks the 5-day rate of change on the S&P/ASX 200 (XJO). Rising momentum signals market optimism; falling signals caution." },
-  asx_volatility:  { label: "ASX Volatility",     tip: "Measures recent price swings on the ASX 200. Higher volatility indicates market uncertainty and potential corporate stress." },
-  consumer_confidence: { label: "Consumer Confidence", tip: "ANZ-Roy Morgan weekly consumer confidence index. Lower confidence correlates with tighter household spending and hiring caution." },
-  career_mobility: { label: "Career Mobility",    tip: "Google Trends search interest for career-change queries in Australia. Rising interest suggests workforce restlessness." },
-  salary_pressure: { label: "Salary Pressure",    tip: "Tracks advertised salary levels via Adzuna. Falling salaries signal employer leverage; rising salaries signal talent competition." },
-  contractor_proxy:{ label: "Contractor Proxy",   tip: "Google Trends interest in contractor/freelance queries. Rising interest may signal companies shifting from permanent to contract hires." },
-  market_hiring:   { label: "Market Hiring",      tip: "SEEK job listing volumes across key sectors. Falling volumes indicate a cooling labour market." },
-  employer_hiring_seek_validator: { label: "SEEK Validator", tip: "Cross-checks employer hiring data against SEEK listings for accuracy. Not included in pulse score (weight=0)." },
-  layoff_news_velocity: { label: "Layoff News",   tip: "Google News article count for layoff-related keywords in Australia. Spikes signal emerging job cuts." },
-  reddit_topic_velocity: { label: "Reddit Velocity", tip: "Volume and velocity of topic clusters across r/auscorp. Measures community discussion intensity." },
-  job_anxiety:     { label: "Job Anxiety",         tip: "Google Trends search interest for job-security queries. Rising anxiety is an early stress indicator." },
-  resume_anxiety:  { label: "Resume Anxiety",      tip: "Trip-wire signal tracking resume/CV-related search spikes. Sudden rises suggest workforce nervousness." },
-  auslaw_velocity: { label: "AusLaw Velocity",    tip: "Discussion velocity on r/auslaw. Tracks legal profession stress and regulatory concern signals." },
-  google_trends_au:{ label: "Google Trends AU",    tip: "Composite Google Trends signal for Australian workforce-related searches." }
-};
-function sn(name) {
-  if (SIG[name]) return SIG[name].label;
-  return name.replace(/_/g, " ").replace(/\b\w/g, function(c) { return c.toUpperCase(); }).replace(/\bAsx\b/,"ASX").replace(/\bSeek\b/,"SEEK");
-}
-function st(name) { return SIG[name] ? SIG[name].tip : ""; }
-function tipHtml(name) {
-  var t = st(name);
-  if (!t) return "";
-  return '<span class="tip-wrap"><span class="tip-icon">?</span><span class="tip-bubble">' + esc(t) + '</span></span>';
-}
-function areaLabel(a) {
-  if (!a) return "";
-  return a.replace(/_/g, " ").replace(/\b\w/g, function(c) { return c.toUpperCase(); });
-}
-
-/* ── Toast notifications ──────────────────────────────── */
-function showToast(message, type) {
-  type = type || "success";
-  var container = document.querySelector(".toast-container");
-  if (!container) {
-    container = document.createElement("div");
-    container.className = "toast-container";
-    document.body.appendChild(container);
-  }
-  var toast = document.createElement("div");
-  toast.className = "toast " + type;
-  toast.textContent = message;
-  container.appendChild(toast);
-  setTimeout(function() { toast.remove(); }, 3000);
-}
-
-/* ── Helpers ──────────────────────────────────────────── */
-function esc(s) { if (!s) return ""; var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
-function stripHtml(s) { if (!s) return ""; var d = document.createElement("div"); d.innerHTML = s; return d.textContent || d.innerText || ""; }
-function bc(score) { return score > 66 ? "red" : score > 33 ? "amber" : "green"; }
-function cc(c) { return c === "green" ? "chip-green" : c === "red" ? "chip-red" : "chip-amber"; }
-function da(d) { return d === "up" ? "\u2191" : d === "down" ? "\u2193" : "\u2192"; }
-function dl(d) { return d === "up" ? "Rising" : d === "down" ? "Falling" : "Stable"; }
-function dc(d) { return d === "up" ? "dir-up" : d === "down" ? "dir-down" : "dir-stable"; }
-
-/* ── Status bar ───────────────────────────────────────── */
-function renderStatusBar() {
-  var s = S.status;
-  if (!s) return "";
-  var pulse = s.pulse_score != null;
-  var dir = s.pulse_direction ? (" " + da(s.pulse_direction)) : "";
-  var assembled = s.has_newsletter;
-  return '<div class="status-bar">' +
-    '<div class="sb-item"><span class="sb-dot ' + (s.signals_count > 0 ? "on" : "off") + '"></span><span class="sb-val">' + s.signals_count + '</span><span class="sb-lbl">Signals</span></div>' +
-    '<div class="sb-item"><span class="sb-dot ' + (s.curated_items_count > 0 ? "on" : "off") + '"></span><span class="sb-val">' + s.curated_items_count + '</span><span class="sb-lbl">Classified</span></div>' +
-    '<div class="sb-item"><span class="sb-dot ' + (s.approved_items_count > 0 ? "on" : "off") + '"></span><span class="sb-val">' + s.approved_items_count + '</span><span class="sb-lbl">Approved</span></div>' +
-    (pulse ? '<div class="sb-item"><span class="sb-dot on"></span><span class="sb-val">' + s.pulse_score + dir + '</span><span class="sb-lbl">Pulse</span></div>' : '<div class="sb-item"><span class="sb-dot off"></span><span class="sb-lbl">No Pulse</span></div>') +
-    '<div class="sb-item"><span class="sb-dot ' + (s.has_hooks ? "on" : "off") + '"></span><span class="sb-lbl">' + (s.has_hooks ? "Hooks" : "No hooks") + '</span></div>' +
-    '<div class="sb-item"><span class="sb-dot ' + (assembled ? "on" : "off") + '"></span><span class="sb-lbl">' + (assembled ? "Assembled" : "Not assembled") + '</span></div>' +
-    '<div class="sb-item" style="margin-left:auto;"><span class="sb-lbl">Rotation ' + esc(s.rotation) + '</span></div>' +
-    '</div>';
-}
-
-/* ── Assemble view ────────────────────────────────────── */
-function renderAssemble() {
-  var hookText = S.selectedHook !== null ? S.hooks[S.selectedHook] : null;
-  var approvedCount = Object.values(S.decisions).filter(function(d) { return d === "approved"; }).length;
-  var threadCount = Object.values(S.threadDecisions).filter(function(d) { return d === "feature"; }).length;
-  var totalApproved = approvedCount + threadCount;
-  var rotation = S.status ? S.status.rotation : "A";
-  var canAssemble = hookText && totalApproved > 0;
-  var a = S.assemble;
-
-  var h = '<div class="sh"><div><h2>\u2709 Assemble Newsletter</h2><div class="sub">Build final HTML from approved items</div></div></div>';
-
-  // Pre-flight checklist
-  h += '<div class="card mb24 fu"><div class="lu mb8">Pre-flight Checklist</div>';
-  h += '<div class="fc" style="gap:8px;">';
-  h += '<div class="fr g8"><span class="sb-dot ' + (hookText ? "on" : "off") + '"></span><span>' + (hookText ? 'Hook: \u201C' + esc(hookText.substring(0, 60)) + (hookText.length > 60 ? '...' : '') + '\u201D' : 'No hook selected \u2014 go to Pulse tab') + '</span></div>';
-  h += '<div class="fr g8"><span class="sb-dot ' + (totalApproved > 0 ? "on" : "off") + '"></span><span>' + totalApproved + ' items approved</span></div>';
-  h += '<div class="fr g8"><span class="sb-dot ' + (S.draftSaved ? "on" : "off") + '"></span><span>' + (S.draftSaved ? 'Big Conversation draft saved' : 'No draft saved (optional)') + '</span></div>';
-  h += '<div class="fr g8"><span class="sb-dot on"></span><span>Rotation ' + esc(rotation) + '</span></div>';
-  h += '</div></div>';
-
-  // Assemble button
-  if (!a.result) {
-    h += '<div style="margin-bottom:24px;">';
-    if (a.loading) {
-      h += '<button class="btn btn-primary" disabled><span class="ingest-spinner"></span> Assembling newsletter...</button>';
-    } else if (a.error) {
-      h += '<div style="color:var(--red);font-size:14px;margin-bottom:12px;">Assembly failed: ' + esc(a.error) + '</div>';
-      h += '<button class="btn btn-primary" data-action="assemble"' + (canAssemble ? '' : ' disabled') + '>Retry Assembly</button>';
-    } else {
-      h += '<button class="btn btn-primary" data-action="assemble"' + (canAssemble ? '' : ' disabled') + '>Assemble Newsletter</button>';
-      if (!canAssemble) h += '<span style="font-size:13px;color:var(--text-3);margin-left:12px;">' + (!hookText ? 'Select a hook first' : 'Approve some items first') + '</span>';
-    }
-    h += '</div>';
-  }
-
-  // Result
-  if (a.result) {
-    var r = a.result;
-    h += '<div class="card mb16 fu"><div class="lu mb8">Newsletter Ready</div>';
-    h += '<div class="fc" style="gap:8px;">';
-    h += '<div><span class="sb-lbl">Subject:</span> <strong>' + esc(r.subject) + '</strong></div>';
-    h += '<div><span class="sb-lbl">Preview:</span> ' + esc(r.preview_text) + '</div>';
-    h += '<div><span class="sb-lbl">Rotation:</span> ' + esc(r.rotation) + ' <span class="sb-lbl" style="margin-left:12px;">Length:</span> ' + (r.char_count || 0).toLocaleString() + ' chars</div>';
-    h += '</div>';
-    h += '<div class="fr g6 mt20 pt16 bt">';
-    h += '<button class="btn btn-primary" data-action="copy-html">' + (a.copied ? '\u2713 Copied!' : 'Copy HTML') + '</button>';
-    h += '<button class="btn btn-secondary" data-action="assemble">Reassemble</button>';
-    h += '</div></div>';
-
-    // Inline preview
-    h += '<div class="fu fu1"><div class="lu">Preview</div>';
-    h += '<div class="card" style="padding:0;overflow:hidden;border-radius:10px;">';
-    h += '<iframe id="preview-frame" style="width:100%;min-height:600px;border:none;background:#fff;" sandbox="allow-same-origin"></iframe>';
-    h += '</div></div>';
-  }
-
+  h += '</select>';
   return h;
 }
 
-function writePreviewFrame() {
-  setTimeout(function() {
-    var frame = document.getElementById("preview-frame");
-    if (frame && S.assemble.result) {
-      var doc = frame.contentDocument || frame.contentWindow.document;
-      doc.open();
-      doc.write("<!DOCTYPE html><html><body>" + S.assemble.result.html + "</body></html>");
-      doc.close();
-      setTimeout(function() {
-        try { frame.style.height = doc.body.scrollHeight + 40 + "px"; } catch(e) {}
-      }, 200);
-    }
-  }, 50);
+function getModel(id) {
+  var el = $(id);
+  return el ? el.value : (S.models.length ? S.models[0].id : null);
 }
 
-/* ── Render engine ────────────────────────────────────── */
+/* ── Status dot for sidebar ── */
+function sectionStatus(sectionId) {
+  var o = S.sectionOutputs[sectionId];
+  if (o && o.output_text) return '<span class="dot dot-done"></span>';
+  return "";
+}
+
+/* ── Render sidebar ── */
+function renderSidebar() {
+  var h = '<div class="sidebar-brand"><h1>Flat White</h1><span>The Aussie Corporate</span></div>';
+  h += '<div class="sidebar-week"><div class="sidebar-week-inner"><div class="lbl">Current Week</div><div class="val">' + esc(S.weekIso || "...") + '</div></div></div>';
+  h += '<div class="sidebar-nav">';
+  NAV_ITEMS.forEach(function(n) {
+    var active = S.page === n.id ? " active" : "";
+    var greyed = n.greyed ? " greyed" : "";
+    h += '<div class="nav-item' + active + greyed + '" onclick="nav(\'' + n.id + '\')">';
+    h += '<span class="nav-icon">' + n.icon + '</span>';
+    h += '<span>' + esc(n.label) + '</span>';
+    if (n.greyed) {
+      h += '<span style="margin-left:auto;font-size:9px;color:var(--text-3);text-transform:uppercase;letter-spacing:0.8px;">Soon</span>';
+    } else {
+      h += sectionStatus(n.id);
+    }
+    h += '</div>';
+  });
+  h += '</div>';
+  // Progress footer
+  var done = 0; var total = 0;
+  NAV_ITEMS.forEach(function(n) {
+    if (n.greyed || n.id === "assemble") return;
+    total++;
+    if (S.sectionOutputs[n.id] && S.sectionOutputs[n.id].output_text) done++;
+  });
+  var pct = total > 0 ? Math.round(done / total * 100) : 0;
+  h += '<div class="sidebar-footer"><div class="lbl">Progress</div><div class="pbar"><div class="pbar-fill" style="width:' + pct + '%"></div></div><div style="font-size:12px;color:var(--text-2);margin-top:6px;">' + done + '/' + total + ' sections</div></div>';
+  $("sidebar").innerHTML = h;
+}
+
+/* ── Main render dispatch ── */
 function render() {
   renderSidebar();
-  var m = document.getElementById("main");
-  var sb = renderStatusBar();
-  if (S.page === "pulse")    { m.innerHTML = sb + renderPulse(); initGauge(); }
-  if (S.page === "curation") { m.innerHTML = sb + renderCuration(); }
-  if (S.page === "thread")   { m.innerHTML = sb + renderThread(); }
-  if (S.page === "bigconv")  { m.innerHTML = sb + renderBigConv(); }
-  if (S.page === "assemble") { m.innerHTML = sb + renderAssemble(); writePreviewFrame(); }
-  if (S.page === "pipeline") { m.innerHTML = sb + renderPipeline(); }
-  if (S.page === "health")   { m.innerHTML = sb + renderHealth(); }
-  if (S.page === "feedback")  { m.innerHTML = sb + renderFeedback(); }
-  bind();
+  var m = $("main");
+  switch (S.page) {
+    case "pulse": renderPulse(m); break;
+    case "big_conversation": renderBigConv(m); break;
+    case "whispers": renderWhispers(m); break;
+    case "lobby": renderLobby(m); break;
+    case "finds": renderFinds(m); break;
+    case "thread": renderThread(m); break;
+    case "amp_finest": renderAmpFinest(m); break;
+    case "off_the_clock": renderOTC(m); break;
+    case "events": renderEvents(m); break;
+    case "assemble": renderAssemble(m); break;
+    case "editorial": renderEditorial(m); break;
+    default: m.innerHTML = '<p>Unknown page</p>';
+  }
+  // Render modal overlay (outside main content)
+  var modalEl = document.getElementById("modal-root");
+  if (modalEl) modalEl.innerHTML = renderProceedModal();
 }
-function nav(p) {
-  S.page = p;
-  S.focusedItemIdx = -1;
-  if (p === "health" && !S.health) { loadHealth().then(function() { render(); }); }
-  if (p === "feedback" && !S.feedbackData) { loadFeedback().then(function() { render(); }); }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SECTION: EDITORIAL
+   ═══════════════════════════════════════════════════════════════════════ */
+function renderEditorial(el) {
+  var h = '<div class="sh"><div><h2>GM Editorial</h2><div class="sub">Hook / intro paragraph. Depends on other sections being complete.</div></div></div>';
+  h += '<div class="toolbar">';
+  h += '<button class="btn btn-primary" onclick="runSection(\'editorial\')">SCRAPE</button>';
+  h += modelSelect("model-editorial");
+  h += '<button class="btn btn-success" onclick="proceedEditorial()">PROCEED</button>';
+  if (S.loading.editorial) h += ' <span class="ingest-spinner"></span>';
+  h += '</div>';
+
+  // Show which sections are ready
+  h += '<div class="card mb20"><div style="font-size:13px;color:var(--text-2);margin-bottom:10px;font-weight:600;">Section Readiness</div>';
+  var deps = ["pulse","big_conversation","lobby","finds","thread","off_the_clock"];
+  deps.forEach(function(d) {
+    var ready = S.sectionOutputs[d] && S.sectionOutputs[d].output_text;
+    h += '<div class="fr mb8"><span style="width:10px;height:10px;border-radius:50%;background:' + (ready ? "var(--green)" : "var(--border)") + ';"></span> <span style="font-size:13px;">' + esc(d.replace(/_/g, " ")) + '</span></div>';
+  });
+  h += '</div>';
+
+  h += outputBox("editorial");
+  el.innerHTML = h;
+  fillOutput("editorial");
+}
+
+function proceedEditorial() {
+  var model = getModel("model-editorial");
+  S.loading.editorial = true; render();
+  // Gather all section outputs as context
+  var data = { section_outputs: S.sectionOutputs };
+  api("/api/proceed-section", { method: "POST", body: { section: "editorial", model: model, data: data } })
+    .then(function(d) { S.sectionOutputs.editorial = { output_text: d.output, model_used: d.model }; S.loading.editorial = false; render(); showToast("Editorial generated"); })
+    .catch(function(e) { S.loading.editorial = false; render(); showToast("Error: " + e.message, "error"); });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SECTION: PULSE
+   ═══════════════════════════════════════════════════════════════════════ */
+function renderCategoryTrends() {
+  if (!S.trends || !S.trends.categories) return "";
+  var h = '<div class="cat-trends">';
+  S.trends.categories.forEach(function(cat) {
+    var score = cat.current_score != null ? cat.current_score.toFixed(1) : "—";
+    var delta = cat.delta;
+    var deltaClass = delta == null ? "stable" : (delta > 2 ? "up" : (delta < -2 ? "down" : "stable"));
+    var deltaText = delta == null ? "—" : ((delta > 0 ? "+" : "") + delta.toFixed(1));
+    var histScores = (cat.history || []).map(function(h) { return h.score; });
+    h += '<div class="cat-card">';
+    h += '<div class="cat-card-label">' + esc(cat.label) + '</div>';
+    h += '<div class="cat-card-score">' + esc(score) + '</div>';
+    h += '<div><span class="cat-card-delta ' + deltaClass + '">' + esc(deltaText) + ' WoW</span></div>';
+    if (histScores.length >= 2) {
+      h += '<div style="margin-top:10px;">' + sparkline(histScores, 120, 36) + '</div>';
+    }
+    h += '</div>';
+  });
+  h += '</div>';
+  return h;
+}
+
+function renderPulse(el) {
+  var h = '<div class="sh"><div><h2>Pulse</h2><div class="sub">Disruption score, signals, and narrative</div></div></div>';
+  h += '<div class="toolbar">';
+  h += '<button class="btn btn-primary" onclick="runSection(\'pulse\')">SCRAPE</button>';
+  h += modelSelect("model-pulse");
+  h += '<button class="btn btn-success" onclick="proceedPulse()">PROCEED</button>';
+  if (S.loading.pulse) h += ' <span class="ingest-spinner"></span>';
+  h += '</div>';
+
+  if (!S.pulse) {
+    h += '<div class="card"><p class="loading">No pulse data yet. Click RUN to pull signals.</p></div>';
+  } else {
+    // Gauge
+    var p = S.pulse;
+    var score = p.smoothed_score != null ? p.smoothed_score : (p.composite_score != null ? p.composite_score : "—");
+    var dir = p.direction || "stable";
+    // Compute pulse-level delta from trends composite_history if available
+    var delta = 0;
+    if (S.trends && S.trends.composite_history && S.trends.composite_history.length >= 2) {
+      var hist = S.trends.composite_history;
+      delta = (p.smoothed_score || 0) - (hist[hist.length - 2].value || 0);
+    }
+    var dirClass = dir === "up" ? "dir-up" : (dir === "down" ? "dir-down" : "dir-stable");
+    var arrow = dir === "up" ? "\u2191" : (dir === "down" ? "\u2193" : "\u2192");
+
+    h += '<div class="card mb20" style="text-align:center;padding:32px;">';
+    h += '<div class="gauge-lbl">DISRUPTION SCORE</div>';
+    h += '<div class="gauge-num">' + esc(typeof score === "number" ? score.toFixed(1) : score) + '</div>';
+    h += '<div style="margin-top:10px;"><span class="dir-pill ' + dirClass + '">' + arrow + ' ' + esc(dir) + (delta ? ' (' + (delta > 0 ? "+" : "") + delta.toFixed(1) + ')' : '') + '</span></div>';
+    h += '</div>';
+
+    h += renderCategoryTrends();
+
+    // Anomalies
+    if (S.anomalies && S.anomalies.length) {
+      h += '<div class="mb20">';
+      S.anomalies.forEach(function(a) {
+        h += '<div class="anomaly"><span style="font-size:18px;">\u26A0</span><span>' + esc(a.message || a) + '</span></div>';
+      });
+      h += '</div>';
+    }
+
+    // Signal table with checkboxes
+    h += '<div class="card mb20"><div style="font-weight:600;margin-bottom:12px;">Signals</div>';
+    if (S.signals && S.signals.length) {
+      // Pre-check top 3 movers on first load
+      if (!S._pulseInitChecked && S.signals.length) {
+        S._pulseInitChecked = true;
+        S.signals.forEach(function(sig) { S.pulseChecked[sig.signal_name || sig.name] = true; });
+      }
+      h += '<table class="tbl"><thead><tr><th style="width:30px;"></th><th>Signal</th><th>Score</th><th>Delta</th><th>Category</th></tr></thead><tbody>';
+      // Build delta lookup from all_signal_deltas (full set) with biggest_movers as fallback
+      var moverDeltas = {};
+      if (S.trends && S.trends.all_signal_deltas) {
+        Object.keys(S.trends.all_signal_deltas).forEach(function(name) {
+          moverDeltas[name] = S.trends.all_signal_deltas[name].delta || 0;
+        });
+      } else if (S.trends && S.trends.biggest_movers) {
+        S.trends.biggest_movers.forEach(function(m) { moverDeltas[m.signal_name || m.name] = m.delta || 0; });
+      }
+      S.signals.forEach(function(sig) {
+        var name = sig.signal_name || sig.name || "";
+        var checked = S.pulseChecked[name] ? " checked" : "";
+        var dv = moverDeltas[name] != null ? moverDeltas[name] : 0;
+        var hasDelta = moverDeltas[name] != null;
+        var dc = dv > 0 ? 'color:var(--red)' : (dv < 0 ? 'color:var(--green)' : 'color:var(--text-3)');
+        h += '<tr>';
+        h += '<td><input type="checkbox"' + checked + ' onchange="togglePulseCheck(\'' + esc(name) + '\',this.checked)"></td>';
+        h += '<td>' + esc(name) + '</td>';
+        h += '<td>' + esc(sig.normalised_score != null ? sig.normalised_score.toFixed(1) : "—") + '</td>';
+        h += '<td style="font-weight:600;' + dc + '">' + (hasDelta ? ((dv > 0 ? "+" : "") + dv.toFixed(1)) : "—") + '</td>';
+        h += '<td><span class="chip chip-default">' + esc(sig.area || "") + '</span></td>';
+        h += '</tr>';
+      });
+      h += '</tbody></table>';
+    } else {
+      h += '<p style="color:var(--text-3);font-size:13px;">No signals loaded yet.</p>';
+    }
+    h += '</div>';
+  }
+
+  h += outputBox("pulse");
+  el.innerHTML = h;
+  fillOutput("pulse");
+}
+
+function togglePulseCheck(name, val) { S.pulseChecked[name] = val; }
+
+function proceedPulse() {
+  var model = getModel("model-pulse");
+  var checked = Object.keys(S.pulseChecked).filter(function(k) { return S.pulseChecked[k]; });
+  S.proceedData.pulse = { section: "pulse", model: model, data: { selected_signals: checked, pulse: S.pulse, signals: S.signals, anomalies: S.anomalies } };
+  openProceedModal("pulse");
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SECTION: BIG CONVERSATION
+   ═══════════════════════════════════════════════════════════════════════ */
+function renderBigConv(el) {
+  var h = '<div class="sh"><div><h2>Big Conversation</h2><div class="sub">Top 5 candidates for this week\'s deep dive</div></div></div>';
+  h += '<div class="toolbar">';
+  h += '<button class="btn btn-primary" onclick="runBigConv()">SCRAPE</button>';
+  h += modelSelect("model-bigconv");
+  h += '<button class="btn btn-success" onclick="proceedBigConv()">PROCEED</button>';
+  if (S.loading.big_conversation) h += ' <span class="ingest-spinner"></span>';
+  h += '</div>';
+
+  // Candidates
+  h += '<div class="cand-list mb20">';
+  if (S.bigConvCandidates && S.bigConvCandidates.length) {
+    S.bigConvCandidates.forEach(function(c, i) {
+      var sel = S.selectedBigConv === c.id;
+      h += '<div class="card hov' + (sel ? " sel" : "") + ' cand-card" onclick="selectBigConv(' + c.id + ')">';
+      h += '<div class="radio' + (sel ? " on" : "") + '">' + (sel ? "\u2713" : "") + '</div>';
+      h += '<div class="cand-body">';
+      h += '<div class="cand-title">' + esc(c.title || c.summary) + '</div>';
+      h += '<div class="cand-meta">' + esc(c.source || "") + ' &middot; Score: ' + esc(c.weighted_composite != null ? c.weighted_composite.toFixed(1) : "—") + '</div>';
+      h += '<div class="cand-summary">' + esc(c.summary || "") + '</div>';
+      h += '</div></div>';
+    });
+  } else {
+    h += '<div class="card"><p style="color:var(--text-3);font-size:13px;">No candidates yet. Click RUN to pull editorial data.</p></div>';
+  }
+  h += '</div>';
+
+  // Add custom
+  h += '<div class="card mb20">';
+  h += '<div class="fb mb8"><span style="font-weight:600;">Add Custom Topic</span>';
+  h += '<button class="btn btn-sm btn-secondary" onclick="toggleCustomBigConv()">+ Add Custom</button></div>';
+  if (S.customBigConv) {
+    h += '<div class="form-group"><label>Headline</label><input class="form-input" id="bc-custom-headline" value="' + esc(S.customBigConv.headline || "") + '" placeholder="Topic headline"></div>';
+    h += '<div class="form-group"><label>Pitch</label><input class="form-input" id="bc-custom-pitch" value="' + esc(S.customBigConv.pitch || "") + '" placeholder="Why this matters"></div>';
+    h += '<div class="form-group"><label>Supporting Data</label><textarea class="form-input" id="bc-custom-data" placeholder="Key data points, links, context...">' + esc(S.customBigConv.data || "") + '</textarea></div>';
+    h += '<button class="btn btn-sm btn-primary" onclick="useCustomBigConv()">Use This Topic</button>';
+  }
+  h += '</div>';
+
+  h += outputBox("big_conversation");
+  el.innerHTML = h;
+  fillOutput("big_conversation");
+}
+
+function selectBigConv(id) { S.selectedBigConv = id; S.customBigConv = null; render(); }
+
+function toggleCustomBigConv() {
+  S.customBigConv = S.customBigConv ? null : { headline: "", pitch: "", data: "" };
+  S.selectedBigConv = null;
   render();
 }
 
-/* ── Sidebar ──────────────────────────────────────────── */
-function getProgress() {
-  var p = {};
-  p.pulse = S.selectedHook !== null ? "done" : null;
-  p.curation = Object.keys(S.decisions).some(function(k) { return S.decisions[k] === "approved"; }) ? "done" : null;
-  p.thread = Object.values(S.threadDecisions).includes("feature") ? "done" : null;
-  p.bigconv = S.draftSaved ? "done" : null;
-  p.assemble = S.assemble.result ? "done" : null;
-  return p;
-}
-function renderSidebar() {
-  var prog = getProgress();
-  var done = ["pulse","curation","thread","bigconv","assemble"].filter(function(k) { return prog[k] === "done"; }).length;
-  var pages = [
-    { key: "pulse", label: "Pulse", icon: "\u25C9" },
-    { key: "curation", label: "Curate", icon: "\u270E" },
-    { key: "thread", label: "Thread", icon: "\u00A7" },
-    { key: "bigconv", label: "Big Conv", icon: "\u00B6" },
-    { key: "assemble", label: "Assemble", icon: "\u2709" },
-    { key: "pipeline", label: "Pipeline", icon: "\u2699" },
-    { key: "health", label: "Extraction Health", icon: "\u2695" },
-    { key: "feedback", label: "Feedback", icon: "\uD83D\uDCCA" }
-  ];
-  document.getElementById("sidebar").innerHTML =
-    '<div class="sidebar-brand"><h1>Flat White</h1><span>Editor Dashboard</span></div>' +
-    '<div class="sidebar-week"><div class="sidebar-week-inner"><div class="lbl">Current Issue</div><div class="val">' + esc(S.weekIso) + '</div></div></div>' +
-    '<div class="sidebar-nav">' + pages.map(function(p) {
-      var a = S.page === p.key ? " active" : "";
-      var dot = prog[p.key] ? '<span class="dot dot-done"></span>' : "";
-      return '<div class="nav-item' + a + '" data-nav="' + p.key + '"><span class="nav-icon">' + p.icon + '</span><span>' + p.label + '</span>' + dot + '</div>';
-    }).join("") + '</div>' +
-    '<div class="sidebar-footer"><div class="lbl">Workflow</div><div class="pbar"><div class="pbar-fill" style="width:' + (done / 5 * 100) + '%"></div></div><div class="status">' + done + '/5 complete</div></div>';
-  document.querySelectorAll("[data-nav]").forEach(function(el) {
-    el.onclick = function() { nav(el.dataset.nav); };
-  });
+function useCustomBigConv() {
+  S.customBigConv.headline = ($("bc-custom-headline") || {}).value || "";
+  S.customBigConv.pitch = ($("bc-custom-pitch") || {}).value || "";
+  S.customBigConv.data = ($("bc-custom-data") || {}).value || "";
+  S.selectedBigConv = null;
+  render();
+  showToast("Custom topic set");
 }
 
-/* ═════════════════════════════════════════════════════════
-   PULSE VIEW
-   ═════════════════════════════════════════════════════════ */
-function renderPulse() {
-  if (!S.pulse) {
-    var emptyIngestBtn = '';
-    if (S.ingest.running) {
-      emptyIngestBtn = '<button class="btn btn-secondary" disabled style="margin-top:12px;opacity:0.8;"><span class="ingest-spinner"></span> ' + esc((S.ingest.step || "starting").replace(/_/g, " ")) + '...</button>';
-    } else if (S.ingest.error) {
-      emptyIngestBtn = '<div style="margin-top:12px;"><p style="color:var(--red);font-size:13px;margin-bottom:8px;">Ingest failed: ' + esc(S.ingest.error.substring(0, 120)) + '</p><button class="btn btn-primary" data-action="reingest">\u21BB Retry</button></div>';
-    } else {
-      emptyIngestBtn = '<button class="btn btn-primary" data-action="reingest" style="margin-top:12px;">\u21BB Refresh Signals</button>';
-    }
-    return '<div class="sh"><div><h2>\u25C9 AusCorp Live Pulse</h2></div></div>' +
-      '<div class="card" style="padding:32px;text-align:center;"><p style="color:var(--text-3);">No Pulse data found for this week.</p>' + emptyIngestBtn + '</div>';
-  }
-  var p = S.pulse;
-  var score = p.smoothed_score || p.composite_score || 0;
-  var raw = p.composite_score || 0;
-  var dir = p.direction || "stable";
-  var summary = p.summary_text || "";
-  var drivers = [];
-  try { var pd = JSON.parse(p.drivers_json || "[]"); drivers = Array.isArray(pd) ? pd : pd.drivers || []; } catch(e) {}
-
-  var ingestBtn = '';
-  if (S.ingest.running) {
-    var stepLabel = S.ingest.step ? S.ingest.step.replace(/_/g, " ") : "starting";
-    ingestBtn = '<button class="btn btn-secondary btn-sm" disabled style="opacity:0.8;"><span class="ingest-spinner"></span> ' + esc(stepLabel) + '...</button>';
-  } else if (S.ingest.error) {
-    ingestBtn = '<div style="display:flex;align-items:center;gap:8px;"><span style="font-size:12px;color:var(--red);">Failed: ' + esc(S.ingest.error.substring(0, 60)) + '</span><button class="btn btn-secondary btn-sm" data-action="reingest">\u21BB Retry</button></div>';
-  } else if (S.ingest.step === "done") {
-    ingestBtn = '<div style="display:flex;align-items:center;gap:8px;"><span class="chip chip-green" style="font-size:11px;">Updated</span><button class="btn btn-secondary btn-sm" data-action="reingest">\u21BB Refresh Signals</button></div>';
-  } else {
-    ingestBtn = '<button class="btn btn-secondary btn-sm" data-action="reingest">\u21BB Refresh Signals</button>';
-  }
-
-  var h = '<div class="sh"><div><h2>\u25C9 AusCorp Live Pulse</h2><div class="sub">Week ' + esc(S.weekIso) + ' \u00B7 Smoothed from ' + raw.toFixed(1) + ' raw</div></div>' + ingestBtn + '</div>';
-
-  // Gauge + Summary
-  h += '<div class="g2 mb24 fu"><div class="card"><div class="gauge-wrap"><canvas id="gc" width="440" height="143"></canvas><div class="gauge-num" id="gn">0</div><div class="gauge-lbl">Corporate Stress Index</div></div><div style="text-align:center;margin-top:12px;"><span class="dir-pill ' + dc(dir) + '"><span style="font-size:18px;">' + da(dir) + '</span> ' + dl(dir) + '</span></div></div>';
-  if (summary) {
-    h += '<div class="card"><div class="ls mb8">Pulse Summary</div><p class="sb">' + esc(summary) + '</p></div></div>';
-  } else {
-    h += '<div class="card"><div class="fb mb8"><div class="ls" style="margin-bottom:0;">Pulse Summary</div><button class="btn btn-primary btn-sm" data-action="gen-summary" ' + (S.loading.summary ? "disabled" : "") + '>' + (S.loading.summary ? "Generating..." : "Generate Summary") + '</button></div>';
-    if (S.loading.summary) { h += '<p class="loading" style="text-align:center;padding:16px;">Generating summary, driver bullets & hooks...</p>'; }
-    else { h += '<p style="font-size:14px;color:var(--text-3);line-height:1.6;">Click Generate Summary to create an AI-written summary of this week\u2019s pulse drivers, bullet points, and hook options.</p>'; }
-    h += '</div></div>';
-  }
-
-  // Drivers
-  h += '<div class="mb24 fu fu1"><div class="lu">Signal Drivers</div><div class="fc">';
-  if (drivers.length === 0) {
-    h += '<div class="card" style="padding:16px;color:var(--text-3);">No driver bullets yet. Run <code>flatwhite summarise</code>.</div>';
-  } else {
-    drivers.slice(0, 3).forEach(function(d) {
-      var col = d.direction === "up" ? "var(--red)" : "var(--green)";
-      var arrow = d.direction === "up" ? "\u2191" : "\u2193";
-      var bulletText = d.bullet || "Score: " + (d.score || 0).toFixed(0) + "/100 (weight " + (d.weight || 0) + ")";
-      h += '<div class="card" style="padding:16px;"><div class="fr g12"><span style="font-size:20px;color:' + col + ';">' + arrow + '</span><div style="flex:1;"><div class="fr g6"><span style="font-weight:600;">' + esc(sn(d.signal)) + '</span>' + tipHtml(d.signal) + '</div><div style="font-size:13px;color:var(--text-2);margin-top:2px;">' + esc(bulletText) + '</div></div></div></div>';
-    });
-  }
-  h += '</div></div>';
-
-  // Signals toggle
-  h += '<div class="mb24 fu fu2"><div class="fb mb8"><div class="lu" style="margin-bottom:0;">All Signals</div><button class="btn btn-ghost btn-sm" data-action="toggle-signals">' + (S.showAllSignals ? "Collapse" : "Expand") + '</button></div>';
-  if (S.showAllSignals) {
-    h += '<div class="g3">';
-    S.signals.forEach(function(s) {
-      var sc = Math.round(s.normalised_score);
-      h += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px 14px;"><div class="fb mb8"><span style="font-size:12px;font-weight:500;">' + esc(sn(s.signal_name)) + tipHtml(s.signal_name) + '</span><span style="font-size:18px;font-weight:600;color:var(--' + bc(sc) + ');">' + sc + '</span></div><div class="sbar"><div class="sbar-fill fill-' + bc(sc) + '" style="width:' + sc + '%;"></div></div><div class="ls" style="margin-top:4px;">' + esc(areaLabel(s.area)) + '</div></div>';
-    });
-    h += '</div>';
-  }
-  h += '</div>';
-
-  // Anomalies (server-side median+MAD detection)
-  var anoms = S.anomalies || [];
-  if (anoms.length > 0) {
-    h += '<div class="mb24"><div class="lu" style="color:var(--red);">Anomaly Alerts</div>';
-    anoms.forEach(function(a) {
-      var dir = a.direction === "above" ? "elevated" : "depressed";
-      h += '<div class="anomaly"><span style="font-size:20px;">\u26A0</span><div><span style="font-weight:600;color:var(--red);">' + esc(sn(a.signal)) + '</span><span style="font-size:13px;color:var(--text-2);margin-left:8px;">Score ' + Math.round(a.current) + '/100 \u2014 ' + dir + ' (' + a.deviation_mads + ' MADs from median ' + Math.round(a.median) + ')</span></div></div>';
-    });
-    h += '</div>';
-  }
-
-  // Hooks
-  h += '<div class="fu fu3"><div class="fb mb8"><div class="lu" style="margin-bottom:0;">Top-line Hooks \u2014 select one for this issue</div><button class="btn btn-secondary btn-sm" data-action="gen-hooks" ' + (S.loading.hooks ? "disabled" : "") + '>' + (S.loading.hooks ? "Generating..." : "Generate Hooks") + '</button></div><div class="fc">';
-  S.hooks.forEach(function(hook, i) {
-    var sel = S.selectedHook === i;
-    h += '<div class="card hov' + (sel ? " sel" : "") + '" data-hook="' + i + '" style="padding:14px 18px;cursor:pointer;"><div class="fr g12"><span class="radio' + (sel ? " on" : "") + '">' + (sel ? "\u2713" : "") + '</span><span style="font-family:var(--font-serif);font-size:16px;font-style:italic;">\u201C' + esc(hook) + '\u201D</span></div></div>';
-  });
-  if (S.hooks.length === 0 && !S.loading.hooks) {
-    h += '<div style="color:var(--text-3);font-size:14px;">Click \u201CGenerate Hooks\u201D to create hook options, or run <code>flatwhite summarise</code> first.</div>';
-  }
-  h += '</div></div>';
-  return h;
-}
-
-function initGauge() {
-  var cv = document.getElementById("gc");
-  if (!cv || !S.pulse) return;
-  var score = S.pulse.smoothed_score || S.pulse.composite_score || 0;
-  var ctx = cv.getContext("2d");
-  var dpr = window.devicePixelRatio || 1;
-  var w = 220, h = 143;
-  cv.width = w * dpr; cv.height = h * dpr;
-  ctx.scale(dpr, dpr);
-  cv.style.width = w + "px"; cv.style.height = h + "px";
-  var cx = w / 2, cy = w * 0.55, r = w * 0.4, lw = w * 0.06;
-  var cur = 0, start = null, dur = 1200;
-  function ease(t) { return 1 - Math.pow(1 - t, 3); }
-  function draw(ts) {
-    if (!start) start = ts;
-    var prog = Math.min((ts - start) / dur, 1);
-    cur = ease(prog) * score;
-    ctx.clearRect(0, 0, w, h);
-    ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI, 2 * Math.PI);
-    ctx.strokeStyle = "#F0E6D2"; ctx.lineWidth = lw; ctx.lineCap = "round"; ctx.stroke();
-    [[0, 0.33, "#4CAF50"], [0.33, 0.66, "#FFB000"], [0.66, 1, "#E53935"]].forEach(function(seg) {
-      ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI + seg[0] * Math.PI, Math.PI + seg[1] * Math.PI);
-      ctx.strokeStyle = seg[2]; ctx.globalAlpha = 0.2; ctx.lineWidth = lw; ctx.lineCap = "butt"; ctx.stroke();
-      ctx.globalAlpha = 1;
-    });
-    var frac = cur / 100;
-    var grad = ctx.createLinearGradient(cx - r, cy, cx + r, cy);
-    if (frac <= 0.33) { grad.addColorStop(0, "#4CAF50"); grad.addColorStop(1, "#66BB6A"); }
-    else if (frac <= 0.66) { grad.addColorStop(0, "#FFB000"); grad.addColorStop(1, "#E8A000"); }
-    else { grad.addColorStop(0, "#E8A000"); grad.addColorStop(1, "#E53935"); }
-    ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI, Math.PI + frac * Math.PI);
-    ctx.strokeStyle = grad; ctx.lineWidth = lw; ctx.lineCap = "round"; ctx.stroke();
-    var ang = Math.PI + frac * Math.PI;
-    ctx.beginPath(); ctx.arc(cx + r * Math.cos(ang), cy + r * Math.sin(ang), lw * 0.8, 0, 2 * Math.PI);
-    ctx.fillStyle = "#1A1A1A"; ctx.fill();
-    document.getElementById("gn").textContent = Math.round(cur);
-    if (prog < 1) requestAnimationFrame(draw);
-  }
-  requestAnimationFrame(draw);
-}
-
-/* ═════════════════════════════════════════════════════════
-   CURATION VIEW
-   ═════════════════════════════════════════════════════════ */
-function renderCuration() {
-  var sections = [
-    { key: "whisper", label: "Whispers", icon: "\uD83E\uDD2B" },
-    { key: "what_we_watching", label: "Watching", icon: "\uD83D\uDC41" },
-    { key: "big_conversation_seed", label: "Big Conv", icon: "\uD83D\uDCAC" },
-    { key: "finds", label: "Finds", icon: "\uD83D\uDD0D" }
-  ];
-  var allItems = S.items[S.activeSection] || [];
-  var skippedCount = allItems.filter(function(i) { return (S.decisions[i.id] || i.decision) === "rejected"; }).length;
-  var counts = sections.map(function(s) {
-    var items = (S.items[s.key] || []).filter(function(i) { return (S.decisions[i.id] || i.decision) !== "rejected"; });
-    var approved = items.filter(function(i) { return (S.decisions[i.id] || i.decision) === "approved"; }).length;
-    return { key: s.key, label: s.label, icon: s.icon, total: items.length, approved: approved };
-  });
-  var activeItems = S.showSkipped ? allItems : allItems.filter(function(i) { return (S.decisions[i.id] || i.decision) !== "rejected"; });
-
-  var h = '<div class="sh"><div><h2>\u270E Editorial Curation</h2><div class="sub">Review and approve items for ' + esc(S.weekIso) + '</div></div>';
-  h += '<div class="fr g6">' + counts.map(function(c) { return '<span class="chip ' + (c.approved > 0 ? "chip-green" : "chip-default") + '">' + c.icon + ' ' + c.approved + '/' + c.total + '</span>'; }).join("") + '</div></div>';
-  h += '<div class="tabs">' + sections.map(function(s) { return '<div class="tab' + (S.activeSection === s.key ? " active" : "") + '" data-tab="' + s.key + '">' + s.icon + ' ' + s.label + '</div>'; }).join("") + '</div>';
-
-  /* ── Quick-add whisper form (visible only on whisper tab) ── */
-  if (S.activeSection === "whisper") {
-    h += '<div class="card" style="margin-bottom:16px;padding:16px 20px;border-left:3px solid var(--amber);">';
-    h += '<div class="lu mb8" style="font-size:13px;">Quick Add Whisper</div>';
-    h += '<div style="display:flex;gap:8px;align-items:flex-start;">';
-    h += '<textarea id="whisper-text" placeholder="Hearing that [firm] is about to..." style="flex:1;min-height:60px;padding:10px 12px;border:1px solid var(--divider);border-radius:6px;font-family:var(--font-serif);font-size:14px;resize:vertical;background:var(--bg);color:var(--text-1);"></textarea>';
-    h += '<div style="display:flex;flex-direction:column;gap:6px;">';
-    h += '<select id="whisper-confidence" style="padding:8px 10px;border:1px solid var(--divider);border-radius:6px;font-size:13px;background:var(--bg);color:var(--text-1);"><option value="red">\uD83D\uDD34 Unverified</option><option value="yellow" selected>\uD83D\uDFE1 Credible</option><option value="green">\uD83D\uDFE2 Confirmed</option></select>';
-    h += '<button class="btn btn-primary btn-sm" data-action="add-whisper">+ Add</button>';
-    h += '</div></div></div>';
-  }
-
-  h += '<div class="fc" id="curation-list">';
-  if (activeItems.length === 0) {
-    h += '<div class="card" style="color:var(--text-3);">No items in this section. Run <code>flatwhite classify</code>.</div>';
-  }
-  activeItems.forEach(function(item, idx) { h += renderItemCard(item, idx); });
-  h += '</div>';
-  if (skippedCount > 0) {
-    h += '<div style="text-align:center;margin-top:12px;"><button class="btn btn-ghost btn-sm" data-toggle-skipped>' + (S.showSkipped ? 'Hide' : 'Show') + ' ' + skippedCount + ' skipped</button></div>';
-  }
-  h += '<div class="kbd-hint"><kbd>j</kbd>/<kbd>k</kbd> navigate \u00B7 <kbd>a</kbd> approve \u00B7 <kbd>r</kbd> reject \u00B7 <kbd>s</kbd> reserve</div>';
-  return h;
-}
-
-function renderItemCard(item, idx) {
-  var dec = S.decisions[item.id] || item.decision || null;
-  var cls = dec === "approved" ? " approved" : dec === "rejected" ? " rejected" : dec === "reserve" ? " reserved" : "";
-  if (idx !== undefined && S.focusedItemIdx === idx) cls += " kb-focus";
-  var tags = [];
-  try { tags = typeof item.tags === "string" ? JSON.parse(item.tags) : (item.tags || []); } catch(e) {}
-  var sc = (item.weighted_composite || 0);
-  var scCol = sc >= 4 ? "green" : sc >= 3 ? "amber" : "text-3";
-
-  var h = '<div class="card' + cls + '" data-item-idx="' + (idx !== undefined ? idx : "") + '" style="padding:0;overflow:hidden;"><div style="padding:16px 20px;">';
-  h += '<div class="fb" style="align-items:flex-start;margin-bottom:8px;"><div style="flex:1;"><div class="fr g6 mb8"><span class="chip ' + cc(item.confidence_tag) + '">' + esc(item.confidence_tag || "yellow") + '</span><span style="font-size:12px;color:var(--text-3);">' + esc(item.source) + '</span></div>';
-  h += '<div style="font-family:var(--font-serif);font-size:17px;line-height:1.4;">' + (item.url ? '<a href="' + esc(item.url) + '" target="_blank" style="color:inherit;text-decoration:underline;text-decoration-color:var(--text-3);text-underline-offset:2px;">' + esc(item.title) + '</a>' : esc(item.title)) + '</div></div>';
-  h += '<div style="font-size:24px;font-weight:600;margin-left:16px;color:var(--' + scCol + ');">' + sc.toFixed(1) + '</div></div>';
-  h += '<p style="font-size:14px;color:var(--text-2);line-height:1.55;margin:8px 0;">' + esc(item.summary) + '</p>';
-  h += '<div class="fb mt12"><div class="fr g6" style="flex-wrap:wrap;">' + tags.map(function(t) { return '<span class="chip chip-default">' + esc(String(t)) + '</span>'; }).join("") + '</div>';
-  if (dec) {
-    var cc2 = dec === "approved" ? "chip-green" : dec === "rejected" ? "chip-red" : "chip-amber";
-    h += '<div class="fr g6"><span class="chip ' + cc2 + '">' + esc(dec) + '</span><button class="btn btn-ghost btn-sm" data-undo="' + item.id + '">Undo</button></div>';
-  } else {
-    h += '<div class="fr g6"><button class="btn btn-success btn-sm" data-approve="' + item.id + '" data-section="' + esc(item.section) + '">\u2713 Approve</button>';
-    h += '<button class="btn btn-secondary btn-sm" data-reserve="' + item.id + '" data-section="' + esc(item.section) + '">Reserve</button>';
-    h += '<button class="btn btn-ghost btn-sm" data-reject="' + item.id + '" data-section="' + esc(item.section) + '">Skip</button></div>';
-  }
-  h += '</div></div></div>';
-  return h;
-}
-
-/* ═════════════════════════════════════════════════════════
-   THREAD VIEW
-   ═════════════════════════════════════════════════════════ */
-function renderThread() {
-  var h = '<div class="sh"><div><h2>\u00A7 Thread of the Week</h2><div class="sub">Pick the best r/auscorp thread \u2014 edit Our Take before featuring</div></div></div>';
-
-  // Filter bar
-  h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">';
-  h += '<span style="font-size:12px;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;">Show:</span>';
-  var filters = [{label: "This Week", weeks: 1}, {label: "Fortnight", weeks: 2}];
-  filters.forEach(function(f) {
-    var active = S.threadFilter === f.weeks;
-    h += '<button class="btn btn-sm ' + (active ? "btn-success" : "btn-ghost") + '" data-thread-filter="' + f.weeks + '">' + f.label + '</button>';
-  });
-  var totalCount = (S.threads || []).length;
-  var skippedCount = (S.threads || []).filter(function(t) { return S.threadDecisions[t.id] === "skip"; }).length;
-  h += '<span style="font-size:11px;color:var(--text-3);margin-left:auto;">' + totalCount + ' threads' + (skippedCount > 0 ? ' (' + skippedCount + ' skipped)' : '') + '</span>';
-  h += '</div>';
-
-  var visibleThreads = (S.threads || []).filter(function(t) { return S.threadDecisions[t.id] !== "skip"; });
-
-  if (visibleThreads.length === 0) {
-    return h + '<div class="card" style="padding:32px;text-align:center;color:var(--text-3);">No r/auscorp thread candidates found. Run <code>flatwhite classify</code>.</div>';
-  }
-
-  visibleThreads.forEach(function(t) {
-    var dec = S.threadDecisions[t.id] || null;
-    var borderStyle = dec === "feature" ? "border:2px solid var(--amber);background:var(--amber-light);"
-                    : dec === "reserve" ? "border:2px solid var(--border-gold);"
-                    : "border:1px solid var(--border);";
-    var saved = S.threadSaved[t.id];
-    var postScore = S.threadPostScores && S.threadPostScores[t.id];
-
-    h += '<div class="card" style="padding:0;overflow:hidden;margin-bottom:16px;' + borderStyle + '">';
-
-    // Top bar: subreddit + post upvotes + score + decision buttons
-    h += '<div style="padding:12px 18px;border-bottom:1px solid var(--divider);display:flex;align-items:center;justify-content:space-between;">';
-    h += '<div style="display:flex;align-items:center;gap:12px;">';
-    h += '<span style="font-size:12px;color:var(--text-3);">r/' + esc(t.subreddit || "auscorp") + '</span>';
-    // Show date from pulled_at
-    if (t.pulled_at) {
-      var dateStr = t.pulled_at.slice(0, 10);
-      h += '<span style="font-size:11px;color:var(--text-3);">' + esc(dateStr) + '</span>';
-    } else if (t.thread_week_iso) {
-      h += '<span style="font-size:11px;color:var(--text-3);">' + esc(t.thread_week_iso) + '</span>';
-    }
-    if (postScore != null) {
-      h += '<span style="font-size:12px;font-weight:600;color:var(--amber);" title="post upvotes">\u25B2 ' + postScore + '</span>';
-    }
-    h += '<span style="font-size:18px;font-weight:700;color:var(--amber);">' + (t.weighted_composite || 0).toFixed(1) + '</span>';
-    h += '</div>';
-    h += '<div class="fr g6" style="flex-wrap:wrap;">';
-    if (dec) {
-      var decLabel = dec === "feature" ? "\u2605 Featured" : dec === "reserve" ? "Reserved" : "Skipped";
-      var decClass = dec === "feature" ? "chip-green" : dec === "reserve" ? "chip-amber" : "chip-red";
-      h += '<span class="chip ' + decClass + '">' + decLabel + '</span><button class="btn btn-ghost btn-sm" data-thread-undo="' + t.id + '">Undo</button>';
-    } else {
-      h += '<button class="btn btn-success btn-sm" data-thread-decision="feature" data-thread-id="' + t.id + '">\u2605 Feature</button>';
-      h += '<button class="btn btn-secondary btn-sm" data-thread-decision="reserve" data-thread-id="' + t.id + '">Reserve</button>';
-      h += '<button class="btn btn-ghost btn-sm" data-thread-decision="skip" data-thread-id="' + t.id + '">Skip</button>';
-    }
-    h += '</div></div>';
-
-    // Three-column layout: Post (40%) | Comments (40%) | Our Take (20%)
-    h += '<div style="display:grid;grid-template-columns:4fr 4fr 2fr;min-height:200px;">';
-
-    // Column 1: Title + body (HTML stripped)
-    var cleanBody = stripHtml(t.body || "");
-    h += '<div style="padding:16px 18px;border-right:1px solid var(--divider);overflow-y:auto;max-height:400px;">';
-    h += '<div class="ls" style="margin-bottom:8px;">Post</div>';
-    if (t.url) {
-      h += '<a href="' + esc(t.url) + '" target="_blank" style="font-family:var(--font-serif);font-size:15px;line-height:1.4;color:var(--text);text-decoration:underline;text-decoration-color:var(--border-gold);text-underline-offset:2px;display:block;margin-bottom:10px;">' + esc(t.title) + '</a>';
-    } else {
-      h += '<div style="font-family:var(--font-serif);font-size:15px;line-height:1.4;margin-bottom:10px;">' + esc(t.title) + '</div>';
-    }
-    if (cleanBody) {
-      h += '<div style="font-size:13px;color:var(--text-2);line-height:1.6;">' + esc(cleanBody) + '</div>';
-    } else {
-      h += '<p style="font-size:12px;color:var(--text-3);font-style:italic;">No post body</p>';
-    }
-    h += '</div>';
-
-    // Column 2: Full comments
-    h += '<div style="padding:16px 18px;border-right:1px solid var(--divider);overflow-y:auto;max-height:400px;">';
-    h += '<div class="ls" style="margin-bottom:8px;">Top Comments</div>';
-    var comments = t.top_comments || [];
-    if (comments.length === 0) {
-      h += '<p style="font-size:12px;color:var(--text-3);font-style:italic;">' + (S.threadCommentsLoading[t.id] ? 'Fetching comments\u2026' : 'Loading\u2026') + '</p>';
-    } else {
-      h += '<div style="display:flex;flex-direction:column;gap:8px;">';
-      comments.slice(0, 5).forEach(function(c) {
-        var cText = typeof c === "string" ? c : (c.text || "");
-        var cleanComment = stripHtml(cText);
-        var score = typeof c === "object" && c.score != null ? c.score : null;
-        h += '<div style="font-size:13px;color:var(--text-2);line-height:1.6;padding:8px 12px;background:var(--surface-warm);border-radius:6px;border-left:2px solid var(--border-gold);">';
-        if (score !== null) {
-          h += '<span style="font-size:11px;font-weight:600;color:var(--amber);margin-right:6px;" title="upvotes">\u25B2 ' + score + '</span>';
-        }
-        h += esc(cleanComment) + '</div>';
-      });
-      h += '</div>';
-    }
-    h += '</div>';
-
-    // Column 3: Our Take (narrow)
-    h += '<div style="padding:16px 18px;display:flex;flex-direction:column;">';
-    h += '<div class="ls" style="margin-bottom:8px;">Our Take</div>';
-    h += '<div contenteditable="true" id="our-take-' + t.id + '" style="font-size:13px;color:var(--text);line-height:1.6;flex:1;min-height:60px;padding:8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;outline:none;" data-thread-id="' + t.id + '" oninput="S.threadOurTakes[' + t.id + ']=this.textContent;S.threadSaved[' + t.id + ']=false;">' + esc(S.threadOurTakes[t.id] || "") + '</div>';
-    h += '<div style="text-align:right;margin-top:6px;">';
-    if (saved) {
-      h += '<span style="font-size:11px;color:var(--green);">\u2713 Saved</span>';
-    } else {
-      h += '<button class="btn btn-ghost btn-sm" data-save-take="' + t.id + '" style="font-size:11px;">Save Take</button>';
-    }
-    h += '</div></div>';
-
-    h += '</div></div>';
-  });
-
-  return h;
-}
-
-/* ═════════════════════════════════════════════════════════
-   BIG CONVERSATION VIEW
-   ═════════════════════════════════════════════════════════ */
-function renderBigConv() {
-  var h = '<div class="sh"><div><h2>\u00B6 Big Conversation</h2><div class="sub">This week\'s editorial centrepiece</div></div></div>';
-
-  /* ── Topic Steering ──────────────────────────────────── */
-  h += '<div class="mb24 fu"><div class="lu mb8">Topic Steering</div>';
-  h += '<input type="text" id="editorial-direction" class="form-input" placeholder="e.g. focus on return-to-office, avoid AI" value="' + esc(S.editorialDirection) + '" style="width:100%;padding:8px 12px;border:1px solid var(--divider);border-radius:6px;font-size:14px;font-family:var(--font-sans);margin-bottom:8px;" />';
-  if (S.seedTags.length) {
-    h += '<div class="fr" style="flex-wrap:wrap;gap:6px;">';
-    S.seedTags.slice(0, 20).forEach(function(t) {
-      h += '<button class="chip" data-steer-tag="' + esc(t.tag) + '" style="cursor:pointer;font-size:12px;padding:2px 10px;border:1px solid var(--divider);border-radius:12px;background:var(--cream);color:var(--text-2);">' + esc(t.tag) + ' <span style="color:var(--text-3);">(' + t.count + ')</span></button>';
-    });
-    h += '</div>';
-  }
-  h += '</div>';
-
-  /* ── Seed Selection (auto by score) ──────────────────── */
-  if (S.seedItems.length) {
-    var selectedCount = Object.keys(S.seedChecked).filter(function(k) { return S.seedChecked[k]; }).length;
-    var total = S.seedItems.length;
-    h += '<div class="mb24 fu"><div class="fb mb8"><div class="lu" style="margin-bottom:0;">Seed Items <span style="font-weight:normal;color:var(--text-3);font-size:13px;">(' + selectedCount + ' of ' + total + ')</span></div>';
-    h += '<div class="fr g6" style="align-items:center;">';
-    h += '<select data-action="seed-topn" style="font-size:13px;padding:4px 8px;border:1px solid var(--divider);border-radius:6px;background:var(--cream);">';
-    [10, 20, 30, 50].forEach(function(n) {
-      h += '<option value="' + n + '"' + (S.seedTopN === n ? ' selected' : '') + '>Top ' + n + '</option>';
-    });
-    h += '<option value="' + total + '"' + (S.seedTopN >= total ? ' selected' : '') + '>All (' + total + ')</option>';
-    h += '</select></div></div>';
-    if (selectedCount > 0) {
-      var sourceCounts = {};
-      S.seedItems.forEach(function(item) {
-        if (S.seedChecked[item.id]) {
-          var src = (item.source || "unknown").replace("reddit:", "r/");
-          sourceCounts[src] = (sourceCounts[src] || 0) + 1;
-        }
-      });
-      var prettySource = function(s) {
-        var upper = { rba: "RBA", cis: "CIS", afr: "AFR", aicd: "AICD", asx: "ASX" };
-        s = s.replace(/^reddit:/, "r/").replace(/^reddit_rss$/, "Reddit");
-        if (s.indexOf("r/") === 0) return s;
-        var isPod = s.indexOf("podcast_") === 0;
-        if (isPod) s = s.replace("podcast_", "");
-        s = s.replace(/_/g, " ").replace(/\b\w/g, function(c) { return c.toUpperCase(); });
-        s = s.replace(/\b\w+\b/g, function(w) { return upper[w.toLowerCase()] || w; });
-        if (isPod) s += " (pod)";
-        return s;
-      };
-      var sourceStr = Object.keys(sourceCounts)
-        .sort(function(a, b) { return sourceCounts[b] - sourceCounts[a]; })
-        .map(function(s) { return prettySource(s) + ' ' + sourceCounts[s]; })
-        .join(' · ');
-      h += '<div style="font-size:13px;color:var(--text-3);">' + sourceStr + '</div>';
-    }
-    h += '</div>';
-  }
-
-  /* ── Angle Candidates ────────────────────────────────── */
-  h += '<div class="mb24 fu"><div class="fb mb8"><div class="lu" style="margin-bottom:0;">Angle Candidates</div><button class="btn btn-secondary btn-sm" data-action="gen-angles" ' + (S.loading.angles ? "disabled" : "") + '>' + (S.loading.angles ? "Generating..." : S.angles.length ? "Regenerate" : "Generate Angles") + '</button></div><div class="fc">';
-  S.angles.forEach(function(angle, i) {
-    var sel = S.selectedAngle === i;
-    h += '<div class="card hov' + (sel ? " sel" : "") + '" data-angle="' + i + '" style="cursor:pointer;"><div class="fr g12" style="align-items:flex-start;"><span class="radio' + (sel ? " on" : "") + '" style="margin-top:2px;">' + (sel ? "\u2713" : "") + '</span><div style="flex:1;">';
-    if (angle.theme) h += '<span class="chip" style="font-size:11px;padding:2px 8px;margin-bottom:4px;display:inline-block;background:var(--cream);border:1px solid var(--divider);border-radius:10px;color:var(--text-2);">' + esc(angle.theme) + '</span> ';
-    h += '<div style="font-family:var(--font-serif);font-size:18px;margin-bottom:4px;">' + esc(angle.headline) + '</div>';
-    h += '<p style="font-size:14px;color:var(--text-2);line-height:1.5;">' + esc(angle.pitch) + '</p>';
-    h += '</div></div></div>';
-  });
-  if (S.angles.length === 0 && !S.loading.angles) {
-    h += '<div style="color:var(--text-3);font-size:14px;">Steer the topic and select seed items above, then click \u201CGenerate Angles\u201D.</div>';
-  }
-  h += '</div></div>';
-
-  /* ── Editorial Draft ─────────────────────────────────── */
-  if (S.selectedAngle !== null) {
-    h += '<div class="fu fu1"><div class="fb mb8"><div class="lu" style="margin-bottom:0;">Editorial Draft</div>';
-    if (!S.draft) h += '<button class="btn btn-primary" data-action="gen-draft" ' + (S.loading.draft ? "disabled" : "") + '>' + (S.loading.draft ? "Drafting..." : "Generate Draft") + '</button>';
-    h += '</div>';
-    if (S.loading.draft) h += '<div class="card" style="text-align:center;padding:40px;"><span class="loading">Gemini is drafting your editorial...</span></div>';
-    if (S.draft && !S.loading.draft) {
-      var angle = S.angles[S.selectedAngle] || {};
-      h += '<div class="card"><div class="shl mb16" style="padding-bottom:12px;border-bottom:1px solid var(--divider);">' + esc(angle.headline || "") + '</div>';
-      h += '<textarea id="draft-editor" style="width:100%;min-height:250px;border:none;outline:none;resize:vertical;font-family:var(--font-serif);font-size:16px;line-height:1.7;padding:0;background:transparent;">' + esc(S.draft) + '</textarea>';
-      h += '<div class="fb mt20 pt16 bt"><span id="draft-word-count" style="font-size:13px;color:var(--text-3);">' + S.draft.split(/\s+/).filter(Boolean).length + ' words</span><div class="fr g6"><button class="btn btn-secondary" data-action="regen-draft">Regenerate</button>';
-      if (S.draftSaved) { h += '<span class="chip chip-green">Saved to DB \u2713</span>'; }
-      else { h += '<button class="btn btn-primary" data-action="save-draft">\uD83D\uDCBE Save Draft</button>'; }
-      h += '</div></div></div>';
-    }
-    h += '</div>';
-  }
-  return h;
-}
-
-/* ═════════════════════════════════════════════════════════
-   EVENT BINDING
-   ═════════════════════════════════════════════════════════ */
-function bind() {
-  document.querySelectorAll("[data-tab]").forEach(function(el) {
-    el.onclick = function() { S.activeSection = el.dataset.tab; S.showSkipped = false; render(); };
-  });
-  document.querySelectorAll("[data-toggle-skipped]").forEach(function(el) {
-    el.onclick = function() { S.showSkipped = !S.showSkipped; render(); };
-  });
-  document.querySelectorAll('[data-action="add-whisper"]').forEach(function(el) {
-    el.onclick = function() {
-      var txt = document.getElementById("whisper-text");
-      var conf = document.getElementById("whisper-confidence");
-      if (!txt || !txt.value.trim()) return;
-      el.disabled = true; el.textContent = "Adding...";
-      api("/api/add-whisper", { method: "POST", body: { text: txt.value.trim(), confidence: conf.value } })
-        .then(function() { return loadItems(); })
-        .then(function() { render(); });
-    };
-  });
-  document.querySelectorAll('[data-action="toggle-signals"]').forEach(function(el) {
-    el.onclick = function() { S.showAllSignals = !S.showAllSignals; render(); };
-  });
-  document.querySelectorAll('[data-action="reingest"]').forEach(function(el) {
-    el.onclick = function() {
-      S.ingest.running = true; S.ingest.step = "starting"; S.ingest.error = null; render();
-      fetch("/api/reingest", { method: "POST", headers: { "Content-Type": "application/json" } })
-        .then(function(r) {
-          if (!r.ok && r.status !== 409) throw new Error("Server returned " + r.status + " — restart the dashboard");
-          return r.json();
-        })
-        .then(function(d) {
-          if (!d.started) { S.ingest.running = false; S.ingest.error = d.message || "Could not start"; render(); return; }
-          pollIngest();
-        })
-        .catch(function(e) { S.ingest.running = false; S.ingest.error = e.message || "Failed to connect"; render(); });
-    };
-  });
-  document.querySelectorAll("[data-hook]").forEach(function(el) {
-    el.onclick = function() { S.selectedHook = parseInt(el.dataset.hook); render(); };
-  });
-  document.querySelectorAll('[data-action="gen-summary"]').forEach(function(el) {
-    el.onclick = function() {
-      S.loading.summary = true; render();
-      api("/api/generate-summary", { method: "POST" }).then(function(d) {
-        S.loading.summary = false;
-        if (d.hooks && d.hooks.length) S.hooks = d.hooks;
-        // Reload pulse data to pick up saved summary/drivers
-        loadPulse().then(function() { render(); });
-      }).catch(function(e) { S.loading.summary = false; showToast("Summary failed: " + e.message, "error"); render(); });
-    };
-  });
-  document.querySelectorAll('[data-action="gen-hooks"]').forEach(function(el) {
-    el.onclick = function() {
-      S.loading.hooks = true; render();
-      api("/api/generate-hooks", { method: "POST" }).then(function(d) {
-        S.hooks = d.hooks || []; S.loading.hooks = false; render();
-      }).catch(function(e) { S.loading.hooks = false; showToast("Hooks failed: " + e.message, "error"); render(); });
-    };
-  });
-  document.querySelectorAll("[data-approve]").forEach(function(el) {
-    el.onclick = function() {
-      var id = parseInt(el.dataset.approve);
-      api("/api/decision", { method: "POST", body: { curated_item_id: id, decision: "approved", section_placed: el.dataset.section } })
-        .then(function() { S.decisions[id] = "approved"; showToast("Approved"); render(); });
-    };
-  });
-  document.querySelectorAll("[data-reserve]").forEach(function(el) {
-    el.onclick = function() {
-      var id = parseInt(el.dataset.reserve);
-      api("/api/decision", { method: "POST", body: { curated_item_id: id, decision: "reserve", section_placed: el.dataset.section } })
-        .then(function() { S.decisions[id] = "reserve"; showToast("Reserved"); render(); });
-    };
-  });
-  document.querySelectorAll("[data-reject]").forEach(function(el) {
-    el.onclick = function() {
-      var id = parseInt(el.dataset.reject);
-      api("/api/decision", { method: "POST", body: { curated_item_id: id, decision: "rejected", section_placed: el.dataset.section } })
-        .then(function() { S.decisions[id] = "rejected"; showToast("Skipped"); render(); });
-    };
-  });
-  document.querySelectorAll("[data-undo]").forEach(function(el) {
-    el.onclick = function() {
-      var id = parseInt(el.dataset.undo);
-      api("/api/undo-decision", { method: "POST", body: { curated_item_id: id } })
-        .then(function() { delete S.decisions[id]; render(); });
-    };
-  });
-  document.querySelectorAll("[data-thread-decision]").forEach(function(el) {
-    el.onclick = function() {
-      var dec = el.dataset.threadDecision;
-      var id = parseInt(el.dataset.threadId);
-      var mapping = { feature: "approved", reserve: "reserve", skip: "rejected" };
-      var thread = S.threads.find(function(t) { return t.id === id; });
-      if (thread) {
-        api("/api/decision", { method: "POST", body: { curated_item_id: id, decision: mapping[dec], section_placed: "thread_candidate" } });
-        S.threadDecisions[id] = dec;
-        render();
-      }
-    };
-  });
-  document.querySelectorAll("[data-thread-undo]").forEach(function(el) {
-    el.onclick = function() {
-      var id = parseInt(el.dataset.threadUndo);
-      api("/api/undo-decision", { method: "POST", body: { curated_item_id: id } });
-      delete S.threadDecisions[id];
-      render();
-    };
-  });
-  document.querySelectorAll("[data-save-take]").forEach(function(el) {
-    el.onclick = function() {
-      var id = parseInt(el.dataset.saveTake);
-      var text = S.threadOurTakes[id] || "";
-      api("/api/thread-take", { method: "POST", body: { curated_item_id: id, our_take: text } });
-      S.threadSaved[id] = true;
-      render();
-    };
-  });
-  document.querySelectorAll("[data-thread-filter]").forEach(function(el) {
-    el.onclick = function() {
-      var weeks = parseInt(el.dataset.threadFilter);
-      S.threadFilter = weeks;
-      loadThread(weeks).then(function() { render(); });
-    };
-  });
-  /* ── Big Conversation: topic steering ────────────────── */
-  var dirInput = document.getElementById("editorial-direction");
-  if (dirInput) {
-    dirInput.oninput = function() { S.editorialDirection = dirInput.value; };
-  }
-  document.querySelectorAll("[data-steer-tag]").forEach(function(el) {
-    el.onclick = function() {
-      var tag = el.dataset.steerTag;
-      var inp = document.getElementById("editorial-direction");
-      if (inp) {
-        var cur = inp.value.trim();
-        if (cur && !cur.endsWith(",")) cur += ", ";
-        inp.value = cur + tag;
-        S.editorialDirection = inp.value;
-      }
-    };
-  });
-  /* ── Big Conversation: seed count selector ────────────── */
-  document.querySelectorAll('[data-action="seed-topn"]').forEach(function(el) {
-    el.onchange = function() {
-      S.seedTopN = parseInt(el.value);
-      S.seedChecked = {};
-      S.seedItems.slice(0, S.seedTopN).forEach(function(item) { S.seedChecked[item.id] = true; });
-      render();
-    };
-  });
-  /* ── Big Conversation: angle selection ──────────────── */
-  document.querySelectorAll("[data-angle]").forEach(function(el) {
-    el.onclick = function() { S.selectedAngle = parseInt(el.dataset.angle); S.draft = ""; S.draftSaved = false; render(); };
-  });
-  document.querySelectorAll('[data-action="gen-angles"]').forEach(function(el) {
-    el.onclick = function() {
-      S.loading.angles = true; render();
-      var selectedIds = [];
-      var totalItems = S.seedItems.length;
-      S.seedItems.forEach(function(item) { if (S.seedChecked[item.id]) selectedIds.push(item.id); });
-      var body = { editorial_direction: S.editorialDirection || "" };
-      if (selectedIds.length < totalItems) body.selected_item_ids = selectedIds;
-      api("/api/generate-angles", { method: "POST", body: body }).then(function(d) {
-        S.angles = d.angles || []; S.selectedAngle = null; S.draft = ""; S.draftSaved = false;
-        S.loading.angles = false; render();
-      }).catch(function(e) { S.loading.angles = false; showToast("Angles failed: " + e.message, "error"); render(); });
-    };
-  });
-  /* ── Big Conversation: draft generation ─────────────── */
-  document.querySelectorAll('[data-action="gen-draft"]').forEach(function(el) {
-    el.onclick = function() {
-      if (S.selectedAngle === null) return;
-      S.loading.draft = true; render();
-      var angle = S.angles[S.selectedAngle];
-      var ids = angle.supporting_item_ids || [];
-      api("/api/generate-draft", { method: "POST", body: { headline: angle.headline, pitch: angle.pitch, supporting_item_ids: ids, } })
-        .then(function(d) { S.draft = d.draft || ""; S.loading.draft = false; render(); })
-        .catch(function(e) { S.loading.draft = false; showToast("Draft failed: " + e.message, "error"); render(); });
-    };
-  });
-  document.querySelectorAll('[data-action="regen-draft"]').forEach(function(el) {
-    el.onclick = function() {
-      S.draft = ""; S.draftSaved = false; S.loading.draft = true; render();
-      var angle = S.angles[S.selectedAngle];
-      var ids = angle.supporting_item_ids || [];
-      api("/api/generate-draft", { method: "POST", body: { headline: angle.headline, pitch: angle.pitch, supporting_item_ids: ids, } })
-        .then(function(d) { S.draft = d.draft || ""; S.loading.draft = false; render(); })
-        .catch(function() { S.loading.draft = false; render(); });
-    };
-  });
-  /* ── Big Conversation: editable draft ───────────────── */
-  var draftEditor = document.getElementById("draft-editor");
-  if (draftEditor) {
-    draftEditor.oninput = function() {
-      S.draft = draftEditor.value;
-      S.draftSaved = false;
-      var wc = document.getElementById("draft-word-count");
-      if (wc) wc.textContent = S.draft.split(/\s+/).filter(Boolean).length + " words";
-    };
-  }
-  document.querySelectorAll('[data-action="save-draft"]').forEach(function(el) {
-    el.onclick = function() {
-      if (!S.draft || S.selectedAngle === null) return;
-      var angle = S.angles[S.selectedAngle];
-      api("/api/save-draft", { method: "POST", body: {
-        headline: angle.headline, pitch: angle.pitch,
-        supporting_item_ids: angle.supporting_item_ids || [],
-        draft_text: S.draft
-      }}).then(function() { S.draftSaved = true; render(); });
-    };
-  });
-  document.querySelectorAll('[data-action="refresh-log"]').forEach(function(el) {
-    el.onclick = function() { loadRunLog().then(function() { render(); }); };
-  });
-  document.querySelectorAll('[data-action="refresh-health"]').forEach(function(el) {
-    el.onclick = function() { S.health = null; S.healthLoading = true; render(); loadHealth().then(function() { render(); }); };
-  });
-  document.querySelectorAll('[data-action="refresh-feedback"]').forEach(function(el) {
-    el.onclick = function() { S.feedbackData = null; S.feedbackLoading = true; render(); loadFeedback().then(function() { render(); }); };
-  });
-  document.querySelectorAll('[data-action="submit-feedback"]').forEach(function(el) {
-    el.onclick = function() {
-      var week = document.getElementById("fb-week");
-      var open = document.getElementById("fb-open");
-      var click = document.getElementById("fb-click");
-      var notes = document.getElementById("fb-notes");
-      if (!week || !week.value.trim()) { showToast("Week ISO is required", "error"); return; }
-      el.disabled = true; el.textContent = "Saving...";
-      api("/api/manual-feedback", { method: "POST", body: {
-        week_iso: week.value.trim(),
-        open_rate: open && open.value ? parseFloat(open.value) : null,
-        click_rate: click && click.value ? parseFloat(click.value) : null,
-        notes: notes ? notes.value : ""
-      }}).then(function(d) {
-        if (d.error) { showToast(d.error, "error"); }
-        else { showToast("Feedback saved for " + d.week_iso); }
-        S.feedbackData = null;
-        loadFeedback().then(function() { render(); });
-      }).catch(function() { showToast("Failed to save feedback", "error"); render(); });
-    };
-  });
-  // Assemble button
-  document.querySelectorAll('[data-action="assemble"]').forEach(function(el) {
-    el.onclick = function() {
-      var hookText = S.selectedHook !== null ? S.hooks[S.selectedHook] : null;
-      if (!hookText) return;
-      var rotation = S.status ? S.status.rotation : "A";
-      S.assemble = { loading: true, result: null, error: null, copied: false };
-      render();
-      api("/api/assemble", { method: "POST", body: { hook_text: hookText, rotation: rotation } })
-        .then(function(d) {
-          if (d.error) {
-            S.assemble = { loading: false, result: null, error: d.error, copied: false };
-          } else {
-            S.assemble = { loading: false, result: d, error: null, copied: false };
+function runBigConv() {
+  S.loading.big_conversation = true; render();
+  // Start finds run in background
+  api("/api/run-section", { method: "POST", body: { section: "finds" } })
+    .then(function(d) {
+      if (!d.started) { S.loading.big_conversation = false; render(); showToast(d.message || "Already running"); return; }
+      showToast("Pulling editorial sources for Big Conversation...");
+      // Poll for finds completion, then load candidates
+      var poll = setInterval(function() {
+        fetch("/api/section-status/finds").then(function(r) { return r.json(); }).then(function(st) {
+          if (!st.running && st.done) {
+            clearInterval(poll);
+            if (st.error) {
+              S.loading.big_conversation = false; render();
+              showToast("Error pulling sources: " + st.error, "error");
+              return;
+            }
+            // Now load candidates
+            api("/api/big-conversation-candidates").then(function(d) {
+              S.bigConvCandidates = d.candidates || [];
+              S.items = null; // invalidate items cache
+              S.loading.big_conversation = false;
+              render();
+              showToast("Big Conversation candidates loaded (" + S.bigConvCandidates.length + ")");
+            });
           }
-          loadStatus().then(function() { render(); writePreviewFrame(); });
-        })
-        .catch(function(e) {
-          S.assemble = { loading: false, result: null, error: e.message || "Failed", copied: false };
-          render();
-        });
-    };
-  });
-  // Copy HTML button
-  document.querySelectorAll('[data-action="copy-html"]').forEach(function(el) {
-    el.onclick = function() {
-      if (!S.assemble.result) return;
-      var html = "<!DOCTYPE html><html><body>" + S.assemble.result.html + "</body></html>";
-      navigator.clipboard.writeText(html).then(function() {
-        S.assemble.copied = true;
-        showToast("HTML copied to clipboard");
-        render();
-        setTimeout(function() { S.assemble.copied = false; render(); }, 2000);
-      });
-    };
-  });
+        }).catch(function() {});
+      }, 2000);
+    })
+    .catch(function(e) {
+      S.loading.big_conversation = false; render();
+      showToast("Error: " + e.message, "error");
+    });
 }
 
-/* ═════════════════════════════════════════════════════════
-   PIPELINE VIEW
-   ═════════════════════════════════════════════════════════ */
-function renderPipeline() {
-  var ingest = S.ingest;
-  var runBtn = ingest.running
-    ? '<button class="btn btn-secondary btn-sm" disabled style="opacity:0.8;"><span class="ingest-spinner"></span> ' + esc((ingest.step || "starting").replace(/_/g, " ")) + '...</button>'
-    : '<button class="btn btn-primary btn-sm" data-action="reingest">\u25B6 Run Pipeline Now</button>';
-
-  var h = '<div class="sh"><div><h2>\u2699 Pipeline</h2><div class="sub">Cron log \u00B7 Week ' + esc(S.weekIso) + '</div></div>' +
-    '<div class="fr g6">' + runBtn + '<button class="btn btn-secondary btn-sm" data-action="refresh-log">\u21BB Refresh</button></div></div>';
-
-  // Status card
-  h += '<div class="card mb16 fu">';
-  if (ingest.running) {
-    h += '<div class="fr g12"><span class="ingest-spinner"></span><span style="font-size:14px;">Running: <strong>' + esc((ingest.step || "").replace(/_/g, " ")) + '</strong></span></div>';
-  } else if (ingest.error) {
-    h += '<div style="font-size:14px;color:var(--red);">\u26A0 Last run error: ' + esc(ingest.error) + '</div>';
-  } else if (ingest.completed_at) {
-    h += '<div style="font-size:14px;color:var(--green);">\u2713 Last run completed: ' + esc(ingest.completed_at) + '</div>';
+function proceedBigConv() {
+  var model = getModel("model-bigconv");
+  var data = {};
+  if (S.customBigConv && S.customBigConv.headline) {
+    data = { custom: true, headline: S.customBigConv.headline, pitch: S.customBigConv.pitch, supporting_data: S.customBigConv.data };
+  } else if (S.selectedBigConv) {
+    var c = S.bigConvCandidates.find(function(x) { return x.id === S.selectedBigConv; });
+    if (c) data = { candidate_id: c.id, title: c.title, summary: c.summary, source: c.source };
   } else {
-    h += '<div style="font-size:14px;color:var(--text-3);">No run recorded this session. Cron runs Wednesday 06:00 AEST.</div>';
+    showToast("Select a candidate or add a custom topic", "error"); return;
   }
-  h += '</div>';
-
-  // Cron log
-  h += '<div class="fu fu1"><div class="lu">Cron Log</div>';
-  if (!S.runLog.exists) {
-    h += '<div class="card" style="color:var(--text-3);font-size:14px;padding:20px;">No log file found at <code>data/logs/cron.log</code>. The log is created on first cron run.</div>';
-  } else if (!S.runLog.lines || S.runLog.lines.length === 0) {
-    h += '<div class="card" style="color:var(--text-3);font-size:14px;padding:20px;">Log file is empty.</div>';
-  } else {
-    h += '<div class="card" style="padding:0;overflow:hidden;">' +
-      '<pre style="margin:0;padding:16px 20px;font-size:12px;line-height:1.7;background:var(--surface-warm);border-radius:10px;overflow-x:auto;white-space:pre-wrap;word-break:break-word;max-height:480px;overflow-y:auto;color:var(--text);">' +
-      esc(S.runLog.lines.join("\n")) + '</pre></div>';
-  }
-  h += '</div>';
-
-  return h;
+  S.loading.big_conversation = true; render();
+  api("/api/proceed-section", { method: "POST", body: { section: "big_conversation", model: model, data: data } })
+    .then(function(d) { S.sectionOutputs.big_conversation = { output_text: d.output, model_used: d.model }; S.loading.big_conversation = false; render(); showToast("Big Conversation generated"); })
+    .catch(function(e) { S.loading.big_conversation = false; render(); showToast("Error: " + e.message, "error"); });
 }
 
-/* ═════════════════════════════════════════════════════════
-   EXTRACTION HEALTH VIEW
-   ═════════════════════════════════════════════════════════ */
-function renderHealth() {
-  var h = '<div class="sh"><div><h2>\u2695 Extraction Health</h2><div class="sub">Employer ATS pull status for this week</div></div>' +
-    '<button class="btn btn-secondary btn-sm" data-action="refresh-health">\u21BB Refresh</button></div>';
+/* ═══════════════════════════════════════════════════════════════════════
+   SECTION: WHISPERS
+   ═══════════════════════════════════════════════════════════════════════ */
+function renderWhispers(el) {
+  var h = '<div class="sh"><div><h2>Whispers</h2><div class="sub">Manual entry only. Insider intel and unverified tips.</div></div></div>';
 
-  if (S.healthLoading || !S.health) {
-    h += '<div class="skeleton skeleton-line" style="width:50%;margin-bottom:16px;"></div>';
-    h += '<div class="health-grid">';
-    for (var i = 0; i < 6; i++) { h += '<div class="skeleton skeleton-card"></div>'; }
-    h += '</div>';
-    return h;
-  }
+  // Add form
+  h += '<div class="card mb20">';
+  h += '<div style="font-weight:600;margin-bottom:12px;">Add Whisper</div>';
+  h += '<div class="form-group"><label>Whisper Text</label><textarea class="form-input" id="whisper-text" placeholder="What did you hear..."></textarea></div>';
+  h += '<div class="form-group"><label>Confidence</label><select class="form-input" id="whisper-conf" style="max-width:200px;"><option value="green">Green (High)</option><option value="yellow" selected>Yellow (Medium)</option><option value="red">Red (Low)</option></select></div>';
+  h += '<button class="btn btn-primary" onclick="addWhisper()">Add Whisper</button>';
+  h += '</div>';
 
-  var d = S.health;
-  var pullCount = d.successful || 0;
-  var total = d.total_employers || 0;
-  var pct = total > 0 ? Math.round(pullCount / total * 100) : 0;
-  var pctCol = pct >= 80 ? "green" : pct >= 50 ? "amber" : "red";
-
-  h += '<div class="card mb16 fu"><div class="fb"><div><span style="font-size:28px;font-family:var(--font-serif);font-weight:400;color:var(--' + pctCol + ');">' + pullCount + '/' + total + '</span><span style="font-size:14px;color:var(--text-2);margin-left:8px;">employers pulled successfully</span></div><span class="chip chip-' + pctCol + '">' + pct + '% success</span></div></div>';
-
-  // Results grid
-  if (d.results.length > 0) {
-    h += '<div class="lu">Pulled This Week</div><div class="health-grid mb24">';
-    d.results.forEach(function(r) {
-      var ok = r.success ? true : false;
-      var carryWarn = (r.consecutive_carry_forward_weeks || 0) >= 2;
-      h += '<div class="card health-card' + (ok ? "" : " fail") + '">';
-      h += '<div class="fb mb8"><span style="font-weight:600;font-size:14px;"><span class="health-dot ' + (ok ? "ok" : "fail") + '"></span>' + esc(r.employer_name) + '</span>';
-      h += '<span style="font-size:18px;font-weight:600;color:var(--' + (ok ? "green" : "red") + ');">' + (r.roles_extracted || 0) + '</span></div>';
-      h += '<div class="fr g6" style="flex-wrap:wrap;">';
-      h += '<span class="chip chip-default">' + esc(r.sector) + '</span>';
-      h += '<span class="chip chip-default">' + esc(r.ats_platform || "unknown") + '</span>';
-      if (carryWarn) h += '<span class="chip chip-amber">\u26A0 carry-fwd ' + r.consecutive_carry_forward_weeks + 'w</span>';
+  // List
+  h += '<div class="fc">';
+  if (S.whispers && S.whispers.length) {
+    S.whispers.forEach(function(w) {
+      var conf = w.confidence_tag || "yellow";
+      var chipClass = conf === "green" ? "chip-green" : (conf === "red" ? "chip-red" : "chip-amber");
+      h += '<div class="card hov">';
+      h += '<div class="fb"><span style="font-size:14px;">' + esc(w.summary || w.title || w.text) + '</span>';
+      h += '<span class="chip ' + chipClass + '">' + esc(conf) + '</span></div>';
       h += '</div>';
-      if (!ok && r.error_message) { h += '<div style="font-size:12px;color:var(--red);margin-top:8px;line-height:1.4;">' + esc(r.error_message.substring(0, 120)) + '</div>'; }
+    });
+  } else {
+    h += '<div class="card"><p style="color:var(--text-3);font-size:13px;">No whispers yet. Add one above.</p></div>';
+  }
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+function addWhisper() {
+  var text = ($("whisper-text") || {}).value || "";
+  var conf = ($("whisper-conf") || {}).value || "yellow";
+  if (!text.trim()) { showToast("Enter whisper text", "error"); return; }
+  api("/api/add-whisper", { method: "POST", body: { text: text, confidence: conf } })
+    .then(function() {
+      showToast("Whisper added");
+      return api("/api/items").then(function(d) { S.whispers = (d.items && d.items.whisper) || []; render(); });
+    })
+    .catch(function(e) { showToast("Error: " + e.message, "error"); });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SECTION: THE LOBBY
+   ═══════════════════════════════════════════════════════════════════════ */
+function renderLobby(el) {
+  var h = '<div class="sh"><div><h2>The Lobby</h2><div class="sub">Employer hiring data and top movers</div></div></div>';
+  h += '<div class="toolbar">';
+  h += '<button class="btn btn-primary" onclick="runSection(\'lobby\')">SCRAPE</button>';
+  h += modelSelect("model-lobby");
+  h += '<button class="btn btn-success" onclick="proceedLobby()">PROCEED</button>';
+  if (S.loading.lobby) h += ' <span class="ingest-spinner"></span>';
+  h += '</div>';
+
+  if (!S.lobby || !S.lobby.employers || !S.lobby.employers.length) {
+    h += '<div class="card"><p class="loading">No lobby data yet. Click RUN to pull employer data.</p></div>';
+  } else {
+    // Top movers cards
+    if (S.lobby.top_movers && S.lobby.top_movers.length) {
+      h += '<div style="font-weight:600;margin-bottom:10px;">Top Movers</div>';
+      h += '<div class="movers-grid">';
+      S.lobby.top_movers.slice(0, 6).forEach(function(m) {
+        var d = m.delta || 0;
+        var sign = d > 0 ? "+" : "";
+        var cls = d > 0 ? "up" : (d < 0 ? "down" : "");
+        h += '<div class="card mover-card">';
+        h += '<div class="mc-name">' + esc(m.employer_name) + '</div>';
+        h += '<div class="mc-sector">' + esc(m.sector || "") + '</div>';
+        h += '<div class="mc-delta ' + cls + '">' + sign + d + ' roles</div>';
+        h += '<div class="mc-detail">' + esc(m.open_roles_count || 0) + ' total' + (m.delta_pct != null ? ' (' + sign + m.delta_pct + '%)' : '') + '</div>';
+        var mom = m.mom_delta != null ? m.mom_delta : null;
+        if (mom != null) {
+          var momSign = mom > 0 ? "+" : "";
+          var momCls = mom > 0 ? "color:var(--green)" : (mom < 0 ? "color:var(--red)" : "color:var(--text-3)");
+          h += '<div style="font-size:11px;' + momCls + '">4-wk: ' + momSign + mom + '</div>';
+        }
+        h += '</div>';
+      });
+      h += '</div>';
+    }
+
+    // Full employer table
+    h += '<div class="card mb20"><div style="font-weight:600;margin-bottom:12px;">All Employers</div>';
+    h += '<table class="tbl"><thead><tr><th style="width:30px;"></th><th>Employer</th><th>Sector</th><th>Roles</th><th>WoW</th><th>MoM</th><th>Trend</th></tr></thead><tbody>';
+    S.lobby.employers.forEach(function(e) {
+      var name = e.employer_name || "";
+      var checked = S.lobbyChecked[name] ? " checked" : "";
+      var wow = e.delta != null ? e.delta : null;
+      var mom = e.mom_delta != null ? e.mom_delta : null;
+      var wowStyle = wow == null ? 'color:var(--text-3)' : (wow > 0 ? 'color:var(--green);font-weight:600' : (wow < 0 ? 'color:var(--red);font-weight:600' : 'color:var(--text-3)'));
+      var momStyle = mom == null ? 'color:var(--text-3)' : (mom > 0 ? 'color:var(--green);font-weight:600' : (mom < 0 ? 'color:var(--red);font-weight:600' : 'color:var(--text-3)'));
+      var wowText = wow == null ? "—" : (wow > 0 ? "+" : "") + wow;
+      var momText = mom == null ? "—" : (mom > 0 ? "+" : "") + mom;
+      var hist = e.history || [];
+      h += '<tr>';
+      h += '<td><input type="checkbox"' + checked + ' onchange="toggleLobbyCheck(\'' + esc(name).replace(/'/g, "\\'") + '\',this.checked)"></td>';
+      h += '<td><strong>' + esc(name) + '</strong></td>';
+      h += '<td>' + esc(e.sector || "") + '</td>';
+      h += '<td>' + esc(e.open_roles_count || 0) + '</td>';
+      h += '<td style="' + wowStyle + '">' + wowText + '</td>';
+      h += '<td style="' + momStyle + '">' + momText + '</td>';
+      h += '<td>' + barSparkline(hist, 64, 24) + '</td>';
+      h += '</tr>';
+    });
+    h += '</tbody></table></div>';
+  }
+
+  h += outputBox("lobby");
+  el.innerHTML = h;
+  fillOutput("lobby");
+}
+
+function toggleLobbyCheck(name, val) { S.lobbyChecked[name] = val; }
+
+function proceedLobby() {
+  var model = getModel("model-lobby");
+  var checked = Object.keys(S.lobbyChecked).filter(function(k) { return S.lobbyChecked[k]; });
+  var selected = S.lobby && S.lobby.employers ? S.lobby.employers.filter(function(e) { return checked.indexOf(e.employer_name) >= 0; }) : [];
+  S.proceedData.lobby = { section: "lobby", model: model, data: { selected_employers: selected, top_movers: S.lobby ? S.lobby.top_movers : [] } };
+  openProceedModal("lobby");
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SECTION: FINDS
+   ═══════════════════════════════════════════════════════════════════════ */
+function renderFinds(el) {
+  var h = '<div class="sh"><div><h2>Finds</h2><div class="sub">Curated news items. Pick 3-5 for the newsletter.</div></div></div>';
+  h += '<div class="toolbar">';
+  h += '<button class="btn btn-primary" onclick="runSection(\'finds\')">SCRAPE</button>';
+  h += modelSelect("model-finds");
+  h += '<button class="btn btn-success" onclick="proceedFinds()">PROCEED</button>';
+  if (S.loading.finds) h += ' <span class="ingest-spinner"></span>';
+  h += '</div>';
+
+  var items = (S.items && S.items.finds) || [];
+    // Re-rank: AU relevance counts for 30% of display score
+    items = items.slice().sort(function(a, b) {
+      var da = (a.weighted_composite || 0) * 0.7 + ((a.au_relevance != null ? a.au_relevance : 5) / 10.0) * 3.0;
+      var db = (b.weighted_composite || 0) * 0.7 + ((b.au_relevance != null ? b.au_relevance : 5) / 10.0) * 3.0;
+      return db - da;
+    });
+  if (!items.length) {
+    h += '<div class="card"><p class="loading">No finds yet. Click RUN to pull editorial sources.</p></div>';
+  } else {
+    var checkedCount = Object.keys(S.findsChecked).filter(function(k) { return S.findsChecked[k]; }).length;
+    h += '<div style="font-size:13px;color:var(--text-2);margin-bottom:12px;">' + checkedCount + ' selected of ' + items.length + ' items</div>';
+    h += '<div class="fc">';
+    items.forEach(function(item) {
+      var checked = S.findsChecked[item.id];
+      h += '<div class="card hov' + (checked ? " sel" : "") + '">';
+      h += '<div class="fr mb8">';
+      h += '<input type="checkbox"' + (checked ? " checked" : "") + ' onchange="toggleFindsCheck(' + item.id + ',this.checked)" style="width:18px;height:18px;accent-color:var(--amber);">';
+      h += '<strong style="font-size:14px;">' + esc(item.title || item.summary) + '</strong>';
+      h += '</div>';
+        // AU relevance badge
+        var auRel = item.au_relevance != null ? item.au_relevance : null;
+        if (auRel != null) {
+          if (auRel >= 7) {
+            h += '<span class="chip chip-au" style="font-size:10px;">AU</span> ';
+          } else if (auRel < 4) {
+            h += '<span class="chip chip-low-au" style="font-size:10px;">low AU</span> ';
+          }
+        }
+      h += '<div style="font-size:12px;color:var(--text-3);margin-bottom:4px;">' + esc(item.source || "") + ' &middot; Score: ' + esc(item.weighted_composite != null ? item.weighted_composite.toFixed(1) : "—") + '</div>';
+      if (item.summary) h += '<div style="font-size:13px;color:var(--text-2);margin-bottom:8px;line-height:1.5;">' + esc(item.summary) + '</div>';
+      if (checked) {
+        h += '<div class="form-group mt8"><label>Blurb</label><textarea class="form-input" id="finds-blurb-' + item.id + '" rows="2" placeholder="Write a short blurb..." onchange="updateFindsBlurb(' + item.id + ',this.value)">' + esc(S.findsBlurbs[item.id] || "") + '</textarea></div>';
+      }
       h += '</div>';
     });
     h += '</div>';
   }
 
-  // Missing employers
-  if (d.not_pulled.length > 0) {
-    h += '<div class="lu" style="color:var(--red);">Not Pulled This Week</div><div class="health-grid">';
-    d.not_pulled.forEach(function(r) {
-      var carryWarn = (r.consecutive_carry_forward_weeks || 0) >= 2;
-      h += '<div class="card health-card" style="border-left:3px solid var(--red);opacity:0.7;">';
-      h += '<div style="font-weight:600;font-size:14px;margin-bottom:6px;">' + esc(r.employer_name) + '</div>';
-      h += '<div class="fr g6" style="flex-wrap:wrap;">';
-      h += '<span class="chip chip-default">' + esc(r.sector) + '</span>';
-      h += '<span class="chip chip-default">' + esc(r.ats_platform || "unknown") + '</span>';
-      if (carryWarn) h += '<span class="chip chip-amber">\u26A0 carry-fwd ' + r.consecutive_carry_forward_weeks + 'w</span>';
+  h += outputBox("finds");
+  el.innerHTML = h;
+  fillOutput("finds");
+}
+
+function toggleFindsCheck(id, val) { S.findsChecked[id] = val; render(); }
+function updateFindsBlurb(id, val) { S.findsBlurbs[id] = val; }
+
+function proceedFinds() {
+  var model = getModel("model-finds");
+  var checked = Object.keys(S.findsChecked).filter(function(k) { return S.findsChecked[k]; });
+  var items = (S.items && S.items.finds) || [];
+  var selected = items.filter(function(i) { return checked.indexOf(String(i.id)) >= 0; });
+  S.proceedData.finds = { section: "finds", model: model, data: { selected_items: selected } };
+  openProceedModal("finds");
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SECTION: THREAD
+   ═══════════════════════════════════════════════════════════════════════ */
+function renderThread(el) {
+  var h = '<div class="sh"><div><h2>Thread</h2><div class="sub">Reddit thread pick for the week</div></div></div>';
+  h += '<div class="toolbar">';
+  h += '<button class="btn btn-primary" onclick="runSection(\'thread\')">SCRAPE</button>';
+  h += modelSelect("model-thread");
+  h += '<button class="btn btn-success" onclick="proceedThread()">PROCEED</button>';
+  if (S.loading.thread) h += ' <span class="ingest-spinner"></span>';
+  h += '</div>';
+
+  if (!S.threads || !S.threads.length) {
+    h += '<div class="card"><p class="loading">No threads yet. Click RUN to pull Reddit data.</p></div>';
+  } else {
+    h += '<div class="cand-list mb20">';
+    S.threads.forEach(function(t) {
+      var sel = S.selectedThread === t.id;
+      var comments = S.threadComments[t.id];
+      var loadingComments = S.threadCommentsLoading[t.id];
+      h += '<div class="card hov' + (sel ? " sel" : "") + '">';
+      h += '<div class="cand-card" onclick="selectThread(' + t.id + ')">';
+      h += '<div class="radio' + (sel ? " on" : "") + '">' + (sel ? "\u2713" : "") + '</div>';
+      h += '<div class="cand-body">';
+      h += '<div class="cand-title">' + esc(t.title || t.summary) + '</div>';
+      h += '<div class="cand-meta">' + esc(t.source || "reddit") + ' &middot; Score: ' + esc(t.weighted_composite != null ? t.weighted_composite.toFixed(1) : "—") + '</div>';
+      if (t.summary) h += '<div class="cand-summary">' + esc(t.summary) + '</div>';
+      h += '</div></div>';
+      // Fetch comments button
+      h += '<div class="mt8">';
+      if (loadingComments) {
+        h += '<span class="ingest-spinner"></span> Loading comments...';
+      } else if (comments) {
+        h += '<div style="font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:6px;">Top Comments:</div>';
+        comments.forEach(function(c) {
+          h += '<div style="background:var(--surface-warm);border-radius:8px;padding:10px 14px;margin-bottom:6px;font-size:13px;line-height:1.5;">' + esc(typeof c === "string" ? c : c.body || c.text || JSON.stringify(c)) + '</div>';
+        });
+      } else {
+        h += '<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();fetchThreadComments(' + t.id + ')">Fetch Comments</button>';
+      }
       h += '</div></div>';
     });
     h += '</div>';
   }
 
-  return h;
+  h += outputBox("thread");
+  el.innerHTML = h;
+  fillOutput("thread");
 }
 
-/* ═════════════════════════════════════════════════════════
-   FEEDBACK VIEW
-   ═════════════════════════════════════════════════════════ */
-function renderFeedback() {
-  var h = '<div class="sh"><div><h2>\uD83D\uDCCA Feedback</h2><div class="sub">Newsletter performance metrics</div></div>' +
-    '<button class="btn btn-secondary btn-sm" data-action="refresh-feedback">\u21BB Refresh</button></div>';
+function selectThread(id) { S.selectedThread = id; render(); }
 
-  // Entry form
-  h += '<div class="card mb24 fu"><div class="lu mb8">Record Performance</div>';
-  h += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px;">';
-  h += '<div><label style="font-size:12px;color:var(--text-3);display:block;margin-bottom:4px;">Week ISO</label><input type="text" id="fb-week" placeholder="' + esc(S.weekIso) + '" value="' + esc(S.weekIso) + '" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--bg);"></div>';
-  h += '<div><label style="font-size:12px;color:var(--text-3);display:block;margin-bottom:4px;">Open Rate (%)</label><input type="number" id="fb-open" placeholder="42.5" step="0.1" min="0" max="100" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--bg);"></div>';
-  h += '<div><label style="font-size:12px;color:var(--text-3);display:block;margin-bottom:4px;">Click Rate (%)</label><input type="number" id="fb-click" placeholder="3.2" step="0.1" min="0" max="100" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--bg);"></div>';
-  h += '</div>';
-  h += '<div style="margin-bottom:12px;"><label style="font-size:12px;color:var(--text-3);display:block;margin-bottom:4px;">Notes</label><textarea id="fb-notes" placeholder="Any observations about this issue..." style="width:100%;min-height:60px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px;background:var(--bg);resize:vertical;font-family:var(--font-sans);"></textarea></div>';
-  h += '<button class="btn btn-primary" data-action="submit-feedback">Save Feedback</button>';
-  h += '</div>';
-
-  // History
-  if (S.feedbackLoading || !S.feedbackData) {
-    h += '<div class="skeleton skeleton-line" style="width:30%;"></div>';
-    h += '<div class="skeleton skeleton-card"></div>';
-    return h;
-  }
-
-  var fb = S.feedbackData;
-
-  // Click rate history
-  if (fb.click_rates && fb.click_rates.length > 0) {
-    h += '<div class="fu fu1"><div class="lu">Click Rate History</div><div class="card" style="overflow-x:auto;">';
-    h += '<table style="width:100%;border-collapse:collapse;font-size:14px;">';
-    h += '<thead><tr style="border-bottom:2px solid var(--border-gold);"><th style="text-align:left;padding:8px 12px;color:var(--text-3);font-size:12px;text-transform:uppercase;letter-spacing:1px;">Week</th><th style="text-align:right;padding:8px 12px;color:var(--text-3);font-size:12px;text-transform:uppercase;letter-spacing:1px;">Avg Click Rate</th><th style="text-align:right;padding:8px 12px;color:var(--text-3);font-size:12px;text-transform:uppercase;letter-spacing:1px;">Decisions</th></tr></thead><tbody>';
-    fb.click_rates.forEach(function(cr) {
-      var rate = cr.avg_click_rate != null ? cr.avg_click_rate.toFixed(2) + "%" : "\u2014";
-      h += '<tr style="border-bottom:1px solid var(--divider);"><td style="padding:8px 12px;">' + esc(cr.issue_week_iso) + '</td><td style="text-align:right;padding:8px 12px;font-weight:600;">' + rate + '</td><td style="text-align:right;padding:8px 12px;color:var(--text-2);">' + (cr.total_decisions || 0) + '</td></tr>';
-    });
-    h += '</tbody></table></div></div>';
-  }
-
-  // Decision stats
-  if (fb.decision_stats && fb.decision_stats.length > 0) {
-    h += '<div class="fu fu2 mt20"><div class="lu">Decision History</div><div class="card" style="overflow-x:auto;">';
-    h += '<table style="width:100%;border-collapse:collapse;font-size:14px;">';
-    h += '<thead><tr style="border-bottom:2px solid var(--border-gold);"><th style="text-align:left;padding:8px 12px;color:var(--text-3);font-size:12px;text-transform:uppercase;letter-spacing:1px;">Week</th><th style="text-align:left;padding:8px 12px;color:var(--text-3);font-size:12px;text-transform:uppercase;letter-spacing:1px;">Decision</th><th style="text-align:right;padding:8px 12px;color:var(--text-3);font-size:12px;text-transform:uppercase;letter-spacing:1px;">Count</th></tr></thead><tbody>';
-    fb.decision_stats.forEach(function(ds) {
-      var decChip = ds.decision === "approved" ? "chip-green" : ds.decision === "rejected" ? "chip-red" : "chip-amber";
-      h += '<tr style="border-bottom:1px solid var(--divider);"><td style="padding:8px 12px;">' + esc(ds.issue_week_iso) + '</td><td style="padding:8px 12px;"><span class="chip ' + decChip + '">' + esc(ds.decision) + '</span></td><td style="text-align:right;padding:8px 12px;font-weight:600;">' + (ds.cnt || 0) + '</td></tr>';
-    });
-    h += '</tbody></table></div></div>';
-  }
-
-  if ((!fb.click_rates || fb.click_rates.length === 0) && (!fb.decision_stats || fb.decision_stats.length === 0)) {
-    h += '<div class="card" style="color:var(--text-3);text-align:center;padding:24px;">No feedback data recorded yet. Use the form above to enter metrics.</div>';
-  }
-
-  return h;
+function fetchThreadComments(id) {
+  S.threadCommentsLoading[id] = true; render();
+  api("/api/fetch-thread-comments", { method: "POST", body: { curated_item_id: id } })
+    .then(function(d) {
+      S.threadComments[id] = d.comments || [];
+      S.threadCommentsLoading[id] = false;
+      render();
+    })
+    .catch(function(e) { S.threadCommentsLoading[id] = false; render(); showToast("Error: " + e.message, "error"); });
 }
 
-/* ═════════════════════════════════════════════════════════
-   KEYBOARD SHORTCUTS
-   ═════════════════════════════════════════════════════════ */
-document.addEventListener("keydown", function(e) {
-  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.isContentEditable) return;
-  if (S.page !== "curation") return;
+function proceedThread() {
+  if (!S.selectedThread) { showToast("Select a thread first", "error"); return; }
+  var model = getModel("model-thread");
+  var t = S.threads.find(function(x) { return x.id === S.selectedThread; });
+  var data = { thread_id: t.id, title: t.title || t.summary, comments: S.threadComments[t.id] || [] };
+  S.loading.thread = true; render();
+  api("/api/proceed-section", { method: "POST", body: { section: "thread", model: model, data: data } })
+    .then(function(d) { S.sectionOutputs.thread = { output_text: d.output, model_used: d.model }; S.loading.thread = false; render(); showToast("Thread write-up generated"); })
+    .catch(function(e) { S.loading.thread = false; render(); showToast("Error: " + e.message, "error"); });
+}
 
-  var activeItems = (S.items[S.activeSection] || []).filter(function(i) { return (S.decisions[i.id] || i.decision) !== "rejected"; });
-  if (activeItems.length === 0) return;
+/* ═══════════════════════════════════════════════════════════════════════
+   SECTION: AMP'S FINEST
+   ═══════════════════════════════════════════════════════════════════════ */
+function renderAmpFinest(el) {
+  var h = '<div class="sh"><div><h2>AMP\'s Finest</h2><div class="sub">Manual chart and commentary</div></div></div>';
+  h += '<div class="toolbar">';
+  h += modelSelect("model-amp");
+  h += '<button class="btn btn-success" onclick="proceedAmpFinest()">PROCEED</button>';
+  if (S.loading.amp_finest) h += ' <span class="ingest-spinner"></span>';
+  h += '</div>';
 
-  if (e.key === "j") {
-    e.preventDefault();
-    S.focusedItemIdx = Math.min(S.focusedItemIdx + 1, activeItems.length - 1);
-    render();
-    var focused = document.querySelector('[data-item-idx="' + S.focusedItemIdx + '"]');
-    if (focused) focused.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    return;
-  }
-  if (e.key === "k") {
-    e.preventDefault();
-    S.focusedItemIdx = Math.max(S.focusedItemIdx - 1, 0);
-    render();
-    var focused = document.querySelector('[data-item-idx="' + S.focusedItemIdx + '"]');
-    if (focused) focused.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    return;
-  }
+  var existing = S.ampFinest || {};
+  h += '<div class="card mb20">';
+  h += '<div class="form-group"><label>Data Description</label><textarea class="form-input" id="amp-data-desc" rows="4" placeholder="Describe the data / chart...">' + esc(existing.data_description || "") + '</textarea></div>';
+  h += '<div class="form-group"><label>Notes</label><textarea class="form-input" id="amp-notes" rows="4" placeholder="Any additional notes...">' + esc(existing.notes || "") + '</textarea></div>';
+  h += '<button class="btn btn-sm btn-secondary" onclick="saveAmpData()">Save Data</button>';
+  h += '</div>';
 
-  if (S.focusedItemIdx < 0 || S.focusedItemIdx >= activeItems.length) return;
-  var item = activeItems[S.focusedItemIdx];
-  var dec = S.decisions[item.id] || item.decision || null;
-  if (dec) return; // already decided
+  h += outputBox("amp_finest");
+  el.innerHTML = h;
+  fillOutput("amp_finest");
+}
 
-  if (e.key === "a") {
-    e.preventDefault();
-    api("/api/decision", { method: "POST", body: { curated_item_id: item.id, decision: "approved", section_placed: item.section } })
-      .then(function() { S.decisions[item.id] = "approved"; showToast("Approved"); render(); });
-  }
-  if (e.key === "r") {
-    e.preventDefault();
-    api("/api/decision", { method: "POST", body: { curated_item_id: item.id, decision: "rejected", section_placed: item.section } })
-      .then(function() {
-        S.decisions[item.id] = "rejected";
-        S.focusedItemIdx = Math.min(S.focusedItemIdx, activeItems.length - 2);
-        showToast("Skipped"); render();
+function saveAmpData() {
+  var desc = ($("amp-data-desc") || {}).value || "";
+  var notes = ($("amp-notes") || {}).value || "";
+  api("/api/amp-finest", { method: "POST", body: { data_description: desc, notes: notes } })
+    .then(function() { S.ampFinest = { data_description: desc, notes: notes }; showToast("AMP data saved"); })
+    .catch(function(e) { showToast("Error: " + e.message, "error"); });
+}
+
+function proceedAmpFinest() {
+  var model = getModel("model-amp");
+  var desc = ($("amp-data-desc") || {}).value || "";
+  var notes = ($("amp-notes") || {}).value || "";
+  S.loading.amp_finest = true; render();
+  api("/api/proceed-section", { method: "POST", body: { section: "amp_finest", model: model, data: { data_description: desc, notes: notes } } })
+    .then(function(d) { S.sectionOutputs.amp_finest = { output_text: d.output, model_used: d.model }; S.loading.amp_finest = false; render(); showToast("AMP commentary generated"); })
+    .catch(function(e) { S.loading.amp_finest = false; render(); showToast("Error: " + e.message, "error"); });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SECTION: OFF THE CLOCK
+   ═══════════════════════════════════════════════════════════════════════ */
+var OTC_CATS = [
+  { key: "otc_eating", label: "Eating" },
+  { key: "otc_watching", label: "Watching" },
+  { key: "otc_reading", label: "Reading" },
+  { key: "otc_wearing", label: "Wearing" },
+  { key: "otc_going", label: "Going" },
+];
+
+function renderOTC(el) {
+  var h = '<div class="sh"><div><h2>Off the Clock</h2><div class="sub">Lifestyle picks across 5 categories</div></div></div>';
+  h += '<div class="toolbar">';
+  h += '<button class="btn btn-primary" onclick="runSection(\'off_the_clock\')">SCRAPE</button>';
+  h += '<button class="btn btn-sm btn-secondary" onclick="runSection(\'classify_otc\')">Classify OTC</button>';
+  h += modelSelect("model-otc");
+  h += '<button class="btn btn-success" onclick="proceedOTC()">PROCEED</button>';
+  if (S.loading.off_the_clock) h += ' <span class="ingest-spinner"></span>';
+  h += '</div>';
+
+  if (!S.otcData || !S.otcData.candidates) {
+    h += '<div class="card"><p class="loading">No data yet. Click RUN to pull lifestyle sources.</p></div>';
+  } else {
+    // Existing picks
+    if (S.otcData.picks && S.otcData.picks.length) {
+      h += '<div class="card mb20"><div style="font-weight:600;margin-bottom:10px;">Current Picks</div>';
+      S.otcData.picks.forEach(function(p) {
+        h += '<div class="fr mb8"><span class="chip chip-amber">' + esc(p.category || "") + '</span> <span style="font-size:13px;">' + esc(p.summary || p.editor_blurb || "") + '</span></div>';
       });
-  }
-  if (e.key === "s") {
-    e.preventDefault();
-    api("/api/decision", { method: "POST", body: { curated_item_id: item.id, decision: "reserve", section_placed: item.section } })
-      .then(function() { S.decisions[item.id] = "reserve"; showToast("Reserved"); render(); });
-  }
-});
+      h += '</div>';
+    }
 
-/* ═════════════════════════════════════════════════════════
+    // Categories with candidates
+    h += '<div class="otc-cats">';
+    OTC_CATS.forEach(function(cat) {
+      var candidates = S.otcData.candidates[cat.key] || [];
+      h += '<div class="card otc-cat-card">';
+      h += '<div class="otc-cat-title">' + esc(cat.label) + ' ';
+      h += '<span style="font-size:11px;color:var(--text-3);">' + candidates.length + ' items</span></div>';
+      if (!candidates.length) {
+        h += '<p style="font-size:12px;color:var(--text-3);">No candidates</p>';
+      } else {
+        // Initialise all selected on first render
+        if (!S.otcSelected[cat.key]) {
+          S.otcSelected[cat.key] = {};
+          candidates.forEach(function(c) { S.otcSelected[cat.key][c.id] = true; });
+        }
+        candidates.forEach(function(c) {
+          var checked = S.otcSelected[cat.key][c.id] ? " checked" : "";
+          var city = c.city ? '<span class="chip chip-default" style="font-size:10px;">' + esc(c.city) + '</span> ' : "";
+          var src = '<span style="font-size:11px;color:var(--text-3);">' + esc(c.source || "") + '</span>';
+          h += '<div class="fr mb8" style="align-items:flex-start;gap:8px;">';
+          h += '<input type="checkbox"' + checked + ' onchange="toggleOtcSelect(\'' + cat.key + '\',' + c.id + ',this.checked)" style="margin-top:2px;flex-shrink:0;">';
+          h += '<div style="flex:1;">';
+          h += '<div style="font-size:13px;">' + esc(c.title || c.summary) + '</div>';
+          h += '<div style="margin-top:2px;">' + city + src + '</div>';
+          h += '</div></div>';
+          // Radio pick (existing behaviour — kept for final pick selection)
+          var sel = S.otcPicks[cat.key] === c.id;
+          if (S.otcSelected[cat.key][c.id]) {
+            h += '<div style="margin-left:26px;margin-bottom:6px;">';
+            h += '<label style="font-size:11px;cursor:pointer;">';
+            h += '<input type="radio" name="otc-pick-' + cat.key + '" ' + (sel ? "checked" : "") + ' onchange="pickOTC(\'' + cat.key + '\',' + c.id + ')">';
+            h += ' Pick this one';
+            h += '</label>';
+            if (sel) {
+              h += '<textarea class="form-input" id="otc-blurb-' + c.id + '" rows="2" placeholder="Blurb..." style="margin-top:4px;" onchange="updateOTCBlurb(\'' + cat.key + '\',this.value)">' + esc(S.otcBlurbs[cat.key] || "") + '</textarea>';
+            }
+            h += '</div>';
+          }
+        });
+      }
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+
+  h += '<div class="mt20">' + outputBox("off_the_clock") + '</div>';
+  el.innerHTML = h;
+  fillOutput("off_the_clock");
+}
+
+function toggleOtcSelect(cat, id, val) {
+  if (!S.otcSelected[cat]) S.otcSelected[cat] = {};
+  S.otcSelected[cat][id] = val;
+  if (!val && S.otcPicks[cat] === id) {
+    delete S.otcPicks[cat];
+  }
+  render();
+}
+
+function pickOTC(cat, id) {
+  S.otcPicks[cat] = id;
+  render();
+}
+
+function updateOTCBlurb(cat, val) { S.otcBlurbs[cat] = val; }
+
+function proceedOTC() {
+  var model = getModel("model-otc");
+  var picks = [];
+  var selectedByCategory = {};
+  OTC_CATS.forEach(function(cat) {
+    if (S.otcPicks[cat.key]) {
+      picks.push({ category: cat.key, curated_item_id: S.otcPicks[cat.key], blurb: S.otcBlurbs[cat.key] || "" });
+    }
+    // Collect selected item IDs for this category
+    var sel = S.otcSelected[cat.key] || {};
+    selectedByCategory[cat.key] = Object.keys(sel).filter(function(id) { return sel[id]; }).map(Number);
+  });
+  S.proceedData.off_the_clock = {
+    section: "off_the_clock",
+    model: model,
+    data: { picks: picks, selected_by_category: selectedByCategory },
+  };
+  var savePromises = picks.map(function(p) {
+    return api("/api/off-the-clock/pick", { method: "POST", body: p }).catch(function() {});
+  });
+  Promise.all(savePromises).then(function() {
+    openProceedModal("off_the_clock");
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SECTION: EVENTS
+   ═══════════════════════════════════════════════════════════════════════ */
+function renderEvents(el) {
+  var h = '<div class="sh"><div><h2>Events</h2><div class="sub">Upcoming events for the newsletter</div></div></div>';
+
+  // Add form
+  h += '<div class="card mb20">';
+  h += '<div style="font-weight:600;margin-bottom:12px;">Add Event</div>';
+  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">';
+  h += '<div class="form-group"><label>Date</label><input class="form-input" type="date" id="evt-date"></div>';
+  h += '<div class="form-group"><label>Time</label><input class="form-input" id="evt-time" placeholder="e.g. 6-8pm"></div>';
+  h += '<div class="form-group"><label>Title</label><input class="form-input" id="evt-title" placeholder="Event name"></div>';
+  h += '<div class="form-group"><label>Location</label><input class="form-input" id="evt-location" placeholder="Venue / City"></div>';
+  h += '<div class="form-group"><label>Price</label><input class="form-input" id="evt-price" placeholder="Free / $50"></div>';
+  h += '<div class="form-group"><label>Description</label><input class="form-input" id="evt-desc" placeholder="Short description"></div>';
+  h += '</div>';
+  h += '<button class="btn btn-primary mt8" onclick="addEvent()">Add Event</button>';
+  h += '</div>';
+
+  // List
+  h += '<div class="fc">';
+  if (S.events && S.events.length) {
+    S.events.forEach(function(e) {
+      h += '<div class="card hov">';
+      h += '<div class="fb">';
+      h += '<div><strong>' + esc(e.title) + '</strong>';
+      h += '<div style="font-size:12px;color:var(--text-3);margin-top:2px;">' + esc(e.event_date || "") + (e.time_range ? " &middot; " + esc(e.time_range) : "") + (e.location ? " &middot; " + esc(e.location) : "") + '</div>';
+      if (e.price) h += '<div style="font-size:12px;color:var(--text-2);margin-top:2px;">' + esc(e.price) + '</div>';
+      if (e.description) h += '<div style="font-size:13px;color:var(--text-2);margin-top:4px;">' + esc(e.description) + '</div>';
+      h += '</div>';
+      h += '<button class="btn btn-sm btn-danger" onclick="deleteEvent(' + e.id + ')">Delete</button>';
+      h += '</div></div>';
+    });
+  } else {
+    h += '<div class="card"><p style="color:var(--text-3);font-size:13px;">No events yet.</p></div>';
+  }
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+function addEvent() {
+  var body = {
+    event_date: ($("evt-date") || {}).value || "",
+    title: ($("evt-title") || {}).value || "",
+    location: ($("evt-location") || {}).value || "",
+    time_range: ($("evt-time") || {}).value || "",
+    price: ($("evt-price") || {}).value || "",
+    description: ($("evt-desc") || {}).value || "",
+  };
+  if (!body.title.trim()) { showToast("Title is required", "error"); return; }
+  api("/api/events", { method: "POST", body: body })
+    .then(function() {
+      showToast("Event added");
+      return api("/api/events").then(function(d) { S.events = d.events || []; render(); });
+    })
+    .catch(function(e) { showToast("Error: " + e.message, "error"); });
+}
+
+function deleteEvent(id) {
+  api("/api/events/" + id, { method: "DELETE" })
+    .then(function() {
+      showToast("Event deleted");
+      S.events = S.events.filter(function(e) { return e.id !== id; });
+      render();
+    })
+    .catch(function(e) { showToast("Error: " + e.message, "error"); });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SECTION: ASSEMBLE
+   ═══════════════════════════════════════════════════════════════════════ */
+function renderAssemble(el) {
+  var h = '<div class="sh"><div><h2>Assemble</h2><div class="sub">Preview and export the newsletter</div></div></div>';
+
+  // Status grid
+  var sections = ["editorial","pulse","big_conversation","whispers","lobby","finds","thread","amp_finest","off_the_clock","events"];
+  h += '<div class="asm-grid">';
+  sections.forEach(function(s) {
+    var out = S.sectionOutputs[s];
+    var done = out && out.output_text;
+    var dotClass = done ? "done" : "pending";
+    // Events and whispers are always "done" if they have data
+    if (s === "events" && S.events && S.events.length) { dotClass = "done"; done = true; }
+    if (s === "whispers" && S.whispers && S.whispers.length) { dotClass = "done"; done = true; }
+    h += '<div class="card asm-item"><span class="asm-dot ' + dotClass + '"></span><span class="asm-name">' + esc(s.replace(/_/g, " ")) + '</span></div>';
+  });
+  h += '</div>';
+
+  // Assembled preview
+  h += '<div class="card mb20">';
+  h += '<div class="fb mb8"><span style="font-weight:600;">Newsletter Preview</span>';
+  h += '<button class="btn btn-sm btn-primary" onclick="copyAssembly()">Copy to Clipboard</button></div>';
+  h += '<textarea class="form-input" id="assembly-preview" style="min-height:400px;font-size:13px;line-height:1.8;" readonly>';
+
+  // Concatenate all sections
+  var order = ["editorial","pulse","big_conversation","whispers","lobby","finds","thread","amp_finest","off_the_clock","events"];
+  var labels = {
+    editorial: "GM",
+    pulse: "THE PULSE",
+    big_conversation: "THE BIG CONVERSATION",
+    whispers: "WHISPERS",
+    lobby: "THE LOBBY",
+    finds: "FINDS",
+    thread: "THE THREAD",
+    amp_finest: "AMP'S FINEST",
+    off_the_clock: "OFF THE CLOCK",
+    events: "EVENTS",
+  };
+  order.forEach(function(s) {
+    var out = S.sectionOutputs[s];
+    if (out && out.output_text) {
+      h += "=== " + esc(labels[s] || s.toUpperCase()) + " ===\n\n";
+      h += esc(out.output_text) + "\n\n";
+    } else if (s === "events" && S.events && S.events.length) {
+      h += "=== EVENTS ===\n\n";
+      S.events.forEach(function(e) {
+        h += esc(e.title) + " - " + esc(e.event_date || "") + "\n";
+        if (e.location) h += esc(e.location);
+        if (e.time_range) h += " | " + esc(e.time_range);
+        if (e.price) h += " | " + esc(e.price);
+        h += "\n";
+        if (e.description) h += esc(e.description) + "\n";
+        h += "\n";
+      });
+    } else if (s === "whispers" && S.whispers && S.whispers.length) {
+      h += "=== WHISPERS ===\n\n";
+      S.whispers.forEach(function(w) {
+        h += "- " + esc(w.summary || w.title || w.text) + " [" + esc(w.confidence_tag || "yellow") + "]\n";
+      });
+      h += "\n";
+    }
+  });
+
+  h += '</textarea></div>';
+  el.innerHTML = h;
+}
+
+function copyAssembly() {
+  var ta = $("assembly-preview");
+  if (ta) {
+    navigator.clipboard.writeText(ta.value).then(function() {
+      showToast("Copied to clipboard");
+    }).catch(function() {
+      ta.select(); document.execCommand("copy");
+      showToast("Copied to clipboard");
+    });
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SHARED: Output box + Save + Run
+   ═══════════════════════════════════════════════════════════════════════ */
+function outputBox(section) {
+  var h = '<div class="output-box">';
+  h += '<div class="fb mb8"><span style="font-weight:600;font-size:13px;">Output</span>';
+  h += '<button class="btn btn-sm btn-success" onclick="saveOutput(\'' + section + '\')">Save</button></div>';
+  h += '<textarea id="output-' + section + '" placeholder="Generated output will appear here..."></textarea>';
+  h += '</div>';
+  return h;
+}
+
+function fillOutput(section) {
+  var ta = $("output-" + section);
+  if (ta && S.sectionOutputs[section] && S.sectionOutputs[section].output_text) {
+    ta.value = S.sectionOutputs[section].output_text;
+  }
+}
+
+function saveOutput(section) {
+  var ta = $("output-" + section);
+  if (!ta) return;
+  api("/api/section-output/" + section, { method: "POST", body: { output_text: ta.value } })
+    .then(function() {
+      S.sectionOutputs[section] = S.sectionOutputs[section] || {};
+      S.sectionOutputs[section].output_text = ta.value;
+      showToast("Saved " + section.replace(/_/g, " "));
+      renderSidebar();
+    })
+    .catch(function(e) { showToast("Error: " + e.message, "error"); });
+}
+
+function runSection(section) {
+  S.loading[section] = true; render();
+  // Fire and forget — returns immediately, runs in background on server
+  api("/api/run-section", { method: "POST", body: { section: section } })
+    .then(function(d) {
+      if (!d.started) { S.loading[section] = false; render(); showToast(d.message || "Already running", "error"); return; }
+      showToast(section.replace(/_/g, " ") + " scraping...");
+      // Poll for completion
+      pollSectionStatus(section);
+    })
+    .catch(function(e) { S.loading[section] = false; render(); showToast("Error: " + e.message, "error"); });
+}
+
+function pollSectionStatus(section) {
+  var poll = setInterval(function() {
+    fetch("/api/section-status/" + section).then(function(r) { return r.json(); }).then(function(d) {
+      if (!d.running && d.done) {
+        clearInterval(poll);
+        S.loading[section] = false;
+        if (d.error) {
+          showToast(section.replace(/_/g, " ") + " failed: " + d.error, "error");
+        } else {
+          showToast(section.replace(/_/g, " ") + " complete");
+        }
+        // Invalidate cached data
+        switch (section) {
+          case "pulse": S.pulse = null; S.trends = null; break;
+          case "finds": case "editorial": case "classify": S.items = null; S.bigConvCandidates = null; break;
+          case "lobby": S.lobby = null; break;
+          case "thread": S.threads = null; break;
+          case "off_the_clock": case "classify_otc": S.otcData = null; break;
+          case "big_conversation": S.bigConvCandidates = null; break;
+        }
+        // Reload if still on the relevant page
+        var pageForSection = {pulse:"pulse", finds:"finds", editorial:"editorial", classify:"finds", lobby:"lobby", thread:"thread", off_the_clock:"off_the_clock", classify_otc:"off_the_clock", big_conversation:"big_conversation"};
+        var relevantPage = pageForSection[section] || section;
+        if (S.page === relevantPage) {
+          loadPageData(S.page).then(function() { render(); });
+        } else {
+          render(); // Update sidebar status
+        }
+      }
+    }).catch(function() { /* ignore poll errors */ });
+  }, 2000); // Poll every 2 seconds
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PROCEED MODAL
+   ═══════════════════════════════════════════════════════════════════════ */
+function openProceedModal(section, items) {
+  S.proceedModal = { open: true, section: section, prompt: "", lean: "", items: items || [], loading: true };
+  render();
+  api("/api/preview-prompt", { method: "POST", body: { section: section, data: S.proceedData[section] || {} } })
+    .then(function(d) {
+      S.proceedModal.prompt = d.prompt || "";
+      S.proceedModal.loading = false;
+      render();
+    })
+    .catch(function() {
+      S.proceedModal.prompt = "(Could not load prompt preview)";
+      S.proceedModal.loading = false;
+      render();
+    });
+}
+
+function closeProceedModal() {
+  S.proceedModal = { open: false, section: null, prompt: "", lean: "", items: [], loading: false };
+  render();
+}
+
+function confirmAndGenerate() {
+  var modal = S.proceedModal;
+  var section = modal.section;
+  var lean = modal.lean.trim();
+  var customPrompt = lean ? lean + "\n\n" + modal.prompt : modal.prompt;
+  S.proceedModal.open = false;
+  S.loading[section] = true;
+  render();
+  var body = Object.assign({}, S.proceedData[section] || {}, {
+    section: section,
+    custom_prompt: customPrompt,
+  });
+  api("/api/proceed-section", { method: "POST", body: body })
+    .then(function(d) {
+      S.sectionOutputs[section] = { output_text: d.output, model_used: d.model };
+      S.loading[section] = false;
+      render();
+      showToast(section.replace(/_/g, " ") + " generated");
+    })
+    .catch(function(e) {
+      S.loading[section] = false;
+      render();
+      showToast("Error: " + e.message, "error");
+    });
+}
+
+function renderProceedModal() {
+  if (!S.proceedModal.open) return "";
+  var modal = S.proceedModal;
+  var h = '<div class="modal-overlay" onclick="if(event.target===this)closeProceedModal()">';
+  h += '<div class="modal-box">';
+  h += '<h3>Generate ' + esc(modal.section.replace(/_/g, " ")) + '</h3>';
+  h += '<div class="modal-section-label">Editorial lean (optional)</div>';
+  h += '<input class="form-input" style="margin-bottom:12px;" placeholder="e.g. Focus on Big 4 this week..." value="' + esc(modal.lean) + '" oninput="S.proceedModal.lean=this.value">';
+  h += '<div class="modal-section-label">Prompt</div>';
+  if (modal.loading) {
+    h += '<div class="loading" style="padding:20px 0;">Loading prompt...</div>';
+  } else {
+    h += '<textarea class="form-input" rows="14" style="font-family:monospace;font-size:12px;" oninput="S.proceedModal.prompt=this.value">' + esc(modal.prompt) + '</textarea>';
+  }
+  h += '<div class="modal-footer">';
+  h += '<button class="btn btn-secondary" onclick="closeProceedModal()">Cancel</button>';
+  h += '<button class="btn btn-success" onclick="confirmAndGenerate()" ' + (modal.loading ? 'disabled' : '') + '>Confirm & Generate</button>';
+  h += '</div></div></div>';
+  return h;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    INIT
-   ═════════════════════════════════════════════════════════ */
-Promise.all([loadPulse(), loadItems(), loadThread(), loadSeeds(), loadSeedItems(), loadSeedTags(), loadDraft(), loadRunLog(), loadStatus()])
-  .catch(function(e) { console.error("Failed to load data:", e); })
-  .then(function() { render(); });
+   ═══════════════════════════════════════════════════════════════════════ */
+function init() {
+  Promise.all([
+    api("/api/models").catch(function() { return { models: [] }; }),
+    api("/api/section-outputs").catch(function() { return { outputs: {} }; }),
+    api("/api/pulse").catch(function() { return { pulse: null, signals: [], anomalies: [], week_iso: "" }; }),
+    api("/api/pulse/trends").catch(function() { return null; }),
+  ]).then(function(results) {
+    S.models = results[0].models || [];
+    S.sectionOutputs = results[1].outputs || {};
+    S.weekIso = results[1].week_iso || results[2].week_iso || "";
+    S.pulse = results[2].pulse;
+    S.signals = results[2].signals || [];
+    S.anomalies = results[2].anomalies || [];
+    S.trends = results[3] || null;
+    render();
+  });
+}
+
+init();
 </script>
 </body>
 </html>

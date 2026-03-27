@@ -219,6 +219,7 @@ def migrate_db() -> None:
     simple_migrations = [
         "ALTER TABLE raw_items ADD COLUMN top_comments TEXT",
         "ALTER TABLE curated_items ADD COLUMN our_take TEXT",
+        "ALTER TABLE curated_items ADD COLUMN au_relevance INTEGER",
     ]
     for sql in simple_migrations:
         try:

@@ -118,6 +118,12 @@ def classify_single_item(raw_item: dict) -> dict | None:
         tags = []
     result["tags"] = [str(t) for t in tags]
 
+    # Validate au_relevance — integer 0-10, default 5 if missing
+    au_rel = result.get("au_relevance", 5)
+    if not isinstance(au_rel, (int, float)):
+        au_rel = 5
+    result["au_relevance"] = max(0, min(10, int(au_rel)))
+
     return result
 
 
@@ -165,7 +171,10 @@ BATCH_CLASSIFICATION_PROMPT = (
     "\n"
     "Output a JSON array with one object per item, in the SAME ORDER as the items above.\n"
     "Each object must have these exact keys:\n"
-    "section, relevance, novelty, reliability, tension, usefulness, confidence_tag, summary, tags\n"
+    "section, relevance, novelty, reliability, tension, usefulness, confidence_tag, summary, tags, au_relevance\n"
+    "\n"
+    "au_relevance (0-10): How directly relevant to Australian workers, businesses, or markets? "
+    "0 = purely international, 10 = specifically Australian.\n"
     "\n"
     "Output ONLY the JSON array. Nothing else."
 )
@@ -223,6 +232,12 @@ def _validate_single_result(result: dict, raw_item: dict) -> dict:
     if not isinstance(tags, list):
         tags = []
     result["tags"] = [str(t) for t in tags]
+
+    # Validate au_relevance — integer 0-10, default 5 if missing
+    au_rel = result.get("au_relevance", 5)
+    if not isinstance(au_rel, (int, float)):
+        au_rel = 5
+    result["au_relevance"] = max(0, min(10, int(au_rel)))
 
     return result
 
@@ -395,8 +410,8 @@ def classify_all_unclassified() -> dict:
             """INSERT INTO curated_items
             (raw_item_id, section, summary, score_relevance, score_novelty,
              score_reliability, score_tension, score_usefulness, weighted_composite,
-             tags, confidence_tag)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             tags, confidence_tag, au_relevance)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 item_dict["id"],
                 result["section"],
@@ -409,6 +424,7 @@ def classify_all_unclassified() -> dict:
                 result["weighted_composite"],
                 json.dumps(result["tags"]),
                 result["confidence_tag"],
+                result.get("au_relevance", 5),
             ),
         )
         conn.execute(

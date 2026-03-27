@@ -229,3 +229,59 @@ def test_whisper_low_tension_auto_discards(
         result = classify_single_item(item)
         assert result is not None
         assert result["section"] == "discard"
+
+
+def test_au_relevance_column_exists(temp_db):
+    """curated_items must have an au_relevance column after migration."""
+    import sqlite3
+    conn = sqlite3.connect(temp_db)
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(curated_items)").fetchall()}
+    conn.close()
+    assert "au_relevance" in cols
+
+
+def test_classify_stores_au_relevance(populated_db, mock_gemini):
+    """classify_all_unclassified should store au_relevance from the LLM response."""
+    mock_gemini.return_value = json.dumps({
+        "section": "finds",
+        "relevance": 4,
+        "novelty": 3,
+        "reliability": 4,
+        "tension": 3,
+        "usefulness": 4,
+        "summary": "A useful tool for corporate professionals.",
+        "tags": ["tools"],
+        "confidence_tag": None,
+        "au_relevance": 8,
+    })
+    with patch.object(db_module, "DB_PATH", populated_db):
+        with patch("flatwhite.db.get_current_week_iso", return_value="2026-W12"):
+            with patch("flatwhite.classify.classifier.get_current_week_iso", return_value="2026-W12"):
+                from flatwhite.classify.classifier import classify_all_unclassified
+                from flatwhite.db import get_connection
+                classify_all_unclassified()
+                conn = get_connection()
+                row = conn.execute("SELECT au_relevance FROM curated_items LIMIT 1").fetchone()
+                conn.close()
+                assert row is not None
+                assert row[0] == 8
+
+
+def test_classify_au_relevance_clamped(populated_db, mock_gemini):
+    """au_relevance out of 0-10 range is clamped."""
+    mock_gemini.return_value = json.dumps({
+        "section": "finds",
+        "relevance": 4, "novelty": 3, "reliability": 4, "tension": 3, "usefulness": 4,
+        "summary": "A tool.", "tags": [], "confidence_tag": None,
+        "au_relevance": 99,
+    })
+    with patch.object(db_module, "DB_PATH", populated_db):
+        with patch("flatwhite.db.get_current_week_iso", return_value="2026-W12"):
+            with patch("flatwhite.classify.classifier.get_current_week_iso", return_value="2026-W12"):
+                from flatwhite.classify.classifier import classify_all_unclassified
+                from flatwhite.db import get_connection
+                classify_all_unclassified()
+                conn = get_connection()
+                row = conn.execute("SELECT au_relevance FROM curated_items LIMIT 1").fetchone()
+                conn.close()
+                assert row[0] == 10

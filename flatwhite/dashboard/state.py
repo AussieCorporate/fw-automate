@@ -10,6 +10,264 @@ from typing import Any
 from flatwhite.db import get_connection, get_current_week_iso
 
 
+_AREA_LABELS = {
+    "labour_market": "Labour Market",
+    "economic": "Financial & Economic",
+    "corporate_stress": "Corporate Stress",
+}
+
+
+def load_signal_trends(n_weeks: int = 6) -> dict[str, Any]:
+    """Return category-level WoW deltas and biggest signal movers for the trends panel.
+
+    Computes weighted-average scores per area for the last n_weeks ISO weeks.
+    Returns:
+      categories        — list of {area, label, current_score, prev_score, delta, history}
+      biggest_movers    — top 5 signals with largest absolute WoW delta
+      all_signal_deltas — WoW deltas for ALL signals, keyed by signal_name
+      weeks_available   — how many weeks of actual data exist (for cold-start UX)
+    Consumed by: api.py -> /api/pulse/trends.
+    """
+    import datetime
+
+    conn = get_connection()
+    week_iso = get_current_week_iso()
+
+    # Build ISO week list: oldest first, current last
+    year, week_num = int(week_iso[:4]), int(week_iso[6:])
+    dt = datetime.datetime.strptime(f"{year}-W{week_num:02d}-1", "%G-W%V-%u")
+    week_isos: list[str] = []
+    for i in range(n_weeks - 1, -1, -1):
+        week_isos.append((dt - datetime.timedelta(weeks=i)).strftime("%G-W%V"))
+
+    placeholders = ",".join("?" for _ in week_isos)
+    rows = conn.execute(
+        f"""SELECT week_iso, signal_name, area, normalised_score, source_weight
+            FROM signals
+            WHERE week_iso IN ({placeholders}) AND lane = 'pulse'
+            ORDER BY week_iso, area, signal_name""",
+        week_isos,
+    ).fetchall()
+
+    # Also pull composite history
+    ph_rows = conn.execute(
+        f"""SELECT week_iso, smoothed_score, composite_score
+            FROM pulse_history
+            WHERE week_iso IN ({placeholders})
+            ORDER BY week_iso""",
+        week_isos,
+    ).fetchall()
+    conn.close()
+
+    # Index signals by week
+    by_week: dict[str, list[dict]] = {w: [] for w in week_isos}
+    for r in rows:
+        by_week[r["week_iso"]].append(dict(r))
+
+    weeks_with_data = [w for w in week_isos if by_week[w]]
+    current_week = week_isos[-1]
+    prev_week = weeks_with_data[-2] if len(weeks_with_data) >= 2 else None
+
+    def weighted_avg(signals: list[dict], area: str) -> float | None:
+        rel = [s for s in signals if s["area"] == area and s["source_weight"] > 0]
+        total_wt = sum(s["source_weight"] for s in rel)
+        if not rel or total_wt == 0:
+            return None
+        return sum(s["normalised_score"] * s["source_weight"] for s in rel) / total_wt
+
+    # Build category objects
+    categories: list[dict] = []
+    for area in ("labour_market", "economic", "corporate_stress"):
+        history = []
+        for w in week_isos:
+            sc = weighted_avg(by_week[w], area)
+            if sc is not None:
+                history.append({"week_iso": w, "score": round(sc, 1)})
+
+        current_score = weighted_avg(by_week[current_week], area) if by_week[current_week] else None
+        prev_score = weighted_avg(by_week[prev_week], area) if prev_week else None
+        delta = round(current_score - prev_score, 1) if current_score is not None and prev_score is not None else None
+
+        # Top 3 signal scores in this area for current week
+        sigs = sorted(
+            [s for s in by_week[current_week] if s["area"] == area and s["source_weight"] > 0],
+            key=lambda x: -x["normalised_score"],
+        )
+        top_signals = [
+            {"name": s["signal_name"], "score": round(s["normalised_score"], 1)}
+            for s in sigs[:4]
+        ]
+
+        categories.append({
+            "area": area,
+            "label": _AREA_LABELS.get(area, area),
+            "current_score": round(current_score, 1) if current_score is not None else None,
+            "prev_score": round(prev_score, 1) if prev_score is not None else None,
+            "delta": delta,
+            "history": history,
+            "top_signals": top_signals,
+        })
+
+    # Biggest movers: signals with largest absolute WoW delta
+    biggest_movers: list[dict] = []
+    if prev_week:
+        prev_map = {s["signal_name"]: s for s in by_week[prev_week]}
+        curr_map = {s["signal_name"]: s for s in by_week[current_week]}
+        for name, curr in curr_map.items():
+            if name in prev_map and curr["source_weight"] > 0:
+                d = curr["normalised_score"] - prev_map[name]["normalised_score"]
+                biggest_movers.append({
+                    "signal": name,
+                    "area": curr["area"],
+                    "score": round(curr["normalised_score"], 1),
+                    "prev_score": round(prev_map[name]["normalised_score"], 1),
+                    "delta": round(d, 1),
+                })
+        biggest_movers.sort(key=lambda x: abs(x["delta"]), reverse=True)
+        biggest_movers = biggest_movers[:5]
+
+    # All-signal deltas (not just top 5) — keyed by signal_name
+    all_signal_deltas: dict[str, dict] = {}
+    if prev_week:
+        prev_map_all = {s["signal_name"]: s for s in by_week[prev_week]}
+        for name, curr in curr_map.items():
+            prev = prev_map_all.get(name)
+            delta = round(curr["normalised_score"] - prev["normalised_score"], 1) if prev else None
+            all_signal_deltas[name] = {
+                "score": round(curr["normalised_score"], 1),
+                "prev_score": round(prev["normalised_score"], 1) if prev else None,
+                "delta": delta,
+                "area": curr["area"],
+                "source_weight": curr["source_weight"],
+            }
+
+    # Composite history
+    composite_history = [
+        {"week_iso": r["week_iso"], "score": round(r["smoothed_score"] or r["composite_score"] or 0, 1)}
+        for r in ph_rows
+    ]
+
+    return {
+        "categories": categories,
+        "biggest_movers": biggest_movers,
+        "all_signal_deltas": all_signal_deltas,
+        "composite_history": composite_history,
+        "weeks_available": len(weeks_with_data),
+    }
+
+
+def load_reddit_comparison(week_iso: str | None = None) -> dict[str, Any]:
+    """Compare editorial top stories against crowd engagement for r/auscorp.
+
+    Engagement formula: post_score + comment_engagement * 0.5
+    Returns editorial top-10 with engagement ranks, engagement top-10 with editorial ranks,
+    and high-engagement misses (in engagement top-10 but not editorial top-5).
+    Consumed by: api.py -> /api/reddit/compare.
+    """
+    conn = get_connection()
+    w = week_iso or get_current_week_iso()
+
+    # Get all r/auscorp posts this week that have been curated (have editorial scores)
+    rows = conn.execute(
+        """
+        SELECT
+            ri.id, ri.title, ri.url, ri.post_score, ri.comment_engagement,
+            ci.weighted_composite AS editorial_score
+        FROM raw_items ri
+        JOIN curated_items ci ON ci.raw_item_id = ri.id
+        WHERE ri.week_iso = ?
+          AND ri.source = 'reddit_rss'
+          AND ri.subreddit = 'auscorp'
+        ORDER BY ci.weighted_composite DESC
+        """,
+        (w,),
+    ).fetchall()
+    conn.close()
+
+    if not rows:
+        return {
+            "week_iso": w,
+            "editorial_top5": [],
+            "engagement_top5": [],
+            "high_engagement_misses": [],
+            "overlap_count": 0,
+            "has_engagement_data": False,
+        }
+
+    posts = [dict(r) for r in rows]
+    has_engagement_data = any(p["post_score"] is not None for p in posts)
+
+    # Compute engagement scores
+    for p in posts:
+        ps = p["post_score"] or 0
+        ce = p["comment_engagement"] or 0
+        p["engagement_score"] = round(ps + ce * 0.5, 1)
+
+    # Editorial ranking (already sorted by weighted_composite DESC)
+    for i, p in enumerate(posts):
+        p["editorial_rank"] = i + 1
+
+    # Engagement ranking
+    by_engagement = sorted(posts, key=lambda x: -x["engagement_score"])
+    for i, p in enumerate(by_engagement):
+        p["engagement_rank"] = i + 1
+
+    editorial_top5_ids = {p["id"] for p in posts[:5]}
+
+    editorial_top5 = [
+        {
+            "rank": p["editorial_rank"],
+            "title": p["title"],
+            "url": p["url"],
+            "editorial_score": round(p["editorial_score"] or 0, 2),
+            "post_score": p["post_score"],
+            "comment_engagement": p["comment_engagement"],
+            "engagement_score": p["engagement_score"],
+            "engagement_rank": p["engagement_rank"],
+        }
+        for p in posts[:5]
+    ]
+
+    engagement_top5 = [
+        {
+            "rank": p["engagement_rank"],
+            "title": p["title"],
+            "url": p["url"],
+            "engagement_score": p["engagement_score"],
+            "post_score": p["post_score"],
+            "comment_engagement": p["comment_engagement"],
+            "editorial_score": round(p["editorial_score"] or 0, 2),
+            "editorial_rank": p["editorial_rank"],
+        }
+        for p in by_engagement[:5]
+    ]
+
+    # High engagement misses: in engagement top-10 but NOT in editorial top-5
+    high_engagement_misses = [
+        {
+            "title": p["title"],
+            "url": p["url"],
+            "engagement_score": p["engagement_score"],
+            "post_score": p["post_score"],
+            "comment_engagement": p["comment_engagement"],
+            "editorial_rank": p["editorial_rank"],
+        }
+        for p in by_engagement[:10]
+        if p["id"] not in editorial_top5_ids
+    ]
+
+    overlap_count = len(editorial_top5_ids & {p["id"] for p in by_engagement[:5]})
+
+    return {
+        "week_iso": w,
+        "editorial_top5": editorial_top5,
+        "engagement_top5": engagement_top5,
+        "high_engagement_misses": high_engagement_misses,
+        "overlap_count": overlap_count,
+        "has_engagement_data": has_engagement_data,
+    }
+
+
 def load_pulse_state() -> dict[str, Any] | None:
     """Return the pulse_history row for the current ISO week, or None if not found.
 
@@ -70,6 +328,7 @@ def load_curated_items_by_section() -> dict[str, list[dict[str, Any]]]:
             ci.score_relevance, ci.score_novelty, ci.score_reliability,
             ci.score_tension, ci.score_usefulness,
             ci.weighted_composite, ci.tags, ci.confidence_tag, ci.created_at,
+            ci.au_relevance,
             ri.title, ri.body, ri.source, ri.url, ri.subreddit,
             ed.decision, ed.id AS decision_id
         FROM curated_items ci
@@ -334,3 +593,132 @@ def load_saved_draft(section: str = "big_conversation") -> dict | None:
     ).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+# ─── OFF THE CLOCK STATE ─────────────────────────────────────────────────────
+
+OTC_SECTIONS = ["otc_eating", "otc_watching", "otc_reading", "otc_wearing", "otc_going"]
+
+OTC_CATEGORY_LABELS = {
+    "otc_eating": "Eating",
+    "otc_watching": "Watching",
+    "otc_reading": "Reading",
+    "otc_wearing": "Wearing",
+    "otc_going": "Going",
+}
+
+
+def load_otc_candidates(week_iso: str | None = None) -> dict[str, list[dict[str, Any]]]:
+    """Return Off the Clock candidates grouped by category for the editor pick UI.
+
+    Returns all candidates (no cap) sorted by weighted_composite DESC.
+    Output: dict with keys 'otc_eating', 'otc_watching', etc.
+    """
+    conn = get_connection()
+    w = week_iso or get_current_week_iso()
+
+    rows = conn.execute(
+        """
+        SELECT
+            ci.id, ci.section, ci.summary, ci.weighted_composite,
+            ci.score_relevance, ci.score_tension,
+            ri.title, ri.source, ri.url, ri.subreddit AS city,
+            ri.lifestyle_category,
+            ed.decision, ed.id AS decision_id
+        FROM curated_items ci
+        JOIN raw_items ri ON ci.raw_item_id = ri.id
+        LEFT JOIN editor_decisions ed
+            ON ed.curated_item_id = ci.id AND ed.issue_week_iso = ?
+        WHERE ri.week_iso = ?
+          AND ci.section IN ('otc_eating', 'otc_watching', 'otc_reading', 'otc_wearing', 'otc_going')
+        ORDER BY ci.weighted_composite DESC
+        """,
+        (w, w),
+    ).fetchall()
+    conn.close()
+
+    grouped: dict[str, list[dict[str, Any]]] = {s: [] for s in OTC_SECTIONS}
+    for row in rows:
+        d = dict(row)
+        section = d["section"]
+        if section in grouped:
+            grouped[section].append(d)  # no cap
+
+    return grouped
+
+
+def save_otc_pick(
+    category: str,
+    curated_item_id: int,
+    editor_blurb: str,
+    week_iso: str | None = None,
+) -> int:
+    """Save an editor's Off the Clock pick for a category.
+
+    Approves the chosen curated_item and stores the editor's blurb as our_take.
+    Any previous OTC pick for this category+week is rejected.
+    Returns the editor_decisions row id.
+    """
+    w = week_iso or get_current_week_iso()
+    conn = get_connection()
+
+    # Reject any previous pick for this category this week
+    conn.execute(
+        """UPDATE editor_decisions SET decision = 'rejected'
+        WHERE issue_week_iso = ? AND section_placed = ?
+        AND decision = 'approved'""",
+        (w, category),
+    )
+
+    # Approve the new pick
+    cursor = conn.execute(
+        """INSERT INTO editor_decisions (curated_item_id, decision, section_placed, issue_week_iso)
+        VALUES (?, 'approved', ?, ?)""",
+        (curated_item_id, category, w),
+    )
+
+    # Store the editor's blurb
+    conn.execute(
+        "UPDATE curated_items SET our_take = ? WHERE id = ?",
+        (editor_blurb.strip(), curated_item_id),
+    )
+
+    conn.commit()
+    row_id = cursor.lastrowid
+    conn.close()
+    return row_id
+
+
+def load_otc_picks(week_iso: str | None = None) -> list[dict[str, Any]]:
+    """Return saved Off the Clock picks for newsletter assembly.
+
+    Returns approved OTC items with their editor blurbs, one per category.
+    """
+    w = week_iso or get_current_week_iso()
+    conn = get_connection()
+
+    rows = conn.execute(
+        """
+        SELECT
+            ci.section, ci.summary, ci.our_take,
+            ri.title, ri.url, ri.subreddit AS city
+        FROM editor_decisions ed
+        JOIN curated_items ci ON ed.curated_item_id = ci.id
+        JOIN raw_items ri ON ci.raw_item_id = ri.id
+        WHERE ed.issue_week_iso = ?
+          AND ed.decision = 'approved'
+          AND ci.section IN ('otc_eating', 'otc_watching', 'otc_reading', 'otc_wearing', 'otc_going')
+        ORDER BY ci.section
+        """,
+        (w,),
+    ).fetchall()
+    conn.close()
+
+    return [
+        {
+            **dict(r),
+            "label": OTC_CATEGORY_LABELS.get(r["section"], r["section"]),
+            "blurb": r["our_take"] or r["summary"],
+        }
+        for r in rows
+    ]
