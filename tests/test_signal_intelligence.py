@@ -80,3 +80,48 @@ def test_section_state_has_step_fields():
     assert state["step"] == 2
     assert state["total"] == 2
     assert call_log == ["one", "two"]
+
+
+def test_run_signal_intelligence_skips_when_cold(si_db):
+    """run_signal_intelligence should no-op when only 1 week of signal data exists."""
+    with patch.object(db_module, "DB_PATH", si_db):
+        # Only insert signals for current week — no previous week
+        db_module.insert_signal("asx_volatility", "pulse", "economic", 1.2, 60.0, 1.0, "2026-W13")
+
+        with patch("flatwhite.db.get_current_week_iso", return_value="2026-W13"):
+            from flatwhite.signals.signal_intelligence import run_signal_intelligence
+            run_signal_intelligence()  # Should not raise, should not write anything
+
+            conn = db_module.get_connection()
+            rows = conn.execute("SELECT * FROM signal_intelligence").fetchall()
+            conn.close()
+            assert len(rows) == 0
+
+
+def test_run_signal_intelligence_generates_for_movers(si_db):
+    """run_signal_intelligence should generate commentary for signals with abs(delta) >= 5."""
+    with patch.object(db_module, "DB_PATH", si_db):
+        # Insert W12 and W13 signals — asx_volatility moves +8 pts
+        db_module.insert_signal("asx_volatility", "pulse", "economic", 1.2, 52.0, 1.0, "2026-W12")
+        db_module.insert_signal("asx_volatility", "pulse", "economic", 1.8, 60.0, 1.0, "2026-W13")
+        # market_hiring moves only +2 pts — should be skipped
+        db_module.insert_signal("market_hiring",  "pulse", "labour_market", 20000.0, 55.0, 1.0, "2026-W12")
+        db_module.insert_signal("market_hiring",  "pulse", "labour_market", 20500.0, 57.0, 1.0, "2026-W13")
+
+        mock_articles = [{"title": "ASX swings wildly", "url": "http://afr.com/asx", "published": "2026-03-20", "snippet": "Markets volatile"}]
+
+        with patch("flatwhite.db.get_current_week_iso", return_value="2026-W13"):
+            with patch("flatwhite.signals.signal_intelligence._fetch_articles", return_value=mock_articles):
+                with patch("flatwhite.model_router.route", return_value="ASX rose sharply this week due to global risk sentiment."):
+                    from flatwhite.signals.signal_intelligence import run_signal_intelligence
+                    run_signal_intelligence()
+
+        conn = db_module.get_connection()
+        rows = conn.execute("SELECT signal_name, commentary FROM signal_intelligence").fetchall()
+        conn.close()
+
+        signal_names = [r["signal_name"] for r in rows]
+        assert "asx_volatility" in signal_names
+        assert "market_hiring" not in signal_names  # delta < 5
+        asx_row = next(r for r in rows if r["signal_name"] == "asx_volatility")
+        assert "ASX" in asx_row["commentary"]
