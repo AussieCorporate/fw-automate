@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import hashlib
+import re
 import json
 import os
 import secrets
@@ -1297,6 +1298,9 @@ async def api_backfill(request: Request) -> JSONResponse:
     body = await request.json()
     target_week = body.get("target_week", "")
 
+    if not re.match(r"^\d{4}-W\d{2}$", target_week):
+        return JSONResponse({"error": "Invalid target_week format. Expected YYYY-Www (e.g. 2026-W12)"}, status_code=400)
+
     conn = get_connection()
     # Check if employer snapshots already exist for target_week
     existing = conn.execute(
@@ -1307,9 +1311,8 @@ async def api_backfill(request: Request) -> JSONResponse:
     if existing == 0:
         # Copy current week's employer snapshots as target_week baseline
         current_week = get_current_week_iso()
-        import datetime as _dt_local
         year, wn = int(target_week[:4]), int(target_week[6:])
-        target_date = _dt_local.datetime.strptime(f"{year}-W{wn:02d}-1", "%G-W%V-%u").strftime("%Y-%m-%d")
+        target_date = _dt.datetime.strptime(f"{year}-W{wn:02d}-1", "%G-W%V-%u").strftime("%Y-%m-%d")
         conn.execute(
             f"""INSERT OR IGNORE INTO employer_snapshots
                 (employer_id, open_roles_count, snapshot_date, week_iso, extraction_method, ats_platform)

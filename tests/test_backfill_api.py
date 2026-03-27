@@ -32,7 +32,7 @@ def test_backfill_seeds_employer_snapshots(backfill_db):
     with patch.object(db_module, "DB_PATH", backfill_db):
         # Patch run_backfill to avoid real external calls
         with patch("flatwhite.pulse.backfill.run_backfill") as mock_rb:
-            with patch("flatwhite.db.get_current_week_iso", return_value="2026-W13"):
+            with patch("flatwhite.dashboard.api.get_current_week_iso", return_value="2026-W13"):
                 from flatwhite.dashboard.api import api_backfill
                 import asyncio
 
@@ -66,7 +66,7 @@ def test_backfill_skips_existing_target_week(backfill_db):
         conn.close()
 
         with patch("flatwhite.pulse.backfill.run_backfill"):
-            with patch("flatwhite.db.get_current_week_iso", return_value="2026-W13"):
+            with patch("flatwhite.dashboard.api.get_current_week_iso", return_value="2026-W13"):
                 from flatwhite.dashboard.api import api_backfill
                 import asyncio
 
