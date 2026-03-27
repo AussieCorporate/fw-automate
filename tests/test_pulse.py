@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 import flatwhite.db as db_module
 
 
@@ -42,3 +43,40 @@ def test_composite_drivers_sorted_by_contribution(populated_db: Path) -> None:
         if len(drivers) >= 2:
             for i in range(len(drivers) - 1):
                 assert abs(drivers[i]["contribution"]) >= abs(drivers[i + 1]["contribution"])
+
+
+def test_load_signal_trends_returns_all_signal_deltas(populated_db):
+    """load_signal_trends should return WoW deltas for all signals, not just top 5."""
+    import datetime
+    with patch.object(db_module, "DB_PATH", populated_db), \
+         patch("flatwhite.dashboard.state.get_current_week_iso", return_value="2026-W12"):
+        from flatwhite.db import insert_signal
+
+        # Insert signals for a second (previous) week
+        week_iso = "2026-W11"
+        test_signals = [
+            ("job_anxiety", "pulse", "labour_market", 60.0, 70.0, 1.0),
+            ("career_mobility", "pulse", "labour_market", 55.0, 40.0, 1.0),
+            ("market_hiring", "pulse", "labour_market", 20000.0, 30.0, 1.0),
+            ("employer_hiring_breadth", "pulse", "labour_market", 9000.0, 55.0, 1.0),
+            ("salary_pressure", "pulse", "labour_market", 115000.0, 60.0, 1.0),
+            ("layoff_news_velocity", "pulse", "corporate_stress", 64.0, 50.0, 1.0),
+            ("contractor_proxy", "pulse", "corporate_stress", 10.0, 45.0, 1.0),
+            ("consumer_confidence", "pulse", "economic", 82.0, 75.0, 1.0),
+            ("asx_volatility", "pulse", "economic", 1.2, 50.0, 1.0),
+            ("asx_momentum", "pulse", "economic", 2.5, 55.0, 1.0),
+        ]
+        for name, lane, area, raw, norm, sw in test_signals:
+            insert_signal(name, lane, area, raw, norm, sw, week_iso)
+
+        from flatwhite.dashboard.state import load_signal_trends
+        result = load_signal_trends(n_weeks=6)
+
+        # all_signal_deltas should have an entry for every signal in current week
+        all_deltas = result.get("all_signal_deltas", {})
+        assert "consumer_confidence" in all_deltas
+        assert "job_anxiety" in all_deltas
+        # consumer_confidence: current=57.0, prev=75.0 → delta=-18.0
+        assert all_deltas["consumer_confidence"]["delta"] == pytest.approx(-18.0, abs=0.5)
+        # Must return more than 5 signals (not just biggest_movers)
+        assert len(all_deltas) >= 8

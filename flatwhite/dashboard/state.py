@@ -10,6 +10,152 @@ from typing import Any
 from flatwhite.db import get_connection, get_current_week_iso
 
 
+_AREA_LABELS = {
+    "labour_market": "Labour Market",
+    "economic": "Financial & Economic",
+    "corporate_stress": "Corporate Stress",
+}
+
+
+def load_signal_trends(n_weeks: int = 6) -> dict[str, Any]:
+    """Return category-level WoW deltas and biggest signal movers for the trends panel.
+
+    Computes weighted-average scores per area for the last n_weeks ISO weeks.
+    Returns:
+      categories        — list of {area, label, current_score, prev_score, delta, history}
+      biggest_movers    — top 5 signals with largest absolute WoW delta
+      all_signal_deltas — WoW deltas for ALL signals, keyed by signal_name
+      weeks_available   — how many weeks of actual data exist (for cold-start UX)
+    Consumed by: api.py -> /api/pulse/trends.
+    """
+    import datetime
+
+    conn = get_connection()
+    week_iso = get_current_week_iso()
+
+    # Build ISO week list: oldest first, current last
+    year, week_num = int(week_iso[:4]), int(week_iso[6:])
+    dt = datetime.datetime.strptime(f"{year}-W{week_num:02d}-1", "%G-W%V-%u")
+    week_isos: list[str] = []
+    for i in range(n_weeks - 1, -1, -1):
+        week_isos.append((dt - datetime.timedelta(weeks=i)).strftime("%G-W%V"))
+
+    placeholders = ",".join("?" for _ in week_isos)
+    rows = conn.execute(
+        f"""SELECT week_iso, signal_name, area, normalised_score, source_weight
+            FROM signals
+            WHERE week_iso IN ({placeholders}) AND lane = 'pulse'
+            ORDER BY week_iso, area, signal_name""",
+        week_isos,
+    ).fetchall()
+
+    # Also pull composite history
+    ph_rows = conn.execute(
+        f"""SELECT week_iso, smoothed_score, composite_score
+            FROM pulse_history
+            WHERE week_iso IN ({placeholders})
+            ORDER BY week_iso""",
+        week_isos,
+    ).fetchall()
+    conn.close()
+
+    # Index signals by week
+    by_week: dict[str, list[dict]] = {w: [] for w in week_isos}
+    for r in rows:
+        by_week[r["week_iso"]].append(dict(r))
+
+    weeks_with_data = [w for w in week_isos if by_week[w]]
+    current_week = week_isos[-1]
+    prev_week = weeks_with_data[-2] if len(weeks_with_data) >= 2 else None
+
+    def weighted_avg(signals: list[dict], area: str) -> float | None:
+        rel = [s for s in signals if s["area"] == area and s["source_weight"] > 0]
+        total_wt = sum(s["source_weight"] for s in rel)
+        if not rel or total_wt == 0:
+            return None
+        return sum(s["normalised_score"] * s["source_weight"] for s in rel) / total_wt
+
+    # Build category objects
+    categories: list[dict] = []
+    for area in ("labour_market", "economic", "corporate_stress"):
+        history = []
+        for w in week_isos:
+            sc = weighted_avg(by_week[w], area)
+            if sc is not None:
+                history.append({"week_iso": w, "score": round(sc, 1)})
+
+        current_score = weighted_avg(by_week[current_week], area) if by_week[current_week] else None
+        prev_score = weighted_avg(by_week[prev_week], area) if prev_week else None
+        delta = round(current_score - prev_score, 1) if current_score is not None and prev_score is not None else None
+
+        # Top 3 signal scores in this area for current week
+        sigs = sorted(
+            [s for s in by_week[current_week] if s["area"] == area and s["source_weight"] > 0],
+            key=lambda x: -x["normalised_score"],
+        )
+        top_signals = [
+            {"name": s["signal_name"], "score": round(s["normalised_score"], 1)}
+            for s in sigs[:4]
+        ]
+
+        categories.append({
+            "area": area,
+            "label": _AREA_LABELS.get(area, area),
+            "current_score": round(current_score, 1) if current_score is not None else None,
+            "prev_score": round(prev_score, 1) if prev_score is not None else None,
+            "delta": delta,
+            "history": history,
+            "top_signals": top_signals,
+        })
+
+    # Biggest movers: signals with largest absolute WoW delta
+    biggest_movers: list[dict] = []
+    if prev_week:
+        prev_map = {s["signal_name"]: s for s in by_week[prev_week]}
+        curr_map = {s["signal_name"]: s for s in by_week[current_week]}
+        for name, curr in curr_map.items():
+            if name in prev_map and curr["source_weight"] > 0:
+                d = curr["normalised_score"] - prev_map[name]["normalised_score"]
+                biggest_movers.append({
+                    "signal": name,
+                    "area": curr["area"],
+                    "score": round(curr["normalised_score"], 1),
+                    "prev_score": round(prev_map[name]["normalised_score"], 1),
+                    "delta": round(d, 1),
+                })
+        biggest_movers.sort(key=lambda x: abs(x["delta"]), reverse=True)
+        biggest_movers = biggest_movers[:5]
+
+    # All-signal deltas (not just top 5) — keyed by signal_name
+    all_signal_deltas: dict[str, dict] = {}
+    if prev_week:
+        prev_map_all = {s["signal_name"]: s for s in by_week[prev_week]}
+        for name, curr in {s["signal_name"]: s for s in by_week[current_week]}.items():
+            prev = prev_map_all.get(name)
+            delta = round(curr["normalised_score"] - prev["normalised_score"], 1) if prev else None
+            all_signal_deltas[name] = {
+                "score": round(curr["normalised_score"], 1),
+                "prev_score": round(prev["normalised_score"], 1) if prev else None,
+                "delta": delta,
+                "area": curr["area"],
+                "source_weight": curr["source_weight"],
+            }
+
+    # Composite history
+    composite_history = [
+        {"week_iso": r["week_iso"], "score": round(r["smoothed_score"] or r["composite_score"] or 0, 1)}
+        for r in ph_rows
+    ]
+
+    return {
+        "categories": categories,
+        "biggest_movers": biggest_movers,
+        "all_signal_deltas": all_signal_deltas,
+        "composite_history": composite_history,
+        "weeks_available": len(weeks_with_data),
+    }
+
+
 def load_pulse_state() -> dict[str, Any] | None:
     """Return the pulse_history row for the current ISO week, or None if not found.
 
