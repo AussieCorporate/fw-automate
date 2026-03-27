@@ -1099,6 +1099,9 @@ function renderOTC(el) {
 function toggleOtcSelect(cat, id, val) {
   if (!S.otcSelected[cat]) S.otcSelected[cat] = {};
   S.otcSelected[cat][id] = val;
+  if (!val && S.otcPicks[cat] === id) {
+    delete S.otcPicks[cat];
+  }
   render();
 }
 
