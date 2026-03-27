@@ -877,3 +877,121 @@ async def save_manual_feedback(request: Request) -> JSONResponse:
     )
 
     return JSONResponse(result)
+
+
+# ── Lobby (employer hiring trends) ──────────────────────────────────────────
+
+@app.get("/api/lobby")
+def api_lobby() -> JSONResponse:
+    """Return employer hiring data with 8-week trend history."""
+    import datetime as _dt
+    conn = get_connection()
+    week_iso = get_current_week_iso()
+
+    # Build last 8 ISO weeks (oldest first, current last)
+    year, week_num = int(week_iso[:4]), int(week_iso[6:])
+    dt = _dt.datetime.strptime(f"{year}-W{week_num:02d}-1", "%G-W%V-%u")
+    week_isos = [(dt - _dt.timedelta(weeks=i)).strftime("%G-W%V") for i in range(7, -1, -1)]
+    # week_isos[0] = 8 weeks ago, week_isos[-1] = current
+    prev_week = week_isos[-2]
+    month_ago_week = week_isos[-4]  # ~4 weeks ago (index -4 = 3 weeks before prev = 4 weeks before current)
+
+    placeholders = ",".join("?" for _ in week_isos)
+    all_snaps = conn.execute(
+        f"""SELECT es.employer_id, es.open_roles_count, es.week_iso,
+                   ew.employer_name, ew.sector
+            FROM employer_snapshots es
+            JOIN employer_watchlist ew ON es.employer_id = ew.id
+            WHERE es.week_iso IN ({placeholders})
+            ORDER BY ew.employer_name, es.week_iso""",
+        week_isos,
+    ).fetchall()
+    conn.close()
+
+    # Group by employer
+    from collections import defaultdict
+    snap_by_emp: dict[int, dict] = defaultdict(lambda: {"name": "", "sector": "", "weeks": {}})
+    for r in all_snaps:
+        e = snap_by_emp[r["employer_id"]]
+        e["name"] = r["employer_name"]
+        e["sector"] = r["sector"]
+        e["weeks"][r["week_iso"]] = r["open_roles_count"]
+
+    employers = []
+    for emp_id, emp in snap_by_emp.items():
+        weeks = emp["weeks"]
+        current_count = weeks.get(week_iso)
+        if current_count is None:
+            continue  # No data this week — skip
+
+        prev_count = weeks.get(prev_week)
+        month_ago_count = weeks.get(month_ago_week)
+
+        wow_delta = current_count - prev_count if prev_count is not None else None
+        mom_delta = current_count - month_ago_count if month_ago_count is not None else None
+        wow_pct = round(wow_delta / prev_count * 100, 1) if prev_count and wow_delta is not None else None
+
+        # History: last 6 weeks of counts (oldest first), None-filled if missing
+        history_weeks = week_isos[-6:]
+        history = [weeks.get(w) for w in history_weeks]
+
+        employers.append({
+            "employer_id": emp_id,
+            "employer_name": emp["name"],
+            "sector": emp["sector"],
+            "open_roles_count": current_count,
+            "prev_roles": prev_count,
+            "delta": wow_delta,
+            "delta_pct": wow_pct,
+            "mom_delta": mom_delta,
+            "history": history,
+        })
+
+    employers.sort(key=lambda e: e["employer_name"])
+
+    movers = sorted(
+        [e for e in employers if e["delta"] is not None],
+        key=lambda x: abs(x["delta"]),
+        reverse=True,
+    )
+
+    return JSONResponse({
+        "employers": employers,
+        "top_movers": movers[:10],
+        "week_iso": week_iso,
+    })
+
+
+def _proceed_lobby(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
+    from flatwhite.model_router import route
+    from flatwhite.classify.prompts import EDITORIAL_VOICE
+
+    if custom_prompt:
+        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE, model_override=model)
+
+    selected = data.get("selected_employers", [])
+    employer_lines = []
+    for e in selected:
+        name = e.get("employer_name", str(e)) if isinstance(e, dict) else str(e)
+        if isinstance(e, dict):
+            current = e.get("open_roles_count", "?")
+            wow = e.get("delta")
+            mom = e.get("mom_delta")
+            wow_str = f"+{wow}" if wow and wow > 0 else str(wow) if wow is not None else "—"
+            mom_str = f"+{mom}" if mom and mom > 0 else str(mom) if mom is not None else "—"
+            employer_lines.append(f"- {name}: {current} roles (WoW: {wow_str}, MoM: {mom_str})")
+        else:
+            employer_lines.append(f"- {name}")
+
+    employer_block = "\n".join(employer_lines) if employer_lines else "No employers selected."
+
+    prompt = (
+        "Write The Lobby section for this week's Flat White newsletter.\n\n"
+        f"Employer hiring movements this week:\n{employer_block}\n\n"
+        "Analyse these hiring movements. What do they signal about the corporate job market? "
+        "Are companies restructuring, expanding, or pulling back? Identify employers with "
+        "sustained trends (same direction for multiple weeks) vs one-week anomalies. "
+        "Connect the dots for someone working in Big 4, law, banking, or tech.\n\n"
+        "Output ONLY the commentary text. No title. No sign-off."
+    )
+    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE, model_override=model)
