@@ -70,6 +70,7 @@ def load_curated_items_by_section() -> dict[str, list[dict[str, Any]]]:
             ci.score_relevance, ci.score_novelty, ci.score_reliability,
             ci.score_tension, ci.score_usefulness,
             ci.weighted_composite, ci.tags, ci.confidence_tag, ci.created_at,
+            ci.au_relevance,
             ri.title, ri.body, ri.source, ri.url, ri.subreddit,
             ed.decision, ed.id AS decision_id
         FROM curated_items ci
