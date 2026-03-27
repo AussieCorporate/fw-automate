@@ -130,7 +130,7 @@ def load_signal_trends(n_weeks: int = 6) -> dict[str, Any]:
     all_signal_deltas: dict[str, dict] = {}
     if prev_week:
         prev_map_all = {s["signal_name"]: s for s in by_week[prev_week]}
-        for name, curr in {s["signal_name"]: s for s in by_week[current_week]}.items():
+        for name, curr in curr_map.items():
             prev = prev_map_all.get(name)
             delta = round(curr["normalised_score"] - prev["normalised_score"], 1) if prev else None
             all_signal_deltas[name] = {

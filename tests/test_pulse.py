@@ -79,4 +79,4 @@ def test_load_signal_trends_returns_all_signal_deltas(populated_db):
         # consumer_confidence: current=57.0, prev=75.0 → delta=-18.0
         assert all_deltas["consumer_confidence"]["delta"] == pytest.approx(-18.0, abs=0.5)
         # Must return more than 5 signals (not just biggest_movers)
-        assert len(all_deltas) >= 8
+        assert len(all_deltas) >= 10
