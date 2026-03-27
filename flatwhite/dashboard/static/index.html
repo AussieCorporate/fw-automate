@@ -274,6 +274,7 @@ var S = {
   otcBlurbs: {},
   otcSelected: {},
   loading: {},
+  sectionProgress: {},   // { section: {step, total, step_name} }
   proceedModal: { open: false, section: null, prompt: "", lean: "", items: [], loading: false },
   proceedData: {},
 };
@@ -486,7 +487,7 @@ function renderEditorial(el) {
   h += '<button class="btn btn-primary" onclick="runSection(\'editorial\')">SCRAPE</button>';
   h += modelSelect("model-editorial");
   h += '<button class="btn btn-success" onclick="proceedEditorial()">PROCEED</button>';
-  if (S.loading.editorial) h += ' <span class="ingest-spinner"></span>';
+  if (S.loading.editorial) h += renderSectionProgress('editorial');
   h += '</div>';
 
   // Show which sections are ready
@@ -544,7 +545,7 @@ function renderPulse(el) {
   h += '<button class="btn btn-primary" onclick="runSection(\'pulse\')">SCRAPE</button>';
   h += modelSelect("model-pulse");
   h += '<button class="btn btn-success" onclick="proceedPulse()">PROCEED</button>';
-  if (S.loading.pulse) h += ' <span class="ingest-spinner"></span>';
+  if (S.loading.pulse) h += renderSectionProgress('pulse');
   h += '</div>';
 
   if (!S.pulse) {
@@ -642,7 +643,7 @@ function renderBigConv(el) {
   h += '<button class="btn btn-primary" onclick="runBigConv()">SCRAPE</button>';
   h += modelSelect("model-bigconv");
   h += '<button class="btn btn-success" onclick="proceedBigConv()">PROCEED</button>';
-  if (S.loading.big_conversation) h += ' <span class="ingest-spinner"></span>';
+  if (S.loading.big_conversation) h += renderSectionProgress('big_conversation');
   h += '</div>';
 
   // Candidates
@@ -802,7 +803,7 @@ function renderLobby(el) {
   h += '<button class="btn btn-primary" onclick="runSection(\'lobby\')">SCRAPE</button>';
   h += modelSelect("model-lobby");
   h += '<button class="btn btn-success" onclick="proceedLobby()">PROCEED</button>';
-  if (S.loading.lobby) h += ' <span class="ingest-spinner"></span>';
+  if (S.loading.lobby) h += renderSectionProgress('lobby');
   h += '</div>';
 
   if (!S.lobby || !S.lobby.employers || !S.lobby.employers.length) {
@@ -882,7 +883,7 @@ function renderFinds(el) {
   h += '<button class="btn btn-primary" onclick="runSection(\'finds\')">SCRAPE</button>';
   h += modelSelect("model-finds");
   h += '<button class="btn btn-success" onclick="proceedFinds()">PROCEED</button>';
-  if (S.loading.finds) h += ' <span class="ingest-spinner"></span>';
+  if (S.loading.finds) h += renderSectionProgress('finds');
   h += '</div>';
 
   var items = (S.items && S.items.finds) || [];
@@ -950,7 +951,7 @@ function renderThread(el) {
   h += '<button class="btn btn-primary" onclick="runSection(\'thread\')">SCRAPE</button>';
   h += modelSelect("model-thread");
   h += '<button class="btn btn-success" onclick="proceedThread()">PROCEED</button>';
-  if (S.loading.thread) h += ' <span class="ingest-spinner"></span>';
+  if (S.loading.thread) h += renderSectionProgress('thread');
   h += '</div>';
 
   if (!S.threads || !S.threads.length) {
@@ -1074,7 +1075,7 @@ function renderOTC(el) {
   h += '<button class="btn btn-sm btn-secondary" onclick="runSection(\'classify_otc\')">Classify OTC</button>';
   h += modelSelect("model-otc");
   h += '<button class="btn btn-success" onclick="proceedOTC()">PROCEED</button>';
-  if (S.loading.off_the_clock) h += ' <span class="ingest-spinner"></span>';
+  if (S.loading.off_the_clock) h += renderSectionProgress('off_the_clock');
   h += '</div>';
 
   if (!S.otcData || !S.otcData.candidates) {
@@ -1378,15 +1379,21 @@ function runSection(section) {
 function pollSectionStatus(section) {
   var poll = setInterval(function() {
     fetch("/api/section-status/" + section).then(function(r) { return r.json(); }).then(function(d) {
+      // Always store latest progress for render
+      S.sectionProgress[section] = {
+        step: d.step || 0,
+        total: d.total || 0,
+        step_name: d.step_name || ""
+      };
       if (!d.running && d.done) {
         clearInterval(poll);
         S.loading[section] = false;
+        delete S.sectionProgress[section];
         if (d.error) {
           showToast(section.replace(/_/g, " ") + " failed: " + d.error, "error");
         } else {
           showToast(section.replace(/_/g, " ") + " complete");
         }
-        // Invalidate cached data
         switch (section) {
           case "pulse": S.pulse = null; S.trends = null; break;
           case "finds": case "editorial": case "classify": S.items = null; S.bigConvCandidates = null; break;
@@ -1395,17 +1402,35 @@ function pollSectionStatus(section) {
           case "off_the_clock": case "classify_otc": S.otcData = null; break;
           case "big_conversation": S.bigConvCandidates = null; break;
         }
-        // Reload if still on the relevant page
         var pageForSection = {pulse:"pulse", finds:"finds", editorial:"editorial", classify:"finds", lobby:"lobby", thread:"thread", off_the_clock:"off_the_clock", classify_otc:"off_the_clock", big_conversation:"big_conversation"};
         var relevantPage = pageForSection[section] || section;
         if (S.page === relevantPage) {
           loadPageData(S.page).then(function() { render(); });
         } else {
-          render(); // Update sidebar status
+          render();
         }
+      } else {
+        render();
       }
     }).catch(function() { /* ignore poll errors */ });
-  }, 2000); // Poll every 2 seconds
+  }, 2000);
+}
+
+function renderSectionProgress(section) {
+  var p = S.sectionProgress[section];
+  if (!p || !S.loading[section]) return '<span class="ingest-spinner"></span>';
+  var total = p.total || 1;
+  var step = Math.min(p.step, total);
+  var pct = Math.round((step / total) * 100);
+  var label = esc(p.step_name || "Running...");
+  return (
+    '<span style="display:inline-flex;align-items:center;gap:8px;margin-left:8px;">' +
+    '<span style="display:inline-block;width:120px;height:6px;background:var(--divider);border-radius:3px;overflow:hidden;">' +
+    '<span style="display:block;height:100%;width:' + pct + '%;background:var(--amber);border-radius:3px;transition:width 0.4s ease;"></span>' +
+    '</span>' +
+    '<span style="font-size:12px;color:var(--text-2);">' + step + '/' + total + ' &middot; ' + label + '</span>' +
+    '</span>'
+  );
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
