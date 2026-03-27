@@ -2060,7 +2060,7 @@ async def api_preview_prompt(request: Request) -> JSONResponse:
     """Render and return the default LLM prompt for a section without calling the LLM.
 
     Body: {"section": str, "data": dict (optional)}
-    Returns: {"prompt": str, "section": str}
+    Returns: {"prompt": str, "section": str, "context_breakdown": dict}
     """
     body = await request.json()
     section = body.get("section", "")
@@ -2154,6 +2154,7 @@ async def api_preview_prompt(request: Request) -> JSONResponse:
                         "area": s.get("area", ""),
                     }
                     for s in signals
+                    if s["signal_name"] in selected_signals
                 ],
                 "signal_intelligence": signal_intelligence_breakdown,
                 "composite": {
