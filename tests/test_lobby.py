@@ -45,8 +45,8 @@ def test_lobby_returns_mom_delta(lobby_db):
             result = api_lobby()
             d = json.loads(result.body)
             emp = d["employers"][0]
-            # current=120 (W12), 4wk ago=112 (W08) → mom_delta=+8
-            assert emp["mom_delta"] == 8
+            # current=120 (W12), 4wk ago=108 (W08) → mom_delta=+12
+            assert emp["mom_delta"] == 12
 
 
 def test_lobby_returns_history_array(lobby_db):

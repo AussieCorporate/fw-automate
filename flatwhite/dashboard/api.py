@@ -11,6 +11,7 @@ Run:
 
 from __future__ import annotations
 
+import datetime as _dt
 import hashlib
 import json
 import os
@@ -884,7 +885,6 @@ async def save_manual_feedback(request: Request) -> JSONResponse:
 @app.get("/api/lobby")
 def api_lobby() -> JSONResponse:
     """Return employer hiring data with 8-week trend history."""
-    import datetime as _dt
     conn = get_connection()
     week_iso = get_current_week_iso()
 
@@ -894,7 +894,7 @@ def api_lobby() -> JSONResponse:
     week_isos = [(dt - _dt.timedelta(weeks=i)).strftime("%G-W%V") for i in range(7, -1, -1)]
     # week_isos[0] = 8 weeks ago, week_isos[-1] = current
     prev_week = week_isos[-2]
-    month_ago_week = week_isos[-4]  # ~4 weeks ago (index -4 = 3 weeks before prev = 4 weeks before current)
+    month_ago_week = week_isos[-5]  # 4 weeks ago
 
     placeholders = ",".join("?" for _ in week_isos)
     all_snaps = conn.execute(
