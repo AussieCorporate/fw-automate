@@ -307,6 +307,20 @@ function sparkline(values, width, height) {
     + '</svg>';
 }
 
+function barSparkline(values, width, height) {
+  var clean = values.filter(function(v) { return v != null; });
+  if (!clean.length) return '<svg width="' + width + '" height="' + height + '"></svg>';
+  var max = Math.max.apply(null, clean) || 1;
+  var barW = Math.max(2, Math.floor(width / clean.length) - 1);
+  var bars = clean.map(function(v, i) {
+    var h2 = Math.max(2, Math.round((v / max) * height));
+    var x = i * (barW + 1);
+    var y = height - h2;
+    return '<rect x="' + x + '" y="' + y + '" width="' + barW + '" height="' + h2 + '" fill="var(--accent)" opacity="0.7" rx="1"/>';
+  }).join("");
+  return '<svg width="' + width + '" height="' + height + '" style="vertical-align:middle">' + bars + '</svg>';
+}
+
 function esc(s) {
   if (s == null) return "";
   var d = document.createElement("div");
@@ -807,6 +821,12 @@ function renderLobby(el) {
         h += '<div class="mc-sector">' + esc(m.sector || "") + '</div>';
         h += '<div class="mc-delta ' + cls + '">' + sign + d + ' roles</div>';
         h += '<div class="mc-detail">' + esc(m.open_roles_count || 0) + ' total' + (m.delta_pct != null ? ' (' + sign + m.delta_pct + '%)' : '') + '</div>';
+        var mom = m.mom_delta != null ? m.mom_delta : null;
+        if (mom != null) {
+          var momSign = mom > 0 ? "+" : "";
+          var momCls = mom > 0 ? "color:var(--green)" : (mom < 0 ? "color:var(--red)" : "color:var(--text-3)");
+          h += '<div style="font-size:11px;' + momCls + '">4-wk: ' + momSign + mom + '</div>';
+        }
         h += '</div>';
       });
       h += '</div>';
@@ -814,19 +834,25 @@ function renderLobby(el) {
 
     // Full employer table
     h += '<div class="card mb20"><div style="font-weight:600;margin-bottom:12px;">All Employers</div>';
-    h += '<table class="tbl"><thead><tr><th style="width:30px;"></th><th>Employer</th><th>Sector</th><th>Roles</th><th>Prev</th><th>Delta</th></tr></thead><tbody>';
+    h += '<table class="tbl"><thead><tr><th style="width:30px;"></th><th>Employer</th><th>Sector</th><th>Roles</th><th>WoW</th><th>MoM</th><th>Trend</th></tr></thead><tbody>';
     S.lobby.employers.forEach(function(e) {
       var name = e.employer_name || "";
       var checked = S.lobbyChecked[name] ? " checked" : "";
-      var d = e.delta || 0;
-      var dc = d > 0 ? 'color:var(--green)' : (d < 0 ? 'color:var(--red)' : 'color:var(--text-3)');
+      var wow = e.delta != null ? e.delta : null;
+      var mom = e.mom_delta != null ? e.mom_delta : null;
+      var wowStyle = wow == null ? 'color:var(--text-3)' : (wow > 0 ? 'color:var(--green);font-weight:600' : (wow < 0 ? 'color:var(--red);font-weight:600' : 'color:var(--text-3)'));
+      var momStyle = mom == null ? 'color:var(--text-3)' : (mom > 0 ? 'color:var(--green);font-weight:600' : (mom < 0 ? 'color:var(--red);font-weight:600' : 'color:var(--text-3)'));
+      var wowText = wow == null ? "—" : (wow > 0 ? "+" : "") + wow;
+      var momText = mom == null ? "—" : (mom > 0 ? "+" : "") + mom;
+      var hist = e.history || [];
       h += '<tr>';
       h += '<td><input type="checkbox"' + checked + ' onchange="toggleLobbyCheck(\'' + esc(name).replace(/'/g, "\\'") + '\',this.checked)"></td>';
       h += '<td><strong>' + esc(name) + '</strong></td>';
       h += '<td>' + esc(e.sector || "") + '</td>';
       h += '<td>' + esc(e.open_roles_count || 0) + '</td>';
-      h += '<td>' + esc(e.prev_roles != null ? e.prev_roles : "—") + '</td>';
-      h += '<td style="font-weight:600;' + dc + '">' + (d > 0 ? "+" : "") + (d || "—") + '</td>';
+      h += '<td style="' + wowStyle + '">' + wowText + '</td>';
+      h += '<td style="' + momStyle + '">' + momText + '</td>';
+      h += '<td>' + barSparkline(hist, 64, 24) + '</td>';
       h += '</tr>';
     });
     h += '</tbody></table></div>';
