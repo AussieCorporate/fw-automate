@@ -2,9 +2,9 @@ from __future__ import annotations
 
 """Model router for Flat White LLM calls.
 
-Supports Gemini 2.5 Flash and Claude Sonnet/Haiku. Each model is called
-via its respective SDK. The route() function accepts an optional model_override
-to let the dashboard user pick which model to use per section.
+Supports Anthropic Claude, Google Gemini, and OpenAI GPT models. Each model
+is called via its respective SDK. The route() function accepts an optional
+model_override to let the dashboard user pick which model to use per section.
 """
 
 import os
@@ -118,7 +118,10 @@ def _call_openai(model_id: str, prompt: str, system: str, temperature: float) ->
         messages=messages,
         temperature=temperature,
     )
-    return response.choices[0].message.content
+    content = response.choices[0].message.content
+    if content is None:
+        raise ValueError(f"OpenAI model {model_id} returned no text content")
+    return content
 
 
 def _call_model(model_id: str, prompt: str, system: str, temperature: float) -> str:

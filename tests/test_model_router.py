@@ -1,5 +1,5 @@
 """Tests for model_router — provider dispatch and task type routing."""
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import pytest
 
 
