@@ -22,6 +22,7 @@ TEMPERATURE_BY_TASK: dict[str, float] = {
     "summary": 0.3,
     "hook": 0.7,
     "big_conversation": 0.3,
+    "signal_intelligence": 0.2,
 }
 
 DEFAULT_MODEL_BY_TASK: dict[str, str] = {
@@ -33,12 +34,20 @@ DEFAULT_MODEL_BY_TASK: dict[str, str] = {
     "summary": "claude-sonnet-4-6",
     "hook": "claude-sonnet-4-6",
     "big_conversation": "claude-sonnet-4-6",
+    "signal_intelligence": "claude-haiku-4-5",
 }
 
 MODEL_REGISTRY: dict[str, dict] = {
-    "gemini-2.5-flash": {"provider": "gemini", "label": "Gemini 2.5 Flash", "env_key": "GEMINI_API_KEY"},
+    "gemini-2.5-flash":  {"provider": "gemini",    "label": "Gemini 2.5 Flash",  "env_key": "GEMINI_API_KEY"},
+    "claude-opus-4-6":   {"provider": "anthropic", "label": "Claude Opus 4.6",   "env_key": "ANTHROPIC_API_KEY"},
     "claude-sonnet-4-6": {"provider": "anthropic", "label": "Claude Sonnet 4.6", "env_key": "ANTHROPIC_API_KEY"},
-    "claude-haiku-4-5": {"provider": "anthropic", "label": "Claude Haiku 4.5", "env_key": "ANTHROPIC_API_KEY"},
+    "claude-haiku-4-5":  {"provider": "anthropic", "label": "Claude Haiku 4.5",  "env_key": "ANTHROPIC_API_KEY"},
+    "gpt-5.4":           {"provider": "openai",    "label": "GPT-5.4",           "env_key": "OPENAI_API_KEY"},
+    "gpt-5.4-pro":       {"provider": "openai",    "label": "GPT-5.4 pro",       "env_key": "OPENAI_API_KEY"},
+    "gpt-5.4-mini":      {"provider": "openai",    "label": "GPT-5.4 mini",      "env_key": "OPENAI_API_KEY"},
+    "gpt-5.4-nano":      {"provider": "openai",    "label": "GPT-5.4 nano",      "env_key": "OPENAI_API_KEY"},
+    "gpt-5.2":           {"provider": "openai",    "label": "GPT-5.2",           "env_key": "OPENAI_API_KEY"},
+    "gpt-5.1":           {"provider": "openai",    "label": "GPT-5.1",           "env_key": "OPENAI_API_KEY"},
 }
 
 
@@ -96,6 +105,22 @@ def _call_claude(model_id: str, prompt: str, system: str, temperature: float) ->
     return response.content[0].text
 
 
+def _call_openai(model_id: str, prompt: str, system: str, temperature: float) -> str:
+    """Call an OpenAI model via the openai SDK."""
+    from openai import OpenAI
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    messages: list[dict] = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+    response = client.chat.completions.create(
+        model=model_id,
+        messages=messages,
+        temperature=temperature,
+    )
+    return response.choices[0].message.content
+
+
 def _call_model(model_id: str, prompt: str, system: str, temperature: float) -> str:
     """Dispatch to the right provider based on model_id."""
     info = MODEL_REGISTRY.get(model_id)
@@ -110,6 +135,8 @@ def _call_model(model_id: str, prompt: str, system: str, temperature: float) -> 
         return _call_gemini(prompt, system, temperature)
     elif info["provider"] == "anthropic":
         return _call_claude(model_id, prompt, system, temperature)
+    elif info["provider"] == "openai":
+        return _call_openai(model_id, prompt, system, temperature)
     else:
         raise ValueError(f"Unknown provider: {info['provider']}")
 
