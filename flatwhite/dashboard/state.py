@@ -481,3 +481,132 @@ def load_saved_draft(section: str = "big_conversation") -> dict | None:
     ).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+# ─── OFF THE CLOCK STATE ─────────────────────────────────────────────────────
+
+OTC_SECTIONS = ["otc_eating", "otc_watching", "otc_reading", "otc_wearing", "otc_going"]
+
+OTC_CATEGORY_LABELS = {
+    "otc_eating": "Eating",
+    "otc_watching": "Watching",
+    "otc_reading": "Reading",
+    "otc_wearing": "Wearing",
+    "otc_going": "Going",
+}
+
+
+def load_otc_candidates(week_iso: str | None = None) -> dict[str, list[dict[str, Any]]]:
+    """Return Off the Clock candidates grouped by category for the editor pick UI.
+
+    Returns all candidates (no cap) sorted by weighted_composite DESC.
+    Output: dict with keys 'otc_eating', 'otc_watching', etc.
+    """
+    conn = get_connection()
+    w = week_iso or get_current_week_iso()
+
+    rows = conn.execute(
+        """
+        SELECT
+            ci.id, ci.section, ci.summary, ci.weighted_composite,
+            ci.score_relevance, ci.score_tension,
+            ri.title, ri.source, ri.url, ri.subreddit AS city,
+            ri.lifestyle_category,
+            ed.decision, ed.id AS decision_id
+        FROM curated_items ci
+        JOIN raw_items ri ON ci.raw_item_id = ri.id
+        LEFT JOIN editor_decisions ed
+            ON ed.curated_item_id = ci.id AND ed.issue_week_iso = ?
+        WHERE ri.week_iso = ?
+          AND ci.section IN ('otc_eating', 'otc_watching', 'otc_reading', 'otc_wearing', 'otc_going')
+        ORDER BY ci.weighted_composite DESC
+        """,
+        (w, w),
+    ).fetchall()
+    conn.close()
+
+    grouped: dict[str, list[dict[str, Any]]] = {s: [] for s in OTC_SECTIONS}
+    for row in rows:
+        d = dict(row)
+        section = d["section"]
+        if section in grouped:
+            grouped[section].append(d)  # no cap
+
+    return grouped
+
+
+def save_otc_pick(
+    category: str,
+    curated_item_id: int,
+    editor_blurb: str,
+    week_iso: str | None = None,
+) -> int:
+    """Save an editor's Off the Clock pick for a category.
+
+    Approves the chosen curated_item and stores the editor's blurb as our_take.
+    Any previous OTC pick for this category+week is rejected.
+    Returns the editor_decisions row id.
+    """
+    w = week_iso or get_current_week_iso()
+    conn = get_connection()
+
+    # Reject any previous pick for this category this week
+    conn.execute(
+        """UPDATE editor_decisions SET decision = 'rejected'
+        WHERE issue_week_iso = ? AND section_placed = ?
+        AND decision = 'approved'""",
+        (w, category),
+    )
+
+    # Approve the new pick
+    cursor = conn.execute(
+        """INSERT INTO editor_decisions (curated_item_id, decision, section_placed, issue_week_iso)
+        VALUES (?, 'approved', ?, ?)""",
+        (curated_item_id, category, w),
+    )
+
+    # Store the editor's blurb
+    conn.execute(
+        "UPDATE curated_items SET our_take = ? WHERE id = ?",
+        (editor_blurb.strip(), curated_item_id),
+    )
+
+    conn.commit()
+    row_id = cursor.lastrowid
+    conn.close()
+    return row_id
+
+
+def load_otc_picks(week_iso: str | None = None) -> list[dict[str, Any]]:
+    """Return saved Off the Clock picks for newsletter assembly.
+
+    Returns approved OTC items with their editor blurbs, one per category.
+    """
+    w = week_iso or get_current_week_iso()
+    conn = get_connection()
+
+    rows = conn.execute(
+        """
+        SELECT
+            ci.section, ci.summary, ci.our_take,
+            ri.title, ri.url, ri.subreddit AS city
+        FROM editor_decisions ed
+        JOIN curated_items ci ON ed.curated_item_id = ci.id
+        JOIN raw_items ri ON ci.raw_item_id = ri.id
+        WHERE ed.issue_week_iso = ?
+          AND ed.decision = 'approved'
+          AND ci.section IN ('otc_eating', 'otc_watching', 'otc_reading', 'otc_wearing', 'otc_going')
+        ORDER BY ci.section
+        """,
+        (w,),
+    ).fetchall()
+    conn.close()
+
+    return [
+        {
+            **dict(r),
+            "label": OTC_CATEGORY_LABELS.get(r["section"], r["section"]),
+            "blurb": r["our_take"] or r["summary"],
+        }
+        for r in rows
+    ]

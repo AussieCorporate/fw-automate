@@ -270,6 +270,7 @@ var S = {
   pulseChecked: {},
   otcPicks: {},
   otcBlurbs: {},
+  otcSelected: {},
   loading: {},
   proceedModal: { open: false, section: null, prompt: "", lean: "", items: [], loading: false },
   proceedData: {},
@@ -1050,18 +1051,38 @@ function renderOTC(el) {
     OTC_CATS.forEach(function(cat) {
       var candidates = S.otcData.candidates[cat.key] || [];
       h += '<div class="card otc-cat-card">';
-      h += '<div class="otc-cat-title">' + esc(cat.label) + '</div>';
+      h += '<div class="otc-cat-title">' + esc(cat.label) + ' ';
+      h += '<span style="font-size:11px;color:var(--text-3);">' + candidates.length + ' items</span></div>';
       if (!candidates.length) {
         h += '<p style="font-size:12px;color:var(--text-3);">No candidates</p>';
       } else {
-        candidates.slice(0, 3).forEach(function(c) {
+        // Initialise all selected on first render
+        if (!S.otcSelected[cat.key]) {
+          S.otcSelected[cat.key] = {};
+          candidates.forEach(function(c) { S.otcSelected[cat.key][c.id] = true; });
+        }
+        candidates.forEach(function(c) {
+          var checked = S.otcSelected[cat.key][c.id] ? " checked" : "";
+          var city = c.city ? '<span class="chip chip-default" style="font-size:10px;">' + esc(c.city) + '</span> ' : "";
+          var src = '<span style="font-size:11px;color:var(--text-3);">' + esc(c.source || "") + '</span>';
+          h += '<div class="fr mb8" style="align-items:flex-start;gap:8px;">';
+          h += '<input type="checkbox"' + checked + ' onchange="toggleOtcSelect(\'' + cat.key + '\',' + c.id + ',this.checked)" style="margin-top:2px;flex-shrink:0;">';
+          h += '<div style="flex:1;">';
+          h += '<div style="font-size:13px;">' + esc(c.title || c.summary) + '</div>';
+          h += '<div style="margin-top:2px;">' + city + src + '</div>';
+          h += '</div></div>';
+          // Radio pick (existing behaviour — kept for final pick selection)
           var sel = S.otcPicks[cat.key] === c.id;
-          h += '<div class="fr mb8" style="cursor:pointer;" onclick="pickOTC(\'' + cat.key + '\',' + c.id + ')">';
-          h += '<div class="radio' + (sel ? " on" : "") + '" style="width:18px;height:18px;font-size:10px;">' + (sel ? "\u2713" : "") + '</div>';
-          h += '<span style="font-size:13px;flex:1;">' + esc(c.title || c.summary) + '</span>';
-          h += '</div>';
-          if (sel) {
-            h += '<div class="form-group" style="margin-left:26px;"><textarea class="form-input" id="otc-blurb-' + c.id + '" rows="2" placeholder="Blurb..." onchange="updateOTCBlurb(\'' + cat.key + '\',this.value)">' + esc(S.otcBlurbs[cat.key] || "") + '</textarea></div>';
+          if (S.otcSelected[cat.key][c.id]) {
+            h += '<div style="margin-left:26px;margin-bottom:6px;">';
+            h += '<label style="font-size:11px;cursor:pointer;">';
+            h += '<input type="radio" name="otc-pick-' + cat.key + '" ' + (sel ? "checked" : "") + ' onchange="pickOTC(\'' + cat.key + '\',' + c.id + ')">';
+            h += ' Pick this one';
+            h += '</label>';
+            if (sel) {
+              h += '<textarea class="form-input" id="otc-blurb-' + c.id + '" rows="2" placeholder="Blurb..." style="margin-top:4px;" onchange="updateOTCBlurb(\'' + cat.key + '\',this.value)">' + esc(S.otcBlurbs[cat.key] || "") + '</textarea>';
+            }
+            h += '</div>';
           }
         });
       }
@@ -1075,6 +1096,12 @@ function renderOTC(el) {
   fillOutput("off_the_clock");
 }
 
+function toggleOtcSelect(cat, id, val) {
+  if (!S.otcSelected[cat]) S.otcSelected[cat] = {};
+  S.otcSelected[cat][id] = val;
+  render();
+}
+
 function pickOTC(cat, id) {
   S.otcPicks[cat] = id;
   render();
@@ -1085,13 +1112,20 @@ function updateOTCBlurb(cat, val) { S.otcBlurbs[cat] = val; }
 function proceedOTC() {
   var model = getModel("model-otc");
   var picks = [];
+  var selectedByCategory = {};
   OTC_CATS.forEach(function(cat) {
     if (S.otcPicks[cat.key]) {
       picks.push({ category: cat.key, curated_item_id: S.otcPicks[cat.key], blurb: S.otcBlurbs[cat.key] || "" });
     }
+    // Collect selected item IDs for this category
+    var sel = S.otcSelected[cat.key] || {};
+    selectedByCategory[cat.key] = Object.keys(sel).filter(function(id) { return sel[id]; }).map(Number);
   });
-  S.proceedData.off_the_clock = { section: "off_the_clock", model: model, data: { picks: picks } };
-  // Save picks first, then open modal
+  S.proceedData.off_the_clock = {
+    section: "off_the_clock",
+    model: model,
+    data: { picks: picks, selected_by_category: selectedByCategory },
+  };
   var savePromises = picks.map(function(p) {
     return api("/api/off-the-clock/pick", { method: "POST", body: p }).catch(function() {});
   });
