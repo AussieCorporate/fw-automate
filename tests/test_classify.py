@@ -233,10 +233,8 @@ def test_whisper_low_tension_auto_discards(
 
 def test_au_relevance_column_exists(temp_db):
     """curated_items must have an au_relevance column after migration."""
-    import flatwhite.db as db_module
-    with patch.object(db_module, "DB_PATH", temp_db):
-        import sqlite3
-        conn = sqlite3.connect(temp_db)
-        cols = {row[1] for row in conn.execute("PRAGMA table_info(curated_items)").fetchall()}
-        conn.close()
-        assert "au_relevance" in cols
+    import sqlite3
+    conn = sqlite3.connect(temp_db)
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(curated_items)").fetchall()}
+    conn.close()
+    assert "au_relevance" in cols
