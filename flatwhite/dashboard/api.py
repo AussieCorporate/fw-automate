@@ -962,12 +962,207 @@ def api_lobby() -> JSONResponse:
     })
 
 
+# ── Section proceed helpers ──────────────────────────────────────────────────
+
+def _proceed_pulse(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
+    from flatwhite.model_router import route
+    from flatwhite.classify.prompts import PULSE_SUMMARY_SYSTEM, PULSE_SUMMARY_PROMPT
+    from flatwhite.dashboard.state import load_pulse_state, load_signals_this_week
+    from flatwhite.db import get_interactions
+    from flatwhite.signals.macro_context import fetch_macro_headlines
+
+    if custom_prompt:
+        return route(task_type="summary", prompt=custom_prompt, system=PULSE_SUMMARY_SYSTEM)
+
+    pulse = load_pulse_state()
+    signals = load_signals_this_week()
+
+    week_iso = get_current_week_iso()
+    conn = get_connection()
+    year_s, wn_s = int(week_iso[:4]), int(week_iso[6:])
+    dt_s = _dt.datetime.strptime(f"{year_s}-W{wn_s:02d}-1", "%G-W%V-%u")
+    prev_wk = (dt_s - _dt.timedelta(weeks=1)).strftime("%G-W%V")
+    prev_rows = conn.execute(
+        "SELECT signal_name, normalised_score FROM signals WHERE week_iso = ? AND lane = 'pulse'",
+        (prev_wk,),
+    ).fetchall()
+    conn.close()
+    prev_map = {s["signal_name"]: s["normalised_score"] for s in prev_rows}
+
+    signal_lines = []
+    for s in signals:
+        name = s["signal_name"]
+        score = round(s["normalised_score"], 1)
+        prev = prev_map.get(name)
+        if prev is not None:
+            delta = round(score - prev, 1)
+            signal_lines.append(f"{name}: {score} (prev: {round(prev, 1)}, Δ: {delta:+.1f})")
+        else:
+            signal_lines.append(f"{name}: {score}")
+
+    interactions = get_interactions(week_iso)
+    interactions_block = ""
+    if interactions:
+        interactions_block = "\nSignal interactions detected:\n" + "\n".join(
+            f"- {ix['pattern_name']}: {ix['narrative']}" for ix in interactions
+        ) + "\n"
+
+    macro_context = ""
+    try:
+        macro_context = fetch_macro_headlines()
+    except Exception:
+        pass
+
+    prompt = PULSE_SUMMARY_PROMPT.format(
+        smoothed=f"{pulse['smoothed_score']:.0f}" if pulse else "50",
+        direction=pulse["direction"] if pulse else "stable",
+        prev_smoothed=f"{pulse.get('smoothed_score', 50):.0f}" if pulse else "50",
+        drivers="\n".join(signal_lines[:10]),
+        interactions_block=interactions_block,
+        macro_context=macro_context,
+    )
+    return route(task_type="summary", prompt=prompt, system=PULSE_SUMMARY_SYSTEM)
+
+
+def _proceed_big_conversation(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
+    from flatwhite.model_router import route
+    from flatwhite.classify.prompts import EDITORIAL_VOICE, BIG_CONVERSATION_DRAFT_SYSTEM, BIG_CONVERSATION_DRAFT_PROMPT
+
+    if custom_prompt:
+        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE)
+
+    headline = data.get("headline", "")
+    pitch = data.get("pitch", "")
+    supporting_summaries = data.get("supporting_summaries", [])
+    items_block = "\n".join(f"- {s}" for s in supporting_summaries) if supporting_summaries else "(no supporting items)"
+
+    prompt = BIG_CONVERSATION_DRAFT_PROMPT.format(
+        headline=headline,
+        pitch=pitch,
+        supporting_items=items_block,
+    )
+    return route(task_type="editorial", prompt=prompt, system=BIG_CONVERSATION_DRAFT_SYSTEM)
+
+
+def _proceed_finds(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
+    from flatwhite.model_router import route
+    from flatwhite.classify.prompts import EDITORIAL_VOICE
+
+    if custom_prompt:
+        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE)
+
+    items = data.get("selected_items", [])
+    items_block = "\n\n".join(
+        f"Title: {item.get('title', '')}\nURL: {item.get('url', '')}\nSummary: {item.get('summary', '')}"
+        for item in items
+    )
+
+    prompt = (
+        "Write the Finds section for this week's Flat White newsletter.\n\n"
+        f"Selected items:\n{items_block}\n\n"
+        "For each item, write a headline and a 2-3 sentence blurb. Voice: dry, observant, "
+        "Australian corporate commentary. Each blurb should tell the reader why this matters "
+        "to someone in corporate Australia. End each with 'Read more' on its own line.\n\n"
+        "Output each find as: HEADLINE\\nBLURB\\nRead more\\n\\n"
+    )
+    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE)
+
+
+def _proceed_thread(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
+    from flatwhite.model_router import route
+    from flatwhite.classify.prompts import THREAD_OUR_TAKE_SYSTEM, THREAD_OUR_TAKE_PROMPT
+
+    if custom_prompt:
+        return route(task_type="editorial", prompt=custom_prompt, system=THREAD_OUR_TAKE_SYSTEM)
+
+    title = data.get("title", "")
+    body = data.get("body", data.get("summary", ""))
+    top_comments = data.get("top_comments", [])
+    comments_block = "\n".join(f"- {c}" for c in top_comments[:5]) if top_comments else "(no comments)"
+    editorial_frame = data.get("editorial_frame", "")
+
+    prompt = THREAD_OUR_TAKE_PROMPT.format(
+        title=title,
+        body=body,
+        top_comments=comments_block,
+        editorial_frame=editorial_frame,
+    )
+    return route(task_type="editorial", prompt=prompt, system=THREAD_OUR_TAKE_SYSTEM)
+
+
+def _proceed_amp_finest(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
+    from flatwhite.model_router import route
+    from flatwhite.classify.prompts import EDITORIAL_VOICE
+
+    if custom_prompt:
+        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE)
+
+    items = data.get("selected_items", [])
+    items_block = "\n\n".join(
+        f"Title: {item.get('title', '')}\nSummary: {item.get('summary', '')}"
+        for item in items
+    )
+
+    prompt = (
+        "Write the AMP's Finest section for this week's Flat White newsletter.\n\n"
+        f"Selected items:\n{items_block}\n\n"
+        "Curate these into a short, pointed section. Voice: dry Australian corporate sardony. "
+        "Each item gets one punchy sentence. Output ONLY the commentary. No title. No sign-off."
+    )
+    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE)
+
+
+def _proceed_off_the_clock(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
+    from flatwhite.model_router import route
+    from flatwhite.classify.prompts import EDITORIAL_VOICE
+
+    if custom_prompt:
+        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE)
+
+    picks = data.get("picks", [])
+    picks_block = "\n\n".join(
+        f"Category: {p.get('category', '')}\nTitle: {p.get('title', '')}\nDraft blurb: {p.get('blurb', '')}"
+        for p in picks
+    )
+
+    prompt = (
+        "Polish these Off the Clock blurbs for Flat White.\n\n"
+        f"{picks_block}\n\n"
+        "For each, rewrite the blurb in 1-2 sentences. Voice: dry, specific, opinionated. "
+        "Not a review. A statement from someone who already knows. Australian English.\n\n"
+        "Output as: CATEGORY: BLURB (one per line)"
+    )
+    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE)
+
+
+def _proceed_editorial(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
+    from flatwhite.model_router import route
+    from flatwhite.classify.prompts import EDITORIAL_VOICE
+
+    if custom_prompt:
+        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE)
+
+    items = data.get("selected_items", [])
+    items_block = "\n\n".join(
+        f"Title: {item.get('title', '')}\nSummary: {item.get('summary', '')}"
+        for item in items
+    )
+
+    prompt = (
+        "Write the editorial section for this week's Flat White newsletter.\n\n"
+        f"Selected items:\n{items_block}\n\n"
+        "Voice: dry, specific, opinionated. Australian corporate commentary. "
+        "Output ONLY the editorial text. No title. No sign-off."
+    )
+    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE)
+
+
 def _proceed_lobby(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
     from flatwhite.model_router import route
     from flatwhite.classify.prompts import EDITORIAL_VOICE
 
     if custom_prompt:
-        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE, model_override=model)
+        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE)
 
     selected = data.get("selected_employers", [])
     employer_lines = []
@@ -994,4 +1189,178 @@ def _proceed_lobby(data: dict, model: str | None, custom_prompt: str | None = No
         "Connect the dots for someone working in Big 4, law, banking, or tech.\n\n"
         "Output ONLY the commentary text. No title. No sign-off."
     )
-    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE, model_override=model)
+    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE)
+
+
+# ── Proceed section endpoint ──────────────────────────────────────────────────
+
+@app.post("/api/proceed-section")
+async def api_proceed_section(request: Request) -> JSONResponse:
+    """Call the LLM proceed function for a given newsletter section.
+
+    Body: {
+        "section": str,
+        "model": str | None,
+        "data": dict (section-specific context),
+        "custom_prompt": str | None (if provided, sent verbatim to LLM)
+    }
+    Returns: {"section": str, "output": str, "week_iso": str}
+    """
+    body = await request.json()
+    section = body.get("section", "")
+    model = body.get("model") or None
+    data = body.get("data", {})
+    custom_prompt = body.get("custom_prompt") or None
+
+    proceed_fns = {
+        "pulse": _proceed_pulse,
+        "big_conversation": _proceed_big_conversation,
+        "finds": _proceed_finds,
+        "thread": _proceed_thread,
+        "amp_finest": _proceed_amp_finest,
+        "off_the_clock": _proceed_off_the_clock,
+        "editorial": _proceed_editorial,
+        "lobby": _proceed_lobby,
+    }
+
+    if section not in proceed_fns:
+        return JSONResponse({"error": f"Unknown section: {section}"}, status_code=400)
+
+    import asyncio
+    loop = asyncio.get_event_loop()
+    week_iso = get_current_week_iso()
+    try:
+        output = await loop.run_in_executor(
+            None, proceed_fns[section], data, model, custom_prompt
+        )
+        return JSONResponse({"section": section, "output": output, "model": model, "week_iso": week_iso})
+    except Exception as e:
+        return JSONResponse({"section": section, "error": str(e)}, status_code=500)
+
+
+@app.post("/api/preview-prompt")
+async def api_preview_prompt(request: Request) -> JSONResponse:
+    """Render and return the default LLM prompt for a section without calling the LLM.
+
+    Body: {"section": str, "data": dict (optional)}
+    Returns: {"prompt": str, "section": str}
+    """
+    body = await request.json()
+    section = body.get("section", "")
+    data = body.get("data", {})
+
+    try:
+        if section == "pulse":
+            from flatwhite.classify.prompts import PULSE_SUMMARY_PROMPT
+            from flatwhite.dashboard.state import load_pulse_state, load_signals_this_week
+            from flatwhite.db import get_interactions
+            from flatwhite.signals.macro_context import fetch_macro_headlines
+            pulse = load_pulse_state()
+            signals = load_signals_this_week()
+
+            week_iso = get_current_week_iso()
+            conn = get_connection()
+            year_s, wn_s = int(week_iso[:4]), int(week_iso[6:])
+            dt_s = _dt.datetime.strptime(f"{year_s}-W{wn_s:02d}-1", "%G-W%V-%u")
+            prev_wk = (dt_s - _dt.timedelta(weeks=1)).strftime("%G-W%V")
+            prev_rows = conn.execute(
+                "SELECT signal_name, normalised_score FROM signals WHERE week_iso = ? AND lane = 'pulse'",
+                (prev_wk,),
+            ).fetchall()
+            conn.close()
+            prev_map = {s["signal_name"]: s["normalised_score"] for s in prev_rows}
+            selected_signals = data.get("selected_signals", [s["signal_name"] for s in signals])
+            signal_lines = []
+            for s in signals:
+                if s["signal_name"] in selected_signals:
+                    name = s["signal_name"]
+                    score = round(s["normalised_score"], 1)
+                    prev = prev_map.get(name)
+                    if prev is not None:
+                        delta = round(score - prev, 1)
+                        signal_lines.append(f"{name}: {score} (prev: {round(prev,1)}, Δ: {delta:+.1f})")
+                    else:
+                        signal_lines.append(f"{name}: {score}")
+
+            interactions = get_interactions(week_iso)
+            interactions_block = ""
+            if interactions:
+                interactions_block = "\nSignal interactions detected:\n" + "\n".join(
+                    f"- {ix['pattern_name']}: {ix['narrative']}" for ix in interactions
+                ) + "\n"
+            macro_context = ""
+            try:
+                macro_context = fetch_macro_headlines()
+            except Exception:
+                pass
+
+            prompt = PULSE_SUMMARY_PROMPT.format(
+                smoothed=f"{pulse['smoothed_score']:.0f}" if pulse else "50",
+                direction=pulse["direction"] if pulse else "stable",
+                prev_smoothed=f"{pulse.get('smoothed_score', 50):.0f}" if pulse else "50",
+                drivers="\n".join(signal_lines[:10]),
+                interactions_block=interactions_block,
+                macro_context=macro_context,
+            )
+
+        elif section == "lobby":
+            selected = data.get("selected_employers", [])
+            employer_lines = []
+            for e in selected:
+                name = e.get("employer_name", str(e)) if isinstance(e, dict) else str(e)
+                if isinstance(e, dict):
+                    current = e.get("open_roles_count", "?")
+                    wow = e.get("delta")
+                    mom = e.get("mom_delta")
+                    wow_str = f"+{wow}" if wow and wow > 0 else str(wow) if wow is not None else "—"
+                    mom_str = f"+{mom}" if mom and mom > 0 else str(mom) if mom is not None else "—"
+                    employer_lines.append(f"- {name}: {current} roles (WoW: {wow_str}, MoM: {mom_str})")
+                else:
+                    employer_lines.append(f"- {name}")
+            employer_block = "\n".join(employer_lines) if employer_lines else "No employers selected."
+            prompt = (
+                "Write The Lobby section for this week's Flat White newsletter.\n\n"
+                f"Employer hiring movements this week:\n{employer_block}\n\n"
+                "Analyse these hiring movements. What do they signal about the corporate job market? "
+                "Are companies restructuring, expanding, or pulling back? Identify employers with "
+                "sustained trends (same direction for multiple weeks) vs one-week anomalies. "
+                "Connect the dots for someone working in Big 4, law, banking, or tech.\n\n"
+                "Output ONLY the commentary text. No title. No sign-off."
+            )
+
+        elif section == "off_the_clock":
+            picks = data.get("picks", [])
+            picks_block = "\n\n".join(
+                f"Category: {p.get('category', '')}\nTitle: {p.get('title', '')}\nDraft blurb: {p.get('blurb', '')}"
+                for p in picks
+            )
+            prompt = (
+                "Polish these Off the Clock blurbs for Flat White.\n\n"
+                f"{picks_block}\n\n"
+                "For each, rewrite the blurb in 1-2 sentences. Voice: dry, specific, opinionated. "
+                "Not a review. A statement from someone who already knows. Australian English.\n\n"
+                "Output as: CATEGORY: BLURB (one per line)"
+            )
+
+        elif section == "finds":
+            items = data.get("selected_items", [])
+            items_block = "\n\n".join(
+                f"Title: {item.get('title', '')}\nURL: {item.get('url', '')}\nSummary: {item.get('summary', '')}"
+                for item in items
+            )
+            prompt = (
+                "Write the Finds section for this week's Flat White newsletter.\n\n"
+                f"Selected items:\n{items_block}\n\n"
+                "For each item, write a headline and a 2-3 sentence blurb. Voice: dry, observant, "
+                "Australian corporate commentary. Each blurb should tell the reader why this matters "
+                "to someone in corporate Australia. End each with 'Read more' on its own line.\n\n"
+                "Output each find as: HEADLINE\\nBLURB\\nRead more\\n\\n"
+            )
+
+        else:
+            return JSONResponse({"error": f"Preview not supported for section: {section}"}, status_code=400)
+
+        return JSONResponse({"prompt": prompt, "section": section})
+
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
