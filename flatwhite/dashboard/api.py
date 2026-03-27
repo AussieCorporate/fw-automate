@@ -1286,6 +1286,58 @@ def api_section_status(section: str) -> JSONResponse:
     return JSONResponse(state)
 
 
+@app.post("/api/backfill")
+async def api_backfill(request: Request) -> JSONResponse:
+    """Backfill historical signal data and seed employer snapshots for a past week.
+
+    Body: {"target_week": str}  e.g. "2026-W12"
+    Runs run_backfill(weeks=2) for signals, then seeds employer_snapshots via SQL copy.
+    Returns: {"seeded_employers": int, "started_signal_backfill": bool}
+    """
+    body = await request.json()
+    target_week = body.get("target_week", "")
+
+    conn = get_connection()
+    # Check if employer snapshots already exist for target_week
+    existing = conn.execute(
+        "SELECT COUNT(*) FROM employer_snapshots WHERE week_iso = ?", (target_week,)
+    ).fetchone()[0]
+
+    seeded = 0
+    if existing == 0:
+        # Copy current week's employer snapshots as target_week baseline
+        current_week = get_current_week_iso()
+        import datetime as _dt_local
+        year, wn = int(target_week[:4]), int(target_week[6:])
+        target_date = _dt_local.datetime.strptime(f"{year}-W{wn:02d}-1", "%G-W%V-%u").strftime("%Y-%m-%d")
+        conn.execute(
+            f"""INSERT OR IGNORE INTO employer_snapshots
+                (employer_id, open_roles_count, snapshot_date, week_iso, extraction_method, ats_platform)
+                SELECT employer_id, open_roles_count, ?, ?, extraction_method, ats_platform
+                FROM employer_snapshots WHERE week_iso = ?""",
+            (target_date, target_week, current_week),
+        )
+        conn.commit()
+        seeded = conn.execute(
+            "SELECT COUNT(*) FROM employer_snapshots WHERE week_iso = ?", (target_week,)
+        ).fetchone()[0]
+    conn.close()
+
+    # Run signal backfill in a background thread (slow — includes Google Trends)
+    def _do_signal_backfill():
+        from flatwhite.pulse.backfill import run_backfill
+        run_backfill(weeks=2)
+
+    t = threading.Thread(target=_do_signal_backfill, daemon=True)
+    t.start()
+
+    return JSONResponse({
+        "seeded_employers": seeded,
+        "started_signal_backfill": True,
+        "target_week": target_week,
+    })
+
+
 @app.get("/api/run-log")
 def api_run_log() -> JSONResponse:
     """Return the last 100 lines of the cron run log."""

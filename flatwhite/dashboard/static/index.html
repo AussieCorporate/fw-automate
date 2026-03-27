@@ -524,7 +524,8 @@ function renderCategoryTrends() {
     var score = cat.current_score != null ? cat.current_score.toFixed(1) : "—";
     var delta = cat.delta;
     var deltaClass = delta == null ? "stable" : (delta > 2 ? "up" : (delta < -2 ? "down" : "stable"));
-    var deltaText = delta == null ? "—" : ((delta > 0 ? "+" : "") + delta.toFixed(1));
+    var weeksAvail = S.trends && S.trends.weeks_available != null ? S.trends.weeks_available : 1;
+    var deltaText = delta == null ? (weeksAvail < 2 ? "first week" : "—") : ((delta > 0 ? "+" : "") + delta.toFixed(1));
     var histScores = (cat.history || []).map(function(h) { return h.score; });
     h += '<div class="cat-card">';
     h += '<div class="cat-card-label">' + esc(cat.label) + '</div>';
@@ -543,6 +544,9 @@ function renderPulse(el) {
   var h = '<div class="sh"><div><h2>Pulse</h2><div class="sub">Disruption score, signals, and narrative</div></div></div>';
   h += '<div class="toolbar">';
   h += '<button class="btn btn-primary" onclick="runSection(\'pulse\')">SCRAPE</button>';
+  if (S.trends && S.trends.weeks_available < 2) {
+    h += ' <button class="btn btn-secondary" onclick="runBackfill()" style="font-size:11px;">Backfill prev week</button>';
+  }
   h += modelSelect("model-pulse");
   h += '<button class="btn btn-success" onclick="proceedPulse()">PROCEED</button>';
   if (S.loading.pulse) h += renderSectionProgress('pulse');
@@ -559,7 +563,7 @@ function renderPulse(el) {
     var delta = 0;
     if (S.trends && S.trends.composite_history && S.trends.composite_history.length >= 2) {
       var hist = S.trends.composite_history;
-      delta = (p.smoothed_score || 0) - (hist[hist.length - 2].value || 0);
+      delta = (p.smoothed_score || 0) - (hist[hist.length - 2].score || 0);
     }
     var dirClass = dir === "up" ? "dir-up" : (dir === "down" ? "dir-down" : "dir-stable");
     var arrow = dir === "up" ? "\u2191" : (dir === "down" ? "\u2193" : "\u2192");
@@ -1361,6 +1365,27 @@ function saveOutput(section) {
       renderSidebar();
     })
     .catch(function(e) { showToast("Error: " + e.message, "error"); });
+}
+
+function runBackfill() {
+  // Compute previous week ISO string
+  var now = new Date();
+  var prevWeek = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
+  var d = new Date(Date.UTC(prevWeek.getFullYear(), prevWeek.getMonth(), prevWeek.getDate()));
+  var dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  var weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  var targetWeek = d.getUTCFullYear() + "-W" + String(weekNo).padStart(2, "0");
+
+  showToast("Backfilling " + targetWeek + " — signal backfill runs in background (~6 min for Google Trends)");
+  api("/api/backfill", { method: "POST", body: { target_week: targetWeek } })
+    .then(function(d) {
+      showToast("Backfill started: " + d.seeded_employers + " employer snapshots seeded. Signal data populating in background.");
+      S.trends = null;
+      loadPageData("pulse").then(function() { render(); });
+    })
+    .catch(function(e) { showToast("Backfill failed: " + e.message, "error"); });
 }
 
 function runSection(section) {
