@@ -321,6 +321,20 @@ def migrate_db() -> None:
         )
     """)
 
+    # v3 signal_intelligence table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS signal_intelligence (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            signal_name TEXT NOT NULL,
+            week_iso TEXT NOT NULL,
+            delta REAL,
+            articles TEXT NOT NULL,
+            commentary TEXT NOT NULL,
+            generated_at TEXT NOT NULL,
+            UNIQUE(signal_name, week_iso)
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -353,6 +367,16 @@ def insert_signal(
     row_id = cursor.lastrowid
     conn.close()
     return row_id
+
+
+def update_raw_item_engagement(item_id: int, post_score: int, comment_engagement: int) -> None:
+    conn = get_connection()
+    conn.execute(
+        "UPDATE raw_items SET post_score = ?, comment_engagement = ? WHERE id = ?",
+        (post_score, comment_engagement, item_id),
+    )
+    conn.commit()
+    conn.close()
 
 
 def insert_raw_item(
