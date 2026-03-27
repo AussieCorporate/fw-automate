@@ -277,6 +277,8 @@ var S = {
   sectionProgress: {},   // { section: {step, total, step_name} }
   proceedModal: { open: false, section: null, prompt: "", lean: "", items: [], loading: false },
   proceedData: {},
+  signalIntelligence: {},   // { signal_name: {delta, articles, commentary} }
+  signalIntelExpanded: {},  // { signal_name: bool }
 };
 
 /* ── Helpers ───────────────────────────────────────────── */
@@ -289,6 +291,15 @@ function api(path, opts) {
     if (!r.ok) return r.json().then(function(d) { var e = new Error(d.error || ("HTTP " + r.status)); e.data = d; throw e; });
     return r.json();
   });
+}
+
+function getCurrentWeekIso() {
+  var d = new Date();
+  var dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  var weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return d.getUTCFullYear() + "-W" + String(weekNo).padStart(2, "0");
 }
 
 function sparkline(values, width, height) {
@@ -367,7 +378,13 @@ function loadPageData(page) {
   switch (page) {
     case "pulse":
       if (S.pulse) return Promise.resolve();
-      return Promise.all([api("/api/pulse"), api("/api/pulse/trends")]).then(function(r) {
+      return Promise.all([
+        api("/api/pulse"),
+        api("/api/pulse/trends"),
+        api("/api/signal-intelligence/" + getCurrentWeekIso()).then(function(d) {
+          S.signalIntelligence = d || {};
+        }).catch(function() { S.signalIntelligence = {}; })
+      ]).then(function(r) {
         S.pulse = r[0].pulse; S.signals = r[0].signals || []; S.anomalies = r[0].anomalies || []; S.weekIso = r[0].week_iso || "";
         S.trends = r[1] || null;
       });
@@ -593,7 +610,7 @@ function renderPulse(el) {
         S._pulseInitChecked = true;
         S.signals.forEach(function(sig) { S.pulseChecked[sig.signal_name || sig.name] = true; });
       }
-      h += '<table class="tbl"><thead><tr><th style="width:30px;"></th><th>Signal</th><th>Score</th><th>Delta</th><th>Category</th></tr></thead><tbody>';
+      h += '<table class="tbl"><thead><tr><th style="width:30px;"></th><th>Signal</th><th>Score</th><th>Delta</th><th>Category</th><th style="width:60px;">Evidence</th></tr></thead><tbody>';
       // Build delta lookup from all_signal_deltas (full set) with biggest_movers as fallback
       var moverDeltas = {};
       if (S.trends && S.trends.all_signal_deltas) {
@@ -615,7 +632,27 @@ function renderPulse(el) {
         h += '<td>' + esc(sig.normalised_score != null ? sig.normalised_score.toFixed(1) : "—") + '</td>';
         h += '<td style="font-weight:600;' + dc + '">' + (hasDelta ? ((dv > 0 ? "+" : "") + dv.toFixed(1)) : "—") + '</td>';
         h += '<td><span class="chip chip-default">' + esc(sig.area || "") + '</span></td>';
+        var intel = S.signalIntelligence[name];
+        var evidenceBadge = intel
+          ? '<span class="chip chip-default" style="cursor:pointer;font-size:10px;" onclick="toggleSignalIntel(\'' + esc(name) + '\')" title="' + esc((intel.commentary || "").slice(0, 80)) + '...">&#8801; evidence</span>'
+          : '';
+        h += '<td>' + evidenceBadge + '</td>';
         h += '</tr>';
+        if (S.signalIntelExpanded[name] && intel) {
+          h += '<tr><td colspan="6" style="background:var(--bg-2);padding:12px 16px;">';
+          h += '<div style="font-size:13px;line-height:1.6;color:var(--text-1);margin-bottom:10px;">' + esc(intel.commentary) + '</div>';
+          if (intel.articles && intel.articles.length) {
+            h += '<div style="font-size:11px;color:var(--text-3);margin-bottom:6px;">Sources:</div>';
+            intel.articles.slice(0, 3).forEach(function(a) {
+              h += '<div style="font-size:12px;margin-bottom:4px;">';
+              h += '<a href="' + esc(a.url) + '" target="_blank" style="color:var(--amber);">' + esc(a.title) + '</a>';
+              if (a.published) h += ' <span style="color:var(--text-3);">(' + esc(a.published.slice(0, 10)) + ')</span>';
+              h += '</div>';
+            });
+          }
+          h += '<button class="btn btn-secondary" style="font-size:10px;margin-top:8px;" onclick="refreshSignalIntel(\'' + esc(name) + '\')">Refresh evidence</button>';
+          h += '</td></tr>';
+        }
       });
       h += '</tbody></table>';
     } else {
@@ -630,6 +667,27 @@ function renderPulse(el) {
 }
 
 function togglePulseCheck(name, val) { S.pulseChecked[name] = val; }
+
+function toggleSignalIntel(name) {
+  S.signalIntelExpanded[name] = !S.signalIntelExpanded[name];
+  render();
+}
+
+function refreshSignalIntel(name) {
+  var weekIso = getCurrentWeekIso();
+  showToast("Refreshing evidence for " + name + "...");
+  api("/api/signal-intelligence/refresh", { method: "POST", body: { signal_name: name, week_iso: weekIso } })
+    .then(function() {
+      setTimeout(function() {
+        api("/api/signal-intelligence/" + weekIso).then(function(d) {
+          S.signalIntelligence = d || {};
+          render();
+          showToast("Evidence refreshed for " + name);
+        });
+      }, 3000);
+    })
+    .catch(function(e) { showToast("Refresh failed: " + e.message, "error"); });
+}
 
 function proceedPulse() {
   var model = getModel("model-pulse");
