@@ -10,6 +10,7 @@
   Returned as list of strings, not stored.
 """
 
+import datetime
 import json
 from flatwhite.model_router import route
 from flatwhite.classify.prompts import (
@@ -23,6 +24,13 @@ from flatwhite.classify.prompts import (
 from flatwhite.classify.utils import _parse_llm_json
 from flatwhite.db import get_connection, get_current_week_iso, get_pulse_history, get_interactions
 from flatwhite.signals.macro_context import fetch_macro_headlines
+
+
+def _prev_week_iso(week_iso: str) -> str:
+    """Return the ISO week string for the week before week_iso."""
+    year, wn = int(week_iso[:4]), int(week_iso[6:])
+    dt = datetime.datetime.strptime(f"{year}-W{wn:02d}-1", "%G-W%V-%u")
+    return (dt - datetime.timedelta(weeks=1)).strftime("%G-W%V")
 
 
 def generate_pulse_summary() -> str:
@@ -64,10 +72,7 @@ def generate_pulse_summary() -> str:
         "SELECT signal_name, normalised_score, source_weight FROM signals WHERE week_iso = ? AND lane = 'pulse'",
         (week_iso,),
     ).fetchall()
-    import datetime as _dt
-    year_s, wn_s = int(week_iso[:4]), int(week_iso[6:])
-    dt_s = _dt.datetime.strptime(f"{year_s}-W{wn_s:02d}-1", "%G-W%V-%u")
-    prev_wk = (dt_s - _dt.timedelta(weeks=1)).strftime("%G-W%V")
+    prev_wk = _prev_week_iso(week_iso)
     prev_signals_rows = conn2.execute(
         "SELECT signal_name, normalised_score FROM signals WHERE week_iso = ? AND lane = 'pulse'",
         (prev_wk,),
@@ -144,10 +149,7 @@ def generate_driver_bullets() -> list[dict]:
     ).fetchall()
 
     # Previous week signals for WoW delta
-    import datetime
-    year, wn = int(week_iso[:4]), int(week_iso[6:])
-    dt = datetime.datetime.strptime(f"{year}-W{wn:02d}-1", "%G-W%V-%u")
-    prev_week_iso = (dt - datetime.timedelta(weeks=1)).strftime("%G-W%V")
+    prev_week_iso = _prev_week_iso(week_iso)
     prev_signals = conn.execute(
         "SELECT signal_name, normalised_score, source_weight FROM signals WHERE week_iso = ? AND lane = 'pulse'",
         (prev_week_iso,),
