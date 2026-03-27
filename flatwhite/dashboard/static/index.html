@@ -674,7 +674,7 @@ function toggleSignalIntel(name) {
 }
 
 function refreshSignalIntel(name) {
-  var weekIso = getCurrentWeekIso();
+  var weekIso = S.weekIso || getCurrentWeekIso();
   showToast("Refreshing evidence for " + name + "...");
   api("/api/signal-intelligence/refresh", { method: "POST", body: { signal_name: name, week_iso: weekIso } })
     .then(function() {
