@@ -369,16 +369,6 @@ def insert_signal(
     return row_id
 
 
-def update_raw_item_engagement(item_id: int, post_score: int, comment_engagement: int) -> None:
-    conn = get_connection()
-    conn.execute(
-        "UPDATE raw_items SET post_score = ?, comment_engagement = ? WHERE id = ?",
-        (post_score, comment_engagement, item_id),
-    )
-    conn.commit()
-    conn.close()
-
-
 def insert_raw_item(
     title: str,
     body: str | None,
