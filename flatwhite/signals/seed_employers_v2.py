@@ -136,9 +136,12 @@ EMPLOYERS_V2: list[dict] = [
         "sector": "consulting",
         "careers_url": "https://accenture.wd103.myworkdayjobs.com/wday/cxs/accenture/AccentureCareers/jobs",
         "ats_platform": "workday",
-        "ats_endpoint": "https://accenture.wd103.myworkdayjobs.com/wday/cxs/accenture/AccentureCareers/jobs",
+        # AU country facet ID (d903bb3...) filters to 234 AU roles at query time.
+        # Needed because the global site returns blank locations — post-fetch AU
+        # filtering would exclude all roles. Facet ID from locationCountry facet.
+        "ats_endpoint": 'https://accenture.wd103.myworkdayjobs.com/wday/cxs/accenture/AccentureCareers/jobs||{"locationCountry":["d903bb3fedad45039383f6de334ad4db"]}',
         "extraction_method": "json_api",
-        "country_filter": "AU",
+        "country_filter": None,
         "corporate_only": 0,
         "seek_slug": "accenture",
     },

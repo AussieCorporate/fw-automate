@@ -436,3 +436,189 @@ def classify_all_unclassified() -> dict:
         stats["curated"] += 1
 
     return stats
+
+
+# ─── OFF THE CLOCK CLASSIFICATION ────────────────────────────────────────────
+
+OTC_VALID_SECTIONS: set[str] = {
+    "otc_eating", "otc_watching", "otc_reading", "otc_wearing", "otc_going", "discard",
+}
+
+_OTC_CATEGORY_TO_SECTION: dict[str, str] = {
+    "eating": "otc_eating",
+    "watching": "otc_watching",
+    "reading": "otc_reading",
+    "wearing": "otc_wearing",
+    "going": "otc_going",
+    "discard": "discard",
+}
+
+
+def _otc_weighted_composite(trendiness: int, shareability: int) -> float:
+    """Calculate weighted composite for OTC items: 0.5 * trendiness + 0.5 * shareability."""
+    return round(0.5 * trendiness + 0.5 * shareability, 2)
+
+
+def classify_single_otc_item(raw_item: dict) -> dict | None:
+    """Classify one lifestyle raw_item via Gemini 2.5 Flash.
+
+    Input: dict with keys: id, title, body, source, url, subreddit (city), lifestyle_category.
+    Output: validated dict with section, scores, summary, weighted_composite.
+    Returns None on LLM failure.
+    """
+    from flatwhite.classify.prompts import OTC_CLASSIFICATION_SYSTEM, OTC_CLASSIFICATION_PROMPT
+
+    prompt = OTC_CLASSIFICATION_PROMPT.format(
+        title=raw_item["title"],
+        body=(raw_item["body"] or "")[:1500],
+        source=raw_item["source"],
+        url=raw_item["url"] or "",
+        city=raw_item.get("subreddit") or "unknown",
+        category_hint=raw_item.get("lifestyle_category") or "none",
+    )
+
+    try:
+        response = route(
+            task_type="classification",
+            prompt=prompt,
+            system=OTC_CLASSIFICATION_SYSTEM,
+        )
+    except Exception:
+        return None
+
+    result = _parse_llm_json(response)
+    if result is None or not isinstance(result, dict):
+        return None
+
+    # Map category to section
+    category = result.get("category", "discard")
+    section = _OTC_CATEGORY_TO_SECTION.get(category, "discard")
+    result["section"] = section
+
+    # Validate and clamp scores
+    for dim in ("trendiness", "shareability"):
+        val = result.get(dim, 3)
+        if not isinstance(val, (int, float)):
+            val = 3
+        result[dim] = max(1, min(5, int(val)))
+
+    # Calculate weighted composite
+    result["weighted_composite"] = _otc_weighted_composite(result["trendiness"], result["shareability"])
+
+    # Auto-discard: both scores below 2
+    if result["trendiness"] < 2 and result["shareability"] < 2:
+        result["section"] = "discard"
+
+    # Validate city
+    city = result.get("city", "national")
+    if city not in ("sydney", "melbourne", "brisbane", "perth", "national"):
+        city = "national"
+    result["city"] = city
+
+    # Validate summary
+    summary = result.get("summary")
+    if not isinstance(summary, str) or len(summary) < 5:
+        summary = raw_item["title"]
+    result["summary"] = summary
+
+    # Map trendiness/shareability into standard 5-dimension columns for DB storage
+    result["relevance"] = result["trendiness"]
+    result["novelty"] = result["trendiness"]
+    result["reliability"] = 3
+    result["tension"] = result["shareability"]
+    result["usefulness"] = result["shareability"]
+
+    result["tags"] = []
+    result["confidence_tag"] = None
+
+    return result
+
+
+def classify_all_otc_unclassified() -> dict:
+    """Classify all unclassified lifestyle raw_items for the current week.
+
+    Same flow as classify_all_unclassified() but for lane='lifestyle' using OTC prompts.
+    Returns: dict with keys: total, curated, discarded, failed, skipped.
+    """
+    conn = get_connection()
+    week_iso = get_current_week_iso()
+
+    unclassified = conn.execute(
+        "SELECT * FROM raw_items WHERE classified = 0 AND lane = 'lifestyle' AND week_iso = ?",
+        (week_iso,),
+    ).fetchall()
+    conn.close()
+
+    stats: dict = {
+        "total": 0,
+        "curated": 0,
+        "discarded": 0,
+        "failed": 0,
+        "skipped": 0,
+    }
+
+    for item in unclassified:
+        item_dict = dict(item)
+        stats["total"] += 1
+
+        # Guard: skip if already curated
+        conn = get_connection()
+        existing = conn.execute(
+            "SELECT id FROM curated_items WHERE raw_item_id = ?",
+            (item_dict["id"],),
+        ).fetchone()
+        conn.close()
+        if existing:
+            conn = get_connection()
+            conn.execute("UPDATE raw_items SET classified = 1 WHERE id = ?", (item_dict["id"],))
+            conn.commit()
+            conn.close()
+            stats["skipped"] += 1
+            continue
+
+        result = classify_single_otc_item(item_dict)
+
+        conn = get_connection()
+
+        if result is None:
+            conn.execute("UPDATE raw_items SET classified = 1 WHERE id = ?", (item_dict["id"],))
+            conn.commit()
+            conn.close()
+            stats["failed"] += 1
+            continue
+
+        if result["section"] == "discard":
+            conn.execute("UPDATE raw_items SET classified = 1 WHERE id = ?", (item_dict["id"],))
+            conn.commit()
+            conn.close()
+            stats["discarded"] += 1
+            continue
+
+        conn.execute(
+            """INSERT INTO curated_items
+            (raw_item_id, section, summary, score_relevance, score_novelty,
+             score_reliability, score_tension, score_usefulness, weighted_composite,
+             tags, confidence_tag)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                item_dict["id"],
+                result["section"],
+                result["summary"],
+                result["relevance"],
+                result["novelty"],
+                result["reliability"],
+                result["tension"],
+                result["usefulness"],
+                result["weighted_composite"],
+                json.dumps(result["tags"]),
+                result["confidence_tag"],
+            ),
+        )
+        conn.execute("UPDATE raw_items SET classified = 1 WHERE id = ?", (item_dict["id"],))
+        conn.commit()
+        conn.close()
+        stats["curated"] += 1
+
+        time.sleep(1)
+
+    return stats

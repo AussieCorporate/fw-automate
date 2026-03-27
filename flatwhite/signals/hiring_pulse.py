@@ -143,7 +143,18 @@ async def pull_single_employer(emp: dict) -> EmployerPull:
 
     # Tier 1A: JSON API extractors
     if ats == "workday" and endpoint:
-        pull = await extract_workday(endpoint, eid, name, sector)
+        # Endpoint may encode optional Workday facets as "url||json"
+        # e.g. "https://...jobs||{"locationCountry":["<facet-id>"]}"
+        workday_url = endpoint
+        workday_facets: dict | None = None
+        if "||" in endpoint:
+            workday_url, facets_json = endpoint.split("||", 1)
+            try:
+                import json as _json
+                workday_facets = _json.loads(facets_json)
+            except Exception:
+                pass
+        pull = await extract_workday(workday_url, eid, name, sector, applied_facets=workday_facets)
     elif ats == "smartrecruiters" and endpoint:
         pull = await extract_smartrecruiters(endpoint, eid, name, sector)
     elif ats == "oracle_hcm" and endpoint:

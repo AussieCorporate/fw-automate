@@ -1,5 +1,5 @@
 from bs4 import BeautifulSoup
-from flatwhite.utils.http import fetch_url
+from flatwhite.utils.http import fetch_url_playwright
 from flatwhite.db import insert_signal, get_current_week_iso, get_recent_signals
 from flatwhite.signals.normalise import get_min_weeks_warm, normalise_hybrid
 import yaml
@@ -21,15 +21,33 @@ def pull_market_hiring() -> float:
         config = yaml.safe_load(f)
 
     total_count = 0
+    n_categories = len(config["seek"]["categories"])
+    n_failed = 0
     for category in config["seek"]["categories"]:
         try:
-            html = fetch_url(category["url"], delay_seconds=3.0)
+            html = fetch_url_playwright(category["url"], delay_seconds=2.0, wait_seconds=5.0)
             count = _extract_listing_count(html)
             total_count += count
-        except Exception:
+        except Exception as e:
+            print(f"  ⚠ SEEK fetch failed for '{category['name']}': {e}")
+            n_failed += 1
             continue
 
     week_iso = get_current_week_iso()
+
+    # If all fetches failed, this is a scraper blockage — exclude from composite
+    if n_failed == n_categories:
+        print("  ⚠ market_hiring: all SEEK fetches failed — signal excluded from composite this week")
+        insert_signal(
+            signal_name="market_hiring",
+            lane="pulse",
+            area="labour_market",
+            raw_value=0.0,
+            normalised_score=50.0,
+            source_weight=0.0,
+            week_iso=week_iso,
+        )
+        return 50.0
 
     recent = get_recent_signals("market_hiring", weeks=52)
     history = [r["raw_value"] for r in recent

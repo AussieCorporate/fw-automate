@@ -46,12 +46,23 @@ def pull_salary_pressure() -> float:
         except Exception as e:
             print(f"  ⚠ salary_pressure: skipped {sector['name']} — {type(e).__name__}: {e}")
 
-    if not salaries:
-        avg_salary = 0.0
-    else:
-        avg_salary = sum(salaries) / len(salaries)
-
     week_iso = get_current_week_iso()
+
+    if not salaries:
+        # All sector fetches failed — exclude from composite rather than inserting a false "salaries collapsed" signal
+        print("  ⚠ salary_pressure: all Adzuna fetches failed — signal excluded from composite this week")
+        insert_signal(
+            signal_name="salary_pressure",
+            lane="pulse",
+            area="labour_market",
+            raw_value=0.0,
+            normalised_score=50.0,
+            source_weight=0.0,
+            week_iso=week_iso,
+        )
+        return 50.0
+
+    avg_salary = sum(salaries) / len(salaries)
 
     recent = get_recent_signals("salary_pressure", weeks=52)
     history = [r["raw_value"] for r in recent

@@ -149,17 +149,29 @@ def pull_contractor_proxy() -> float:
         gt_config["timeframe"],
     )
     raw = positive_score - negative_score
-    # Scale difference: ±50 maps to 0-100 (50 = neutral).
-    # Google Trends 0-100 scale with AU niche keywords gives realistic range ±50.
-    normalised = max(0.0, min(100.0, 50.0 + (raw / 50.0) * 50.0))
     week_iso = get_current_week_iso()
+
+    recent = get_recent_signals("contractor_proxy", weeks=52)
+    history = [r["raw_value"] for r in recent
+               if r.get("source_weight", 1.0) > 0.3]
+
+    ref = config["signal_reference_ranges"]["signals"]["contractor_proxy"]
+    normalised, source_weight = normalise_hybrid(
+        raw_value=raw,
+        floor=ref["floor"],
+        ceiling=ref["ceiling"],
+        inverted=ref["inverted"],
+        history=history,
+        min_weeks_warm=get_min_weeks_warm(config),
+    )
+
     insert_signal(
         signal_name="contractor_proxy",
         lane="pulse",
         area="corporate_stress",
         raw_value=raw,
         normalised_score=normalised,
-        source_weight=1.0,
+        source_weight=source_weight,
         week_iso=week_iso,
     )
     time.sleep(gt_config["sleep_between_calls_seconds"])

@@ -32,12 +32,16 @@ def pull_layoff_news_velocity() -> float:
         config = yaml.safe_load(f)
 
     total_articles = 0
+    queries_with_results = 0
     for query in config["google_news"]["pulse_queries"]:
         encoded = quote(query)
         url = f"https://news.google.com/rss/search?q={encoded}&hl=en-AU&gl=AU&ceid=AU:en"
         try:
             entries = fetch_rss(url, delay_seconds=2.0)
-            total_articles += _count_recent_articles(entries, days=7)
+            count = _count_recent_articles(entries, days=7)
+            total_articles += count
+            if count > 0:
+                queries_with_results += 1
         except Exception:
             continue
 
@@ -56,6 +60,12 @@ def pull_layoff_news_velocity() -> float:
         history=history,
         min_weeks_warm=get_min_weeks_warm(config),
     )
+
+    # If all queries returned 0 articles, this is likely a scrape failure, not genuine "no news"
+    n_queries = len(config["google_news"]["pulse_queries"])
+    if queries_with_results == 0 and n_queries > 0:
+        print("  ⚠ layoff_news_velocity: all Google News queries returned 0 articles — possible scrape failure, applying weight penalty")
+        source_weight = min(source_weight, 0.3)
 
     insert_signal(
         signal_name="layoff_news_velocity",

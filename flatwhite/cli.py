@@ -169,10 +169,15 @@ def cmd_ingest() -> None:
         email_count = pull_email_newsletters()
         print(f"  {email_count} items from email newsletters")
 
-        from flatwhite.editorial.youtube_transcripts import pull_youtube_transcripts
-        print("Pulling YouTube transcripts (podcasts)...")
-        yt_count = pull_youtube_transcripts()
-        print(f"  {yt_count} items from YouTube transcripts")
+        from flatwhite.editorial.podcast_feeds import pull_podcast_feeds
+        print("Pulling podcast RSS feeds...")
+        yt_count = pull_podcast_feeds()
+        print(f"  {yt_count} items from podcast feeds")
+
+        from flatwhite.editorial.off_the_clock import pull_off_the_clock
+        print("Pulling Off the Clock lifestyle sources...")
+        otc_count = pull_off_the_clock()
+        print(f"  {otc_count} lifestyle items ingested")
 
         g_elapsed = time.time() - g_start
         print(f"  [Group 2 done in {g_elapsed:.0f}s]")
@@ -238,6 +243,11 @@ def cmd_ingest() -> None:
     print(f"  Classified: {stats['total']} total, {stats['curated']} curated, "
           f"{stats['discarded']} discarded, {stats['failed']} failed")
 
+    from flatwhite.classify.classifier import classify_all_otc_unclassified
+    otc_stats = classify_all_otc_unclassified()
+    print(f"  OTC classified: {otc_stats['total']} total, {otc_stats['curated']} curated, "
+          f"{otc_stats['discarded']} discarded, {otc_stats['failed']} failed")
+
     g5_elapsed = time.time() - g5_start
     print(f"  [Group 5 done in {g5_elapsed:.0f}s]")
 
@@ -294,10 +304,14 @@ def cmd_pulse() -> None:
 
 
 def cmd_classify() -> None:
-    """Classify all unclassified editorial items using 5-dimension scoring."""
-    from flatwhite.classify.classifier import classify_all_unclassified
+    """Classify all unclassified editorial and lifestyle items."""
+    from flatwhite.classify.classifier import classify_all_unclassified, classify_all_otc_unclassified
     count = classify_all_unclassified()
     print(f"Classified {count} items.")
+
+    otc_stats = classify_all_otc_unclassified()
+    print(f"\nOTC lifestyle: {otc_stats['total']} total, {otc_stats['curated']} curated, "
+          f"{otc_stats['discarded']} discarded")
 
     # Section breakdown
     from flatwhite.db import get_connection

@@ -2,18 +2,17 @@ from __future__ import annotations
 
 """Model router for Flat White LLM calls.
 
-All tasks route through Gemini 2.5 Flash via call_gemini_flash().
-Retry once with exponential backoff on failure.
+Supports Gemini 2.5 Flash and Claude Sonnet/Haiku. Each model is called
+via its respective SDK. The route() function accepts an optional model_override
+to let the dashboard user pick which model to use per section.
 """
 
 import os
 import time
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
-# Temperature overrides by task type — classification needs determinism,
-# editorial tasks benefit from slightly more creativity.
 TEMPERATURE_BY_TASK: dict[str, float] = {
     "classification": 0.1,
     "scoring": 0.1,
@@ -25,44 +24,100 @@ TEMPERATURE_BY_TASK: dict[str, float] = {
     "big_conversation": 0.3,
 }
 
+DEFAULT_MODEL_BY_TASK: dict[str, str] = {
+    "classification": "gemini-2.5-flash",
+    "scoring": "gemini-2.5-flash",
+    "tagging": "gemini-2.5-flash",
+    "anomaly_summary": "gemini-2.5-flash",
+    "editorial": "claude-sonnet-4-6",
+    "summary": "claude-sonnet-4-6",
+    "hook": "claude-sonnet-4-6",
+    "big_conversation": "claude-sonnet-4-6",
+}
 
-def call_gemini_flash(prompt: str, system: str = "", temperature: float = 0.3) -> str:
-    """Call Gemini 2.5 Flash with one retry on failure.
-
-    First attempt uses the given temperature. If it fails, waits 2 seconds
-    and retries once. If the retry also fails, raises the exception.
-    """
-    from google import genai
-    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-
-    last_error: Exception | None = None
-    for attempt in range(2):
-        try:
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-                config=genai.types.GenerateContentConfig(
-                    system_instruction=system if system else None,
-                    temperature=temperature,
-                ),
-            )
-            return response.text
-        except Exception as e:
-            last_error = e
-            if attempt == 0:
-                wait = 2.0
-                print(f"LLM call failed ({e}), retrying in {wait}s...")
-                time.sleep(wait)
-
-    raise last_error
+MODEL_REGISTRY: dict[str, dict] = {
+    "gemini-2.5-flash": {"provider": "gemini", "label": "Gemini 2.5 Flash", "env_key": "GEMINI_API_KEY"},
+    "claude-sonnet-4-6": {"provider": "anthropic", "label": "Claude Sonnet 4.6", "env_key": "ANTHROPIC_API_KEY"},
+    "claude-haiku-4-5": {"provider": "anthropic", "label": "Claude Haiku 4.5", "env_key": "ANTHROPIC_API_KEY"},
+}
 
 
-def route(task_type: str, prompt: str, system: str = "") -> str:
-    """Route an LLM task to Gemini 2.5 Flash.
+def list_available_models() -> list[dict]:
+    """Return models that have API keys configured."""
+    available = []
+    for model_id, info in MODEL_REGISTRY.items():
+        if os.getenv(info["env_key"]):
+            available.append({"id": model_id, "label": info["label"], "provider": info["provider"]})
+    return available
 
-    Supported task_types: classification, scoring, tagging, anomaly_summary,
-    editorial, summary, hook, big_conversation.
-    Uses task-specific temperature from TEMPERATURE_BY_TASK.
+
+def _call_gemini(prompt: str, system: str, temperature: float) -> str:
+    """Call Gemini 2.5 Flash. Supports both google-genai and google-generativeai SDKs."""
+    try:
+        from google import genai
+        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=genai.types.GenerateContentConfig(
+                system_instruction=system if system else None,
+                temperature=temperature,
+            ),
+        )
+        return response.text
+    except ImportError:
+        pass
+
+    import google.generativeai as genai
+    genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+    model = genai.GenerativeModel(
+        "gemini-2.5-flash",
+        system_instruction=system if system else None,
+    )
+    response = model.generate_content(
+        prompt,
+        generation_config=genai.types.GenerationConfig(temperature=temperature),
+    )
+    return response.text
+
+
+def _call_claude(model_id: str, prompt: str, system: str, temperature: float) -> str:
+    """Call Claude via Anthropic SDK."""
+    import anthropic
+    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    messages = [{"role": "user", "content": prompt}]
+    response = client.messages.create(
+        model=model_id,
+        max_tokens=4096,
+        system=system if system else "",
+        messages=messages,
+        temperature=temperature,
+    )
+    return response.content[0].text
+
+
+def _call_model(model_id: str, prompt: str, system: str, temperature: float) -> str:
+    """Dispatch to the right provider based on model_id."""
+    info = MODEL_REGISTRY.get(model_id)
+    if not info:
+        raise ValueError(f"Unknown model: {model_id}")
+
+    api_key = os.getenv(info["env_key"])
+    if not api_key:
+        raise ValueError(f"No API key configured for {model_id} (set {info['env_key']})")
+
+    if info["provider"] == "gemini":
+        return _call_gemini(prompt, system, temperature)
+    elif info["provider"] == "anthropic":
+        return _call_claude(model_id, prompt, system, temperature)
+    else:
+        raise ValueError(f"Unknown provider: {info['provider']}")
+
+
+def route(task_type: str, prompt: str, system: str = "", model_override: str | None = None) -> str:
+    """Route an LLM task. Uses model_override if provided, otherwise default for task_type.
+
+    Retries once on failure with 2s backoff.
     """
     if task_type not in TEMPERATURE_BY_TASK:
         raise ValueError(
@@ -71,4 +126,29 @@ def route(task_type: str, prompt: str, system: str = "") -> str:
         )
 
     temperature = TEMPERATURE_BY_TASK[task_type]
-    return call_gemini_flash(prompt, system, temperature=temperature)
+    model_id = model_override or DEFAULT_MODEL_BY_TASK.get(task_type, "gemini-2.5-flash")
+
+    last_error: Exception | None = None
+    for attempt in range(2):
+        try:
+            return _call_model(model_id, prompt, system, temperature)
+        except Exception as e:
+            last_error = e
+            if attempt == 0:
+                print(f"LLM call failed ({model_id}: {e}), retrying in 2s...")
+                time.sleep(2.0)
+
+    raise last_error
+
+
+def call_gemini_flash(prompt: str, system: str = "", temperature: float = 0.3) -> str:
+    """Legacy wrapper. Calls Gemini 2.5 Flash with retry."""
+    last_error: Exception | None = None
+    for attempt in range(2):
+        try:
+            return _call_gemini(prompt, system, temperature)
+        except Exception as e:
+            last_error = e
+            if attempt == 0:
+                time.sleep(2.0)
+    raise last_error

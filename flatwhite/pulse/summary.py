@@ -64,7 +64,10 @@ def generate_pulse_summary() -> str:
     else:
         interactions_block = ""
 
-    macro_context = fetch_macro_headlines()
+    try:
+        macro_context = fetch_macro_headlines()
+    except Exception:
+        macro_context = ""
 
     # Build delta-annotated signal context for the summary prompt
     conn2 = get_connection()
@@ -107,12 +110,13 @@ def generate_pulse_summary() -> str:
             prompt=prompt,
             system=PULSE_SUMMARY_SYSTEM,
         )
-    except Exception:
-        return "Pulse summary generation failed."
+        summary_text = (summary or "").strip()
+        if not summary_text:
+            summary_text = "Pulse summary generation returned an empty response — try again."
+    except Exception as e:
+        summary_text = f"Pulse summary generation failed: {e}"
 
-    summary_text = summary.strip()
-
-    # Store in pulse_history
+    # Always store result so the UI updates (even on error)
     conn = get_connection()
     conn.execute(
         "UPDATE pulse_history SET summary_text = ? WHERE week_iso = ?",

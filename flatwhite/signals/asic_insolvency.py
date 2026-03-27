@@ -149,12 +149,21 @@ def pull_asic_insolvency() -> float:
     except Exception as e:
         print(f"  ASIC insolvency: page fetch failed ({e})")
 
-    # --- Total failure — no silent fallback ---
+    # --- Total failure — insert neutral signal with weight=0.0 (excluded from composite) ---
     if count is None:
         print("  ✗ ASIC insolvency FAILED: all extraction methods failed")
         print(f"    URL attempted: {series1_url}")
-        print("    This signal will be missing from this week's Pulse.")
-        return None
+        print("    Inserting neutral (50.0, weight=0.0) so signal is excluded, not missing.")
+        insert_signal(
+            signal_name="asic_insolvency",
+            lane="pulse",
+            area="corporate_stress",
+            raw_value=0.0,
+            normalised_score=50.0,
+            source_weight=0.0,
+            week_iso=week_iso,
+        )
+        return 50.0
 
     # --- Hybrid normalisation ---
     recent = get_recent_signals("asic_insolvency", weeks=52)

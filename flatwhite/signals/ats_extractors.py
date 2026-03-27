@@ -232,19 +232,25 @@ async def extract_workday(
     employer_name: str,
     sector: str,
     client: httpx.AsyncClient | None = None,
+    applied_facets: dict | None = None,
 ) -> EmployerPull:
     """
     Extract roles from a Workday CXS endpoint.
 
     Endpoint format:
     https://{tenant}.wd{N}.myworkdayjobs.com/wday/cxs/{tenant}/{siteId}/jobs
+
+    Optional applied_facets: Workday facet filters to pass in the POST body.
+    Example: {"locationCountry": ["<country-facet-id>"]} to filter by country.
+    Used for global sites (e.g. Accenture) where location data is blank and
+    post-fetch AU filtering would exclude all roles.
     """
     pull = EmployerPull(
         employer_id=employer_id, employer_name=employer_name, sector=sector,
         extraction_method="json_api", ats_platform="workday",
     )
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
-    payload: dict = {"appliedFacets": {}, "limit": 20, "offset": 0, "searchText": ""}
+    payload: dict = {"appliedFacets": applied_facets or {}, "limit": 20, "offset": 0, "searchText": ""}
     all_roles: list[RoleRecord] = []
     total: int | None = None
     page_count = 0
@@ -259,7 +265,7 @@ async def extract_workday(
             if page_count > MAX_WORKDAY_PAGES:
                 break
 
-            await _rate_limit_domain(endpoint)
+            await _rate_limit_domain(endpoint, min_interval=1.5)
 
             async def _do_request(_p=payload.copy(), _c=client, _e=endpoint):
                 resp = await _c.post(_e, json=_p, headers=headers)
@@ -907,7 +913,7 @@ async def extract_phenom(
 
         while True:
             await _rate_limit_domain(base_url)
-            url = f"{base_url}?from={offset}&s=1"
+            url = f"{base_url}?from={offset}&size=50"
 
             async def _do_request(_u=url, _c=client):
                 resp = await _c.get(_u)

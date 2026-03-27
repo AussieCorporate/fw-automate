@@ -133,6 +133,18 @@ def api_pulse() -> JSONResponse:
     })
 
 
+@app.get("/api/pulse/trends")
+def api_pulse_trends() -> JSONResponse:
+    """Return category-level WoW movements and biggest signal movers."""
+    return JSONResponse(load_signal_trends(n_weeks=6))
+
+
+@app.get("/api/reddit/compare")
+def api_reddit_compare(week: str | None = None) -> JSONResponse:
+    """Return Crowd vs Editorial comparison for r/auscorp posts."""
+    return JSONResponse(load_reddit_comparison(week_iso=week))
+
+
 @app.get("/api/items")
 def api_items() -> JSONResponse:
     """Return curated items grouped by section for current week."""
@@ -221,6 +233,18 @@ def api_seed_tags() -> JSONResponse:
 
     sorted_tags = sorted(tag_counts.items(), key=lambda x: x[1], reverse=True)
     return JSONResponse({"tags": [{"tag": t, "count": c} for t, c in sorted_tags]})
+
+
+@app.get("/api/off-the-clock")
+def api_off_the_clock() -> JSONResponse:
+    """Return Off the Clock candidates grouped by category for current week."""
+    candidates = load_otc_candidates()
+    picks = load_otc_picks()
+    return JSONResponse({
+        "candidates": candidates,
+        "picks": picks,
+        "week_iso": get_current_week_iso(),
+    })
 
 
 @app.get("/api/draft")
@@ -319,6 +343,32 @@ async def api_add_whisper(request: Request) -> JSONResponse:
     conn.close()
 
     return JSONResponse({"id": curated_id, "raw_id": raw_id, "week_iso": week_iso})
+
+
+@app.post("/api/off-the-clock/pick")
+async def api_otc_pick(request: Request) -> JSONResponse:
+    """Save an editor's Off the Clock pick for a category.
+
+    Body: {"curated_item_id": int, "category": str, "blurb": str}
+    """
+    body = await request.json()
+    curated_item_id = body.get("curated_item_id")
+    category = body.get("category")
+    blurb = body.get("blurb", "")
+
+    if not isinstance(curated_item_id, int):
+        return JSONResponse({"error": "curated_item_id must be an integer"}, status_code=400)
+    if category not in ("otc_eating", "otc_watching", "otc_reading", "otc_wearing", "otc_going"):
+        return JSONResponse({"error": "Invalid category"}, status_code=400)
+    if not blurb.strip():
+        return JSONResponse({"error": "blurb is required"}, status_code=400)
+
+    row_id = save_otc_pick(
+        category=category,
+        curated_item_id=curated_item_id,
+        editor_blurb=blurb,
+    )
+    return JSONResponse({"id": row_id, "week_iso": get_current_week_iso()})
 
 
 @app.post("/api/save-draft")
@@ -489,6 +539,20 @@ async def api_generate_angles(request: Request) -> JSONResponse:
             editorial_direction=body.get("editorial_direction", ""),
             selected_item_ids=body.get("selected_item_ids"),
         )
+        if not angles:
+            # Check whether the DB actually has classified items this week
+            week_iso = get_current_week_iso()
+            conn = get_connection()
+            item_count = conn.execute(
+                "SELECT COUNT(*) FROM curated_items ci JOIN raw_items ri ON ci.raw_item_id = ri.id WHERE ri.week_iso = ? AND ci.section != 'discard'",
+                (week_iso,),
+            ).fetchone()[0]
+            conn.close()
+            if item_count == 0:
+                return JSONResponse(
+                    {"angles": [], "error": "No classified items found for this week — run Reingest first."},
+                    status_code=400,
+                )
         return JSONResponse({"angles": angles})
     except Exception as e:
         print(f"[API] /api/generate-angles failed: {e}")
@@ -651,6 +715,374 @@ async def api_assemble(request: Request) -> JSONResponse:
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+# ── Section output helpers ──────────────────────────────────────────────────
+
+def _proceed_pulse(data: dict, model: str | None) -> str:
+    from flatwhite.model_router import route
+    from flatwhite.classify.prompts import PULSE_SUMMARY_SYSTEM, PULSE_SUMMARY_PROMPT
+    from flatwhite.dashboard.state import load_pulse_state, load_signals_this_week
+
+    pulse = load_pulse_state()
+    signals = load_signals_this_week()
+    selected_signals = data.get("selected_signals", [])
+
+    signal_lines = []
+    for s in signals:
+        if s["signal_name"] in selected_signals or not selected_signals:
+            signal_lines.append(f"{s['signal_name']}: {s['normalised_score']:.0f}/100")
+
+    interactions = data.get("interactions", [])
+    interactions_block = ""
+    if interactions:
+        interactions_block = "\nSignal interactions detected:\n" + "\n".join(f"- {ix}" for ix in interactions) + "\n"
+
+    prompt = PULSE_SUMMARY_PROMPT.format(
+        smoothed=f"{pulse['smoothed_score']:.0f}" if pulse else "50",
+        direction=pulse["direction"] if pulse else "stable",
+        prev_smoothed=f"{pulse.get('smoothed_score', 50):.0f}" if pulse else "50",
+        drivers=", ".join(signal_lines[:5]),
+        interactions_block=interactions_block,
+        macro_context=data.get("macro_context", ""),
+    )
+    return route(task_type="summary", prompt=prompt, system=PULSE_SUMMARY_SYSTEM, model_override=model)
+
+
+def _proceed_big_conversation(data: dict, model: str | None) -> str:
+    from flatwhite.model_router import route
+    from flatwhite.classify.prompts import BIG_CONVERSATION_DRAFT_SYSTEM, BIG_CONVERSATION_DRAFT_PROMPT
+
+    prompt = BIG_CONVERSATION_DRAFT_PROMPT.format(
+        headline=data.get("headline", ""),
+        pitch=data.get("pitch", ""),
+        supporting_items=data.get("supporting_items", "No supporting data provided."),
+    )
+    return route(task_type="big_conversation", prompt=prompt, system=BIG_CONVERSATION_DRAFT_SYSTEM, model_override=model)
+
+
+def _proceed_lobby(data: dict, model: str | None) -> str:
+    from flatwhite.model_router import route
+    from flatwhite.classify.prompts import EDITORIAL_VOICE
+
+    selected = data.get("selected_employers", [])
+    employer_lines = "\n".join(f"- {e}" for e in selected) if selected else "No employers selected."
+
+    prompt = (
+        "Write The Lobby section for this week's Flat White newsletter.\n\n"
+        f"Selected employer movements:\n{employer_lines}\n\n"
+        "Write 2-3 paragraphs analysing these hiring movements. What do they signal about "
+        "the corporate job market? Are companies restructuring, expanding, or pulling back? "
+        "Connect the dots for someone working in Big 4, law, banking, or tech.\n\n"
+        "Output ONLY the commentary text. No title. No sign-off."
+    )
+    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE, model_override=model)
+
+
+def _proceed_finds(data: dict, model: str | None) -> str:
+    from flatwhite.model_router import route
+    from flatwhite.classify.prompts import EDITORIAL_VOICE
+
+    items = data.get("selected_items", [])
+    items_block = "\n\n".join(
+        f"Title: {item.get('title', '')}\nURL: {item.get('url', '')}\nSummary: {item.get('summary', '')}"
+        for item in items
+    )
+
+    prompt = (
+        "Write the Finds section for this week's Flat White newsletter.\n\n"
+        f"Selected items:\n{items_block}\n\n"
+        "For each item, write a headline and a 2-3 sentence blurb. Voice: dry, observant, "
+        "Australian corporate commentary. Each blurb should tell the reader why this matters "
+        "to someone in corporate Australia. End each with 'Read more' on its own line.\n\n"
+        "Output each find as: HEADLINE\\nBLURB\\nRead more\\n\\n"
+    )
+    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE, model_override=model)
+
+
+def _proceed_thread(data: dict, model: str | None) -> str:
+    from flatwhite.model_router import route
+    from flatwhite.classify.prompts import THREAD_OUR_TAKE_SYSTEM, THREAD_OUR_TAKE_PROMPT
+
+    prompt = THREAD_OUR_TAKE_PROMPT.format(
+        title=data.get("title", ""),
+        body=data.get("body", ""),
+        top_comments=data.get("top_comments", ""),
+        editorial_frame=data.get("editorial_frame", ""),
+    )
+    return route(task_type="editorial", prompt=prompt, system=THREAD_OUR_TAKE_SYSTEM, model_override=model)
+
+
+def _proceed_amp_finest(data: dict, model: str | None) -> str:
+    from flatwhite.model_router import route
+    from flatwhite.classify.prompts import EDITORIAL_VOICE
+
+    prompt = (
+        "Write the AMP's Finest section for this week's Flat White newsletter.\n\n"
+        f"Data/Chart description: {data.get('data_description', '')}\n"
+        f"Notes: {data.get('notes', '')}\n\n"
+        "Write 2-3 paragraphs of editorial commentary around this data. Explain what the data "
+        "shows, what it means for the audience (corporate professionals in Australia), and one "
+        "insight they wouldn't get from just looking at the chart.\n\n"
+        "Output ONLY the commentary text. No title. No sign-off."
+    )
+    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE, model_override=model)
+
+
+def _proceed_off_the_clock(data: dict, model: str | None) -> str:
+    from flatwhite.model_router import route
+    from flatwhite.classify.prompts import EDITORIAL_VOICE
+
+    picks = data.get("picks", [])
+    picks_block = "\n\n".join(
+        f"Category: {p.get('category', '')}\nTitle: {p.get('title', '')}\nDraft blurb: {p.get('blurb', '')}"
+        for p in picks
+    )
+
+    prompt = (
+        "Polish these Off the Clock blurbs for Flat White.\n\n"
+        f"{picks_block}\n\n"
+        "For each, rewrite the blurb in 1-2 sentences. Voice: dry, specific, opinionated. "
+        "Not a review. A statement from someone who already knows. Australian English.\n\n"
+        "Output as: CATEGORY: BLURB (one per line)"
+    )
+    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE, model_override=model)
+
+
+def _proceed_editorial(data: dict, model: str | None) -> str:
+    from flatwhite.model_router import route
+    from flatwhite.classify.prompts import EDITORIAL_VOICE
+    from flatwhite.db import load_all_section_outputs
+
+    week_iso = get_current_week_iso()
+    outputs = load_all_section_outputs(week_iso)
+
+    context_parts = []
+    if "pulse" in outputs:
+        context_parts.append(f"Pulse summary: {outputs['pulse']['output_text'][:200]}")
+    if "big_conversation" in outputs:
+        context_parts.append(f"Big Conversation: {outputs['big_conversation']['output_text'][:200]}")
+    if "finds" in outputs:
+        context_parts.append(f"Top Find: {outputs['finds']['output_text'][:150]}")
+
+    context = "\n".join(context_parts) if context_parts else "No sections completed yet."
+
+    prompt = (
+        "Write the opening paragraph for this week's Flat White newsletter.\n\n"
+        f"This week's content:\n{context}\n\n"
+        f"Additional context from editor: {data.get('editor_notes', '')}\n\n"
+        "Write 2-4 sentences. Start with 'Good morning AusCorp.' Lead with the biggest story "
+        "of the week. Mention the Pulse direction. Tease what's below. "
+        "Voice: dry, informed, slightly conspiratorial. Like a colleague who always knows what's happening.\n\n"
+        "Output ONLY the paragraph. No title. No sign-off."
+    )
+    return route(task_type="hook", prompt=prompt, system=EDITORIAL_VOICE, model_override=model)
+
+
+# ── New endpoints ────────────────────────────────────────────────────────────
+
+@app.get("/api/models")
+def api_models() -> JSONResponse:
+    """Return available LLM models based on configured API keys."""
+    from flatwhite.model_router import list_available_models
+    return JSONResponse({"models": list_available_models()})
+
+
+@app.get("/api/section-outputs")
+def api_section_outputs() -> JSONResponse:
+    """Return all saved section outputs for current week."""
+    from flatwhite.db import load_all_section_outputs
+    week_iso = get_current_week_iso()
+    outputs = load_all_section_outputs(week_iso)
+    return JSONResponse({"outputs": {k: v for k, v in outputs.items()}, "week_iso": week_iso})
+
+
+@app.post("/api/section-output/{section}")
+async def api_save_section_output(section: str, request: Request) -> JSONResponse:
+    """Save edited output for a section."""
+    from flatwhite.db import save_section_output
+    body = await request.json()
+    week_iso = get_current_week_iso()
+    save_section_output(week_iso, section, body.get("output_text", ""), body.get("model_used"))
+    return JSONResponse({"saved": True, "section": section})
+
+
+@app.post("/api/proceed-section")
+async def api_proceed_section(request: Request) -> JSONResponse:
+    """Generate output for a newsletter section.
+
+    Body: {"section": str, "model": str (optional), "data": dict}
+    """
+    from flatwhite.db import save_section_output
+
+    body = await request.json()
+    section = body.get("section", "")
+    model = body.get("model") or None
+    data = body.get("data", {})
+    week_iso = get_current_week_iso()
+
+    proceed_fns = {
+        "pulse": _proceed_pulse,
+        "big_conversation": _proceed_big_conversation,
+        "lobby": _proceed_lobby,
+        "finds": _proceed_finds,
+        "thread": _proceed_thread,
+        "amp_finest": _proceed_amp_finest,
+        "off_the_clock": _proceed_off_the_clock,
+        "editorial": _proceed_editorial,
+    }
+
+    if section not in proceed_fns:
+        return JSONResponse({"error": f"Unknown section: {section}"}, status_code=400)
+
+    import asyncio
+    loop = asyncio.get_event_loop()
+    try:
+        output = await loop.run_in_executor(None, proceed_fns[section], data, model)
+        save_section_output(week_iso, section, output, model)
+        return JSONResponse({"section": section, "output": output, "model": model, "week_iso": week_iso})
+    except Exception as e:
+        return JSONResponse({"section": section, "error": str(e)}, status_code=500)
+
+
+@app.get("/api/events")
+def api_events() -> JSONResponse:
+    """Return events for current week."""
+    conn = get_connection()
+    week_iso = get_current_week_iso()
+    rows = conn.execute(
+        "SELECT * FROM events WHERE week_iso = ? ORDER BY sort_order, event_date",
+        (week_iso,),
+    ).fetchall()
+    conn.close()
+    return JSONResponse({"events": [dict(r) for r in rows], "week_iso": week_iso})
+
+
+@app.post("/api/events")
+async def api_add_event(request: Request) -> JSONResponse:
+    """Add an event."""
+    body = await request.json()
+    week_iso = get_current_week_iso()
+    conn = get_connection()
+    cursor = conn.execute(
+        """INSERT INTO events (week_iso, event_date, title, location, time_range, price, description)
+        VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (week_iso, body.get("event_date", ""), body.get("title", ""), body.get("location"),
+         body.get("time_range"), body.get("price"), body.get("description")),
+    )
+    conn.commit()
+    row_id = cursor.lastrowid
+    conn.close()
+    return JSONResponse({"id": row_id})
+
+
+@app.delete("/api/events/{event_id}")
+async def api_delete_event(event_id: int) -> JSONResponse:
+    """Delete an event."""
+    conn = get_connection()
+    conn.execute("DELETE FROM events WHERE id = ?", (event_id,))
+    conn.commit()
+    conn.close()
+    return JSONResponse({"deleted": True})
+
+
+@app.get("/api/amp-finest")
+def api_amp_finest() -> JSONResponse:
+    """Return AMP's Finest data for current week."""
+    conn = get_connection()
+    week_iso = get_current_week_iso()
+    row = conn.execute("SELECT * FROM amp_finest WHERE week_iso = ?", (week_iso,)).fetchone()
+    conn.close()
+    return JSONResponse({"data": dict(row) if row else None, "week_iso": week_iso})
+
+
+@app.post("/api/amp-finest")
+async def api_save_amp_finest(request: Request) -> JSONResponse:
+    """Save AMP's Finest data."""
+    body = await request.json()
+    week_iso = get_current_week_iso()
+    conn = get_connection()
+    conn.execute(
+        """INSERT OR REPLACE INTO amp_finest (week_iso, data_description, notes, chart_image_path)
+        VALUES (?, ?, ?, ?)""",
+        (week_iso, body.get("data_description", ""), body.get("notes", ""), body.get("chart_image_path")),
+    )
+    conn.commit()
+    conn.close()
+    return JSONResponse({"saved": True})
+
+
+@app.get("/api/lobby")
+def api_lobby() -> JSONResponse:
+    """Return employer hiring data + top movers for current week."""
+    import datetime as _dt
+    conn = get_connection()
+    week_iso = get_current_week_iso()
+
+    year, week_num = int(week_iso[:4]), int(week_iso[6:])
+    dt = _dt.datetime.strptime(f"{year}-W{week_num:02d}-1", "%G-W%V-%u")
+    prev_week = (dt - _dt.timedelta(weeks=1)).strftime("%G-W%V")
+
+    current = conn.execute(
+        """SELECT es.*, ew.employer_name, ew.sector, ew.ats_platform
+        FROM employer_snapshots es
+        JOIN employer_watchlist ew ON es.employer_id = ew.id
+        WHERE es.week_iso = ?
+        ORDER BY ew.employer_name""",
+        (week_iso,),
+    ).fetchall()
+
+    previous = conn.execute(
+        """SELECT employer_id, open_roles_count FROM employer_snapshots WHERE week_iso = ?""",
+        (prev_week,),
+    ).fetchall()
+    conn.close()
+
+    prev_map = {r["employer_id"]: r["open_roles_count"] for r in previous}
+
+    employers = []
+    for r in current:
+        d = dict(r)
+        prev_count = prev_map.get(d["employer_id"])
+        d["prev_roles"] = prev_count
+        d["delta"] = d["open_roles_count"] - prev_count if prev_count is not None else None
+        d["delta_pct"] = round(d["delta"] / prev_count * 100, 1) if prev_count and prev_count > 0 and d["delta"] is not None else None
+        employers.append(d)
+
+    movers = sorted(
+        [e for e in employers if e["delta"] is not None],
+        key=lambda x: abs(x["delta"]),
+        reverse=True,
+    )
+
+    return JSONResponse({
+        "employers": employers,
+        "top_movers": movers[:10],
+        "week_iso": week_iso,
+    })
+
+
+@app.get("/api/big-conversation-candidates")
+def api_big_conv_candidates() -> JSONResponse:
+    """Return top 5 Big Conversation candidates from all ingested data."""
+    week_iso = get_current_week_iso()
+    conn = get_connection()
+
+    rows = conn.execute(
+        """SELECT ci.id, ci.section, ci.summary, ci.weighted_composite,
+                  ci.score_relevance, ci.score_tension, ci.score_novelty,
+                  ri.title, ri.source, ri.url
+        FROM curated_items ci
+        JOIN raw_items ri ON ci.raw_item_id = ri.id
+        WHERE ri.week_iso = ?
+          AND ci.section IN ('big_conversation_seed', 'what_we_watching', 'finds')
+        ORDER BY (ci.score_relevance * 0.3 + ci.score_tension * 0.4 + ci.score_novelty * 0.3) DESC
+        LIMIT 5""",
+        (week_iso,),
+    ).fetchall()
+    conn.close()
+
+    return JSONResponse({"candidates": [dict(r) for r in rows], "week_iso": week_iso})
+
+
 # ── Reingest (background pipeline refresh) ─────────────────────────────────
 
 _ingest_state: dict[str, Any] = {
@@ -709,7 +1141,8 @@ def _run_ingest_background() -> None:
         _step("rss_feeds", lambda: __import__("flatwhite.editorial.rss_feeds", fromlist=["pull_rss_feeds"]).pull_rss_feeds())
         _step("linkedin_newsletters", lambda: __import__("flatwhite.editorial.linkedin_rss", fromlist=["pull_linkedin_newsletters"]).pull_linkedin_newsletters())
         _step("email_newsletters", lambda: __import__("flatwhite.editorial.email_ingest", fromlist=["pull_email_newsletters"]).pull_email_newsletters())
-        _step("youtube_transcripts", lambda: __import__("flatwhite.editorial.youtube_transcripts", fromlist=["pull_youtube_transcripts"]).pull_youtube_transcripts())
+        _step("podcast_feeds", lambda: __import__("flatwhite.editorial.podcast_feeds", fromlist=["pull_podcast_feeds"]).pull_podcast_feeds())
+        _step("off_the_clock", lambda: __import__("flatwhite.editorial.off_the_clock", fromlist=["pull_off_the_clock"]).pull_off_the_clock())
 
     def _run_group3() -> None:
         """Group 3: Slow signals (Google Trends — rate limited)."""
@@ -736,6 +1169,7 @@ def _run_ingest_background() -> None:
         _ingest_state["step"] = "group_5_pulse_classify"
         _step("pulse", lambda: __import__("flatwhite.pulse.composite", fromlist=["calculate_pulse"]).calculate_pulse())
         _step("classify", lambda: __import__("flatwhite.classify.classifier", fromlist=["classify_all_unclassified"]).classify_all_unclassified())
+        _step("classify_otc", lambda: __import__("flatwhite.classify.classifier", fromlist=["classify_all_otc_unclassified"]).classify_all_otc_unclassified())
 
         _ingest_state["step"] = "done"
         if errors:
@@ -782,6 +1216,95 @@ def api_reingest_status() -> JSONResponse:
         "completed_at": _ingest_state["completed_at"],
         "error": _ingest_state["error"],
     })
+
+
+# ── Background section runner ─────────────────────────────────────────────
+# Each section RUN fires a background thread and returns immediately.
+# Frontend polls /api/section-status/{section} for progress.
+
+_section_state: dict[str, dict] = {}
+_section_lock = threading.Lock()
+
+_SECTION_RUNNERS = {
+    "pulse": lambda: (
+        __import__("flatwhite.signals.market_hiring", fromlist=["pull_market_hiring"]).pull_market_hiring(),
+        __import__("flatwhite.signals.salary_pressure", fromlist=["pull_salary_pressure"]).pull_salary_pressure(),
+        __import__("flatwhite.signals.news_velocity", fromlist=["pull_layoff_news_velocity"]).pull_layoff_news_velocity(),
+        __import__("flatwhite.signals.consumer_confidence", fromlist=["pull_consumer_confidence"]).pull_consumer_confidence(),
+        __import__("flatwhite.signals.asx_volatility", fromlist=["pull_asx_volatility"]).pull_asx_volatility(),
+        __import__("flatwhite.signals.asx_momentum", fromlist=["pull_asx_momentum"]).pull_asx_momentum(),
+        __import__("flatwhite.signals.indeed_hiring", fromlist=["pull_indeed_hiring"]).pull_indeed_hiring(),
+        __import__("flatwhite.signals.asic_insolvency", fromlist=["pull_asic_insolvency"]).pull_asic_insolvency(),
+        __import__("flatwhite.pulse.composite", fromlist=["calculate_pulse"]).calculate_pulse(),
+    ),
+    "editorial": lambda: (
+        __import__("flatwhite.editorial.reddit_rss", fromlist=["pull_reddit_editorial"]).pull_reddit_editorial(),
+        __import__("flatwhite.editorial.google_news_editorial", fromlist=["pull_google_news_editorial"]).pull_google_news_editorial(),
+        __import__("flatwhite.editorial.rss_feeds", fromlist=["pull_rss_feeds"]).pull_rss_feeds(),
+        __import__("flatwhite.editorial.podcast_feeds", fromlist=["pull_podcast_feeds"]).pull_podcast_feeds(),
+    ),
+    "classify": lambda: __import__("flatwhite.classify.classifier", fromlist=["classify_all_unclassified"]).classify_all_unclassified(),
+    "finds": lambda: (
+        __import__("flatwhite.editorial.reddit_rss", fromlist=["pull_reddit_editorial"]).pull_reddit_editorial(),
+        __import__("flatwhite.editorial.google_news_editorial", fromlist=["pull_google_news_editorial"]).pull_google_news_editorial(),
+        __import__("flatwhite.editorial.rss_feeds", fromlist=["pull_rss_feeds"]).pull_rss_feeds(),
+        __import__("flatwhite.editorial.podcast_feeds", fromlist=["pull_podcast_feeds"]).pull_podcast_feeds(),
+        __import__("flatwhite.classify.classifier", fromlist=["classify_all_unclassified"]).classify_all_unclassified(),
+    ),
+    "lobby": lambda: __import__("flatwhite.signals.hiring_pulse", fromlist=["pull_hiring_pulse"]).pull_hiring_pulse(),
+    "thread": lambda: (
+        __import__("flatwhite.editorial.reddit_rss", fromlist=["pull_reddit_editorial"]).pull_reddit_editorial(),
+        __import__("flatwhite.classify.classifier", fromlist=["classify_all_unclassified"]).classify_all_unclassified(),
+    ),
+    "off_the_clock": lambda: (
+        __import__("flatwhite.editorial.off_the_clock", fromlist=["pull_off_the_clock"]).pull_off_the_clock(),
+        __import__("flatwhite.classify.classifier", fromlist=["classify_all_otc_unclassified"]).classify_all_otc_unclassified(),
+    ),
+    "classify_otc": lambda: __import__("flatwhite.classify.classifier", fromlist=["classify_all_otc_unclassified"]).classify_all_otc_unclassified(),
+}
+
+
+def _run_section_background(section: str) -> None:
+    """Run a section in a background thread."""
+    try:
+        _SECTION_RUNNERS[section]()
+        _section_state[section] = {"running": False, "done": True, "error": None, "completed_at": _time.strftime("%H:%M:%S")}
+    except Exception as e:
+        _section_state[section] = {"running": False, "done": True, "error": str(e), "completed_at": _time.strftime("%H:%M:%S")}
+
+
+@app.post("/api/run-section")
+async def api_run_section(request: Request) -> JSONResponse:
+    """Start a section RUN in the background. Returns immediately.
+
+    Body: {"section": str}
+    Poll /api/section-status/{section} for progress.
+    """
+    body = await request.json()
+    section = body.get("section", "")
+
+    if section not in _SECTION_RUNNERS:
+        return JSONResponse(
+            {"error": f"Unknown section: {section}. Available: {', '.join(_SECTION_RUNNERS.keys())}"},
+            status_code=400,
+        )
+
+    with _section_lock:
+        state = _section_state.get(section, {})
+        if state.get("running"):
+            return JSONResponse({"started": False, "message": f"{section} already running"}, status_code=409)
+        _section_state[section] = {"running": True, "done": False, "error": None, "completed_at": None}
+
+    thread = threading.Thread(target=_run_section_background, args=(section,), daemon=True)
+    thread.start()
+    return JSONResponse({"started": True, "section": section})
+
+
+@app.get("/api/section-status/{section}")
+def api_section_status(section: str) -> JSONResponse:
+    """Poll for section RUN status."""
+    state = _section_state.get(section, {"running": False, "done": False, "error": None})
+    return JSONResponse(state)
 
 
 @app.get("/api/run-log")

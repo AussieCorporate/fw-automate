@@ -187,13 +187,16 @@ def pull_reddit_topic_velocity() -> float:
                if r.get("source_weight", 1.0) > 0.3 and r["raw_value"] > 0]
 
     ref = _get_reference_range()
+    import yaml as _yaml
+    with open(Path(__file__).parent.parent.parent / "config.yaml") as _f:
+        _config = _yaml.safe_load(_f)
     normalised, source_weight = normalise_hybrid(
         raw_value=raw_stress_pct,
         floor=ref["floor"],
         ceiling=ref["ceiling"],
         inverted=ref["inverted"],
         history=history,
-        min_weeks_warm=get_min_weeks_warm(config),
+        min_weeks_warm=get_min_weeks_warm(_config),
     )
 
     insert_signal(
