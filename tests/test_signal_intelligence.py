@@ -195,3 +195,26 @@ def test_api_refresh_signal_intelligence_404_for_missing_record(si_db):
         data = _json.loads(result.body)
         assert result.status_code == 404
         assert "error" in data
+
+
+def test_preview_prompt_returns_context_breakdown(si_db):
+    """POST /api/preview-prompt for pulse should return context_breakdown."""
+    import json as _json
+    import asyncio
+    with patch.object(db_module, "DB_PATH", si_db):
+        db_module.insert_signal("asx_volatility", "pulse", "economic", 1.2, 60.0, 1.0, "2026-W13")
+
+        with patch("flatwhite.signals.macro_context.fetch_macro_headlines", return_value=""):
+            with patch("flatwhite.db.get_interactions", return_value=[]):
+                from flatwhite.dashboard.api import api_preview_prompt
+
+                class FakeRequest:
+                    async def json(self):
+                        return {"section": "pulse", "data": {}}
+
+                result = asyncio.get_event_loop().run_until_complete(api_preview_prompt(FakeRequest()))
+                data = _json.loads(result.body)
+                assert "context_breakdown" in data
+                assert "signals" in data["context_breakdown"]
+                assert "signal_intelligence" in data["context_breakdown"]
+                assert "composite" in data["context_breakdown"]

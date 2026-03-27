@@ -2120,6 +2120,50 @@ async def api_preview_prompt(request: Request) -> JSONResponse:
                 macro_context=macro_context,
             )
 
+            # Build moverDeltas for context_breakdown
+            moverDeltas_for_breakdown = {
+                name: round(score - prev_map[name], 1)
+                for name, score in {s["signal_name"]: s["normalised_score"] for s in signals}.items()
+                if name in prev_map
+            }
+
+            # Fetch signal_intelligence records for this week
+            intel_conn = get_connection()
+            intel_rows = intel_conn.execute(
+                "SELECT signal_name, delta, commentary, articles FROM signal_intelligence WHERE week_iso = ?",
+                (week_iso,),
+            ).fetchall()
+            intel_conn.close()
+
+            signal_intelligence_breakdown = [
+                {
+                    "signal_name": r["signal_name"],
+                    "delta": r["delta"],
+                    "commentary": r["commentary"],
+                    "articles": json.loads(r["articles"]) if r["articles"] else [],
+                }
+                for r in intel_rows
+            ]
+
+            context_breakdown = {
+                "signals": [
+                    {
+                        "name": s["signal_name"],
+                        "score": round(s["normalised_score"], 1) if s.get("normalised_score") is not None else None,
+                        "delta": moverDeltas_for_breakdown.get(s["signal_name"]),
+                        "area": s.get("area", ""),
+                    }
+                    for s in signals
+                ],
+                "signal_intelligence": signal_intelligence_breakdown,
+                "composite": {
+                    "score": pulse.get("smoothed_score") if pulse else None,
+                    "direction": pulse.get("direction") if pulse else None,
+                } if pulse else {},
+            }
+
+            return JSONResponse({"prompt": prompt, "section": section, "context_breakdown": context_breakdown})
+
         elif section == "lobby":
             selected = data.get("selected_employers", [])
             employer_lines = []
@@ -2144,6 +2188,11 @@ async def api_preview_prompt(request: Request) -> JSONResponse:
                 "Connect the dots for someone working in Big 4, law, banking, or tech.\n\n"
                 "Output ONLY the commentary text. No title. No sign-off."
             )
+            context_breakdown = {
+                "signals": [], "signal_intelligence": [],
+                "composite": {},
+                "items": [{"name": line} for line in employer_lines],
+            }
 
         elif section == "off_the_clock":
             picks = data.get("picks", [])
@@ -2158,6 +2207,11 @@ async def api_preview_prompt(request: Request) -> JSONResponse:
                 "Not a review. A statement from someone who already knows. Australian English.\n\n"
                 "Output as: CATEGORY: BLURB (one per line)"
             )
+            context_breakdown = {
+                "signals": [], "signal_intelligence": [],
+                "composite": {},
+                "items": [{"name": p.get("title", ""), "category": p.get("category", "")} for p in picks],
+            }
 
         elif section == "finds":
             items = data.get("selected_items", [])
@@ -2173,11 +2227,16 @@ async def api_preview_prompt(request: Request) -> JSONResponse:
                 "to someone in corporate Australia. End each with 'Read more' on its own line.\n\n"
                 "Output each find as: HEADLINE\\nBLURB\\nRead more\\n\\n"
             )
+            context_breakdown = {
+                "signals": [], "signal_intelligence": [],
+                "composite": {},
+                "items": [{"name": item.get("title", ""), "score": item.get("weighted_composite")} for item in items],
+            }
 
         else:
             return JSONResponse({"error": f"Preview not supported for section: {section}"}, status_code=400)
 
-        return JSONResponse({"prompt": prompt, "section": section})
+        return JSONResponse({"prompt": prompt, "section": section, "context_breakdown": context_breakdown})
 
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
