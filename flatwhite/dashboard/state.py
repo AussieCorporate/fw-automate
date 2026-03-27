@@ -156,6 +156,118 @@ def load_signal_trends(n_weeks: int = 6) -> dict[str, Any]:
     }
 
 
+def load_reddit_comparison(week_iso: str | None = None) -> dict[str, Any]:
+    """Compare editorial top stories against crowd engagement for r/auscorp.
+
+    Engagement formula: post_score + comment_engagement * 0.5
+    Returns editorial top-10 with engagement ranks, engagement top-10 with editorial ranks,
+    and high-engagement misses (in engagement top-10 but not editorial top-5).
+    Consumed by: api.py -> /api/reddit/compare.
+    """
+    conn = get_connection()
+    w = week_iso or get_current_week_iso()
+
+    # Get all r/auscorp posts this week that have been curated (have editorial scores)
+    rows = conn.execute(
+        """
+        SELECT
+            ri.id, ri.title, ri.url, ri.post_score, ri.comment_engagement,
+            ci.weighted_composite AS editorial_score
+        FROM raw_items ri
+        JOIN curated_items ci ON ci.raw_item_id = ri.id
+        WHERE ri.week_iso = ?
+          AND ri.source = 'reddit_rss'
+          AND ri.subreddit = 'auscorp'
+        ORDER BY ci.weighted_composite DESC
+        """,
+        (w,),
+    ).fetchall()
+    conn.close()
+
+    if not rows:
+        return {
+            "week_iso": w,
+            "editorial_top5": [],
+            "engagement_top5": [],
+            "high_engagement_misses": [],
+            "overlap_count": 0,
+            "has_engagement_data": False,
+        }
+
+    posts = [dict(r) for r in rows]
+    has_engagement_data = any(p["post_score"] is not None for p in posts)
+
+    # Compute engagement scores
+    for p in posts:
+        ps = p["post_score"] or 0
+        ce = p["comment_engagement"] or 0
+        p["engagement_score"] = round(ps + ce * 0.5, 1)
+
+    # Editorial ranking (already sorted by weighted_composite DESC)
+    for i, p in enumerate(posts):
+        p["editorial_rank"] = i + 1
+
+    # Engagement ranking
+    by_engagement = sorted(posts, key=lambda x: -x["engagement_score"])
+    for i, p in enumerate(by_engagement):
+        p["engagement_rank"] = i + 1
+
+    editorial_top5_ids = {p["id"] for p in posts[:5]}
+
+    editorial_top5 = [
+        {
+            "rank": p["editorial_rank"],
+            "title": p["title"],
+            "url": p["url"],
+            "editorial_score": round(p["editorial_score"] or 0, 2),
+            "post_score": p["post_score"],
+            "comment_engagement": p["comment_engagement"],
+            "engagement_score": p["engagement_score"],
+            "engagement_rank": p["engagement_rank"],
+        }
+        for p in posts[:5]
+    ]
+
+    engagement_top5 = [
+        {
+            "rank": p["engagement_rank"],
+            "title": p["title"],
+            "url": p["url"],
+            "engagement_score": p["engagement_score"],
+            "post_score": p["post_score"],
+            "comment_engagement": p["comment_engagement"],
+            "editorial_score": round(p["editorial_score"] or 0, 2),
+            "editorial_rank": p["editorial_rank"],
+        }
+        for p in by_engagement[:5]
+    ]
+
+    # High engagement misses: in engagement top-10 but NOT in editorial top-5
+    high_engagement_misses = [
+        {
+            "title": p["title"],
+            "url": p["url"],
+            "engagement_score": p["engagement_score"],
+            "post_score": p["post_score"],
+            "comment_engagement": p["comment_engagement"],
+            "editorial_rank": p["editorial_rank"],
+        }
+        for p in by_engagement[:10]
+        if p["id"] not in editorial_top5_ids
+    ]
+
+    overlap_count = len(editorial_top5_ids & {p["id"] for p in by_engagement[:5]})
+
+    return {
+        "week_iso": w,
+        "editorial_top5": editorial_top5,
+        "engagement_top5": engagement_top5,
+        "high_engagement_misses": high_engagement_misses,
+        "overlap_count": overlap_count,
+        "has_engagement_data": has_engagement_data,
+    }
+
+
 def load_pulse_state() -> dict[str, Any] | None:
     """Return the pulse_history row for the current ISO week, or None if not found.
 

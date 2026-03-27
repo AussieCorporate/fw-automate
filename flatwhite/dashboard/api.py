@@ -29,6 +29,8 @@ from flatwhite.pulse.anomaly import detect_all_anomalies
 from flatwhite.dashboard.state import (
     load_pulse_state,
     load_signals_this_week,
+    load_signal_trends,
+    load_reddit_comparison,
     load_curated_items_by_section,
     load_top_thread,
     load_top_threads,
@@ -37,6 +39,9 @@ from flatwhite.dashboard.state import (
     save_big_conversation_draft,
     save_thread_our_take,
     load_saved_draft,
+    load_otc_candidates,
+    save_otc_pick,
+    load_otc_picks,
 )
 
 _STATIC_DIR = Path(__file__).parent / "static"
@@ -960,6 +965,277 @@ def api_lobby() -> JSONResponse:
         "top_movers": movers[:10],
         "week_iso": week_iso,
     })
+
+
+# ── Pulse trends ─────────────────────────────────────────────────────────────
+
+@app.get("/api/pulse/trends")
+def api_pulse_trends() -> JSONResponse:
+    """Return category-level WoW movements and biggest signal movers."""
+    return JSONResponse(load_signal_trends(n_weeks=6))
+
+
+# ── Reddit compare ────────────────────────────────────────────────────────────
+
+@app.get("/api/reddit/compare")
+def api_reddit_compare(week: str | None = None) -> JSONResponse:
+    """Return Crowd vs Editorial comparison for r/auscorp posts."""
+    return JSONResponse(load_reddit_comparison(week_iso=week))
+
+
+# ── Off the Clock ─────────────────────────────────────────────────────────────
+
+@app.get("/api/off-the-clock")
+def api_off_the_clock() -> JSONResponse:
+    """Return Off the Clock candidates grouped by category for current week."""
+    candidates = load_otc_candidates()
+    picks = load_otc_picks()
+    return JSONResponse({
+        "candidates": candidates,
+        "picks": picks,
+        "week_iso": get_current_week_iso(),
+    })
+
+
+@app.post("/api/off-the-clock/pick")
+async def api_otc_pick(request: Request) -> JSONResponse:
+    """Save an editor's Off the Clock pick for a category.
+
+    Body: {"curated_item_id": int, "category": str, "blurb": str}
+    """
+    body = await request.json()
+    curated_item_id = body.get("curated_item_id")
+    category = body.get("category")
+    blurb = body.get("blurb", "")
+
+    if not isinstance(curated_item_id, int):
+        return JSONResponse({"error": "curated_item_id must be an integer"}, status_code=400)
+    if category not in ("otc_eating", "otc_watching", "otc_reading", "otc_wearing", "otc_going"):
+        return JSONResponse({"error": "Invalid category"}, status_code=400)
+    if not blurb.strip():
+        return JSONResponse({"error": "blurb is required"}, status_code=400)
+
+    row_id = save_otc_pick(
+        category=category,
+        curated_item_id=curated_item_id,
+        editor_blurb=blurb,
+    )
+    return JSONResponse({"id": row_id, "week_iso": get_current_week_iso()})
+
+
+# ── Models ────────────────────────────────────────────────────────────────────
+
+@app.get("/api/models")
+def api_models() -> JSONResponse:
+    """Return available LLM models based on configured API keys."""
+    from flatwhite.model_router import list_available_models
+    return JSONResponse({"models": list_available_models()})
+
+
+# ── Section outputs ───────────────────────────────────────────────────────────
+
+@app.get("/api/section-outputs")
+def api_section_outputs() -> JSONResponse:
+    """Return all saved section outputs for current week."""
+    from flatwhite.db import load_all_section_outputs
+    week_iso = get_current_week_iso()
+    outputs = load_all_section_outputs(week_iso)
+    return JSONResponse({"outputs": {k: v for k, v in outputs.items()}, "week_iso": week_iso})
+
+
+@app.post("/api/section-output/{section}")
+async def api_save_section_output(section: str, request: Request) -> JSONResponse:
+    """Save edited output for a section."""
+    from flatwhite.db import save_section_output
+    body = await request.json()
+    week_iso = get_current_week_iso()
+    save_section_output(week_iso, section, body.get("output_text", ""), body.get("model_used"))
+    return JSONResponse({"saved": True, "section": section})
+
+
+# ── Events ────────────────────────────────────────────────────────────────────
+
+@app.get("/api/events")
+def api_events() -> JSONResponse:
+    """Return events for current week."""
+    conn = get_connection()
+    week_iso = get_current_week_iso()
+    rows = conn.execute(
+        "SELECT * FROM events WHERE week_iso = ? ORDER BY sort_order, event_date",
+        (week_iso,),
+    ).fetchall()
+    conn.close()
+    return JSONResponse({"events": [dict(r) for r in rows], "week_iso": week_iso})
+
+
+@app.post("/api/events")
+async def api_add_event(request: Request) -> JSONResponse:
+    """Add an event."""
+    body = await request.json()
+    week_iso = get_current_week_iso()
+    conn = get_connection()
+    cursor = conn.execute(
+        """INSERT INTO events (week_iso, event_date, title, location, time_range, price, description)
+        VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (week_iso, body.get("event_date", ""), body.get("title", ""), body.get("location"),
+         body.get("time_range"), body.get("price"), body.get("description")),
+    )
+    conn.commit()
+    row_id = cursor.lastrowid
+    conn.close()
+    return JSONResponse({"id": row_id})
+
+
+@app.delete("/api/events/{event_id}")
+async def api_delete_event(event_id: int) -> JSONResponse:
+    """Delete an event."""
+    conn = get_connection()
+    conn.execute("DELETE FROM events WHERE id = ?", (event_id,))
+    conn.commit()
+    conn.close()
+    return JSONResponse({"deleted": True})
+
+
+# ── AMP's Finest ──────────────────────────────────────────────────────────────
+
+@app.get("/api/amp-finest")
+def api_amp_finest() -> JSONResponse:
+    """Return AMP's Finest data for current week."""
+    conn = get_connection()
+    week_iso = get_current_week_iso()
+    row = conn.execute("SELECT * FROM amp_finest WHERE week_iso = ?", (week_iso,)).fetchone()
+    conn.close()
+    return JSONResponse({"data": dict(row) if row else None, "week_iso": week_iso})
+
+
+@app.post("/api/amp-finest")
+async def api_save_amp_finest(request: Request) -> JSONResponse:
+    """Save AMP's Finest data."""
+    body = await request.json()
+    week_iso = get_current_week_iso()
+    conn = get_connection()
+    conn.execute(
+        """INSERT OR REPLACE INTO amp_finest (week_iso, data_description, notes, chart_image_path)
+        VALUES (?, ?, ?, ?)""",
+        (week_iso, body.get("data_description", ""), body.get("notes", ""), body.get("chart_image_path")),
+    )
+    conn.commit()
+    conn.close()
+    return JSONResponse({"saved": True})
+
+
+# ── Big Conversation candidates ───────────────────────────────────────────────
+
+@app.get("/api/big-conversation-candidates")
+def api_big_conv_candidates() -> JSONResponse:
+    """Return top 5 Big Conversation candidates from all ingested data."""
+    week_iso = get_current_week_iso()
+    conn = get_connection()
+
+    rows = conn.execute(
+        """SELECT ci.id, ci.section, ci.summary, ci.weighted_composite,
+                  ci.score_relevance, ci.score_tension, ci.score_novelty,
+                  ri.title, ri.source, ri.url
+        FROM curated_items ci
+        JOIN raw_items ri ON ci.raw_item_id = ri.id
+        WHERE ri.week_iso = ?
+          AND ci.section IN ('big_conversation_seed', 'what_we_watching', 'finds')
+        ORDER BY (ci.score_relevance * 0.3 + ci.score_tension * 0.4 + ci.score_novelty * 0.3) DESC
+        LIMIT 5""",
+        (week_iso,),
+    ).fetchall()
+    conn.close()
+
+    return JSONResponse({"candidates": [dict(r) for r in rows], "week_iso": week_iso})
+
+
+# ── Background section runner ─────────────────────────────────────────────────
+# Each section RUN fires a background thread and returns immediately.
+# Frontend polls /api/section-status/{section} for progress.
+
+_section_state: dict[str, dict] = {}
+_section_lock = threading.Lock()
+
+_SECTION_RUNNERS = {
+    "pulse": lambda: (
+        __import__("flatwhite.signals.market_hiring", fromlist=["pull_market_hiring"]).pull_market_hiring(),
+        __import__("flatwhite.signals.salary_pressure", fromlist=["pull_salary_pressure"]).pull_salary_pressure(),
+        __import__("flatwhite.signals.news_velocity", fromlist=["pull_layoff_news_velocity"]).pull_layoff_news_velocity(),
+        __import__("flatwhite.signals.consumer_confidence", fromlist=["pull_consumer_confidence"]).pull_consumer_confidence(),
+        __import__("flatwhite.signals.asx_volatility", fromlist=["pull_asx_volatility"]).pull_asx_volatility(),
+        __import__("flatwhite.signals.asx_momentum", fromlist=["pull_asx_momentum"]).pull_asx_momentum(),
+        __import__("flatwhite.signals.indeed_hiring", fromlist=["pull_indeed_hiring"]).pull_indeed_hiring(),
+        __import__("flatwhite.signals.asic_insolvency", fromlist=["pull_asic_insolvency"]).pull_asic_insolvency(),
+        __import__("flatwhite.pulse.composite", fromlist=["calculate_pulse"]).calculate_pulse(),
+    ),
+    "editorial": lambda: (
+        __import__("flatwhite.editorial.reddit_rss", fromlist=["pull_reddit_editorial"]).pull_reddit_editorial(),
+        __import__("flatwhite.editorial.google_news_editorial", fromlist=["pull_google_news_editorial"]).pull_google_news_editorial(),
+        __import__("flatwhite.editorial.rss_feeds", fromlist=["pull_rss_feeds"]).pull_rss_feeds(),
+        __import__("flatwhite.editorial.podcast_feeds", fromlist=["pull_podcast_feeds"]).pull_podcast_feeds(),
+    ),
+    "classify": lambda: __import__("flatwhite.classify.classifier", fromlist=["classify_all_unclassified"]).classify_all_unclassified(),
+    "finds": lambda: (
+        __import__("flatwhite.editorial.reddit_rss", fromlist=["pull_reddit_editorial"]).pull_reddit_editorial(),
+        __import__("flatwhite.editorial.google_news_editorial", fromlist=["pull_google_news_editorial"]).pull_google_news_editorial(),
+        __import__("flatwhite.editorial.rss_feeds", fromlist=["pull_rss_feeds"]).pull_rss_feeds(),
+        __import__("flatwhite.editorial.podcast_feeds", fromlist=["pull_podcast_feeds"]).pull_podcast_feeds(),
+        __import__("flatwhite.classify.classifier", fromlist=["classify_all_unclassified"]).classify_all_unclassified(),
+    ),
+    "lobby": lambda: __import__("flatwhite.signals.hiring_pulse", fromlist=["pull_hiring_pulse"]).pull_hiring_pulse(),
+    "thread": lambda: (
+        __import__("flatwhite.editorial.reddit_rss", fromlist=["pull_reddit_editorial"]).pull_reddit_editorial(),
+        __import__("flatwhite.classify.classifier", fromlist=["classify_all_unclassified"]).classify_all_unclassified(),
+    ),
+    "off_the_clock": lambda: (
+        __import__("flatwhite.editorial.off_the_clock", fromlist=["pull_off_the_clock"]).pull_off_the_clock(),
+        __import__("flatwhite.classify.classifier", fromlist=["classify_all_otc_unclassified"]).classify_all_otc_unclassified(),
+    ),
+    "classify_otc": lambda: __import__("flatwhite.classify.classifier", fromlist=["classify_all_otc_unclassified"]).classify_all_otc_unclassified(),
+}
+
+
+def _run_section_background(section: str) -> None:
+    """Run a section in a background thread."""
+    try:
+        _SECTION_RUNNERS[section]()
+        _section_state[section] = {"running": False, "done": True, "error": None, "completed_at": _time.strftime("%H:%M:%S")}
+    except Exception as e:
+        _section_state[section] = {"running": False, "done": True, "error": str(e), "completed_at": _time.strftime("%H:%M:%S")}
+
+
+@app.post("/api/run-section")
+async def api_run_section(request: Request) -> JSONResponse:
+    """Start a section RUN in the background. Returns immediately.
+
+    Body: {"section": str}
+    Poll /api/section-status/{section} for progress.
+    """
+    body = await request.json()
+    section = body.get("section", "")
+
+    if section not in _SECTION_RUNNERS:
+        return JSONResponse(
+            {"error": f"Unknown section: {section}. Available: {', '.join(_SECTION_RUNNERS.keys())}"},
+            status_code=400,
+        )
+
+    with _section_lock:
+        state = _section_state.get(section, {})
+        if state.get("running"):
+            return JSONResponse({"started": False, "message": f"{section} already running"}, status_code=409)
+        _section_state[section] = {"running": True, "done": False, "error": None, "completed_at": None}
+
+    thread = threading.Thread(target=_run_section_background, args=(section,), daemon=True)
+    thread.start()
+    return JSONResponse({"started": True, "section": section})
+
+
+@app.get("/api/section-status/{section}")
+def api_section_status(section: str) -> JSONResponse:
+    """Poll for section RUN status."""
+    state = _section_state.get(section, {"running": False, "done": False, "error": None})
+    return JSONResponse(state)
 
 
 # ── Section proceed helpers ──────────────────────────────────────────────────
