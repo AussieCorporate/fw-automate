@@ -64,6 +64,11 @@ def test_section_state_has_step_fields():
             ("Step two", lambda: call_log.append("two")),
         ]
     }
+    # Set up initial state as api_run_section would before spawning the thread
+    _section_state["test_section"] = {
+        "running": True, "done": False, "error": None,
+        "step": 0, "total": 2, "step_name": "Step one", "completed_at": None,
+    }
 
     _run_section_background("test_section")
 

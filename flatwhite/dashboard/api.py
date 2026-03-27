@@ -1222,11 +1222,14 @@ _SECTION_RUNNERS: dict[str, list[tuple[str, "Callable"]]] = {
 
 
 def _run_section_background(section: str) -> None:
-    """Run a section's steps sequentially, updating _section_state after each step."""
+    """Run a section's steps sequentially, updating _section_state after each step.
+
+    `step` is the 0-based index of the step currently running (not the count of completed steps).
+    On completion, step == total (sentinel for "all done"). Frontend should render step/total as
+    "N of M" by treating step as "currently on step N+1" while running, and "all done" when step==total.
+    """
     steps = _SECTION_RUNNERS[section]
     total = len(steps)
-    if section not in _section_state:
-        _section_state[section] = {"running": True, "done": False, "error": None, "step": 0, "total": total, "step_name": "", "completed_at": None}
     try:
         for i, (label, fn) in enumerate(steps):
             _section_state[section].update({"step": i, "total": total, "step_name": label})
