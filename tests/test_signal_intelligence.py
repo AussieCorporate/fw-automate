@@ -147,3 +147,51 @@ def test_api_get_signal_intelligence(si_db):
         assert "asx_volatility" in data
         assert data["asx_volatility"]["commentary"] == "ASX rose sharply."
         assert isinstance(data["asx_volatility"]["articles"], list)
+
+
+def test_api_refresh_signal_intelligence_returns_refreshing(si_db):
+    """POST /api/signal-intelligence/refresh should return refreshing:True for existing record."""
+    import json as _json, asyncio
+    with patch.object(db_module, "DB_PATH", si_db):
+        conn = db_module.get_connection()
+        articles = _json.dumps([])
+        conn.execute(
+            """INSERT INTO signal_intelligence (signal_name, week_iso, delta, articles, commentary, generated_at)
+               VALUES (?, ?, ?, ?, ?, datetime('now'))""",
+            ("asx_volatility", "2026-W13", 8.2, articles, "Old commentary"),
+        )
+        conn.commit()
+        conn.close()
+
+        from flatwhite.dashboard.api import api_refresh_signal_intelligence
+
+        class FakeRequest:
+            async def json(self):
+                return {"signal_name": "asx_volatility", "week_iso": "2026-W13"}
+
+        with patch("flatwhite.signals.signal_intelligence._fetch_articles", return_value=[]):
+            with patch("flatwhite.signals.signal_intelligence._synthesise", return_value="New commentary"):
+                result = asyncio.get_event_loop().run_until_complete(
+                    api_refresh_signal_intelligence(FakeRequest())
+                )
+                data = _json.loads(result.body)
+                assert data["refreshing"] is True
+                assert data["signal_name"] == "asx_volatility"
+
+
+def test_api_refresh_signal_intelligence_404_for_missing_record(si_db):
+    """POST /api/signal-intelligence/refresh should return 404 if record doesn't exist."""
+    import json as _json, asyncio
+    with patch.object(db_module, "DB_PATH", si_db):
+        from flatwhite.dashboard.api import api_refresh_signal_intelligence
+
+        class FakeRequest:
+            async def json(self):
+                return {"signal_name": "nonexistent_signal", "week_iso": "2026-W13"}
+
+        result = asyncio.get_event_loop().run_until_complete(
+            api_refresh_signal_intelligence(FakeRequest())
+        )
+        data = _json.loads(result.body)
+        assert result.status_code == 404
+        assert "error" in data

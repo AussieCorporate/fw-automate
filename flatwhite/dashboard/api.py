@@ -1380,8 +1380,13 @@ async def api_refresh_signal_intelligence(request: Request) -> JSONResponse:
     Body: {"signal_name": str, "week_iso": str}
     """
     body = await request.json()
-    signal_name = body.get("signal_name", "")
-    week_iso = body.get("week_iso", "")
+    signal_name = body.get("signal_name", "").strip()
+    week_iso = body.get("week_iso", "").strip()
+
+    if not signal_name or not week_iso:
+        return JSONResponse({"error": "Missing required fields: signal_name, week_iso"}, status_code=400)
+    if not re.match(r"^\d{4}-W\d{2}$", week_iso):
+        return JSONResponse({"error": f"Invalid week_iso format: {week_iso}. Expected YYYY-Www"}, status_code=400)
 
     conn = get_connection()
     row = conn.execute(
@@ -1394,22 +1399,26 @@ async def api_refresh_signal_intelligence(request: Request) -> JSONResponse:
         return JSONResponse({"error": "No existing record to refresh"}, status_code=404)
 
     def _refresh():
-        from flatwhite.signals.signal_intelligence import _fetch_articles, _synthesise
-        year, wn = int(week_iso[:4]), int(week_iso[6:])
-        dt = _dt.datetime.strptime(f"{year}-W{wn:02d}-1", "%G-W%V-%u")
-        month = dt.strftime("%B")
-        delta = row["delta"]
-        articles = _fetch_articles(signal_name, month, str(year))
-        commentary = _synthesise(signal_name, delta, articles)
-        c = get_connection()
-        c.execute(
-            """INSERT OR REPLACE INTO signal_intelligence
-               (signal_name, week_iso, delta, articles, commentary, generated_at)
-               VALUES (?, ?, ?, ?, ?, datetime('now'))""",
-            (signal_name, week_iso, delta, json.dumps(articles), commentary),
-        )
-        c.commit()
-        c.close()
+        try:
+            from flatwhite.signals.signal_intelligence import _fetch_articles, _synthesise
+            year, wn = int(week_iso[:4]), int(week_iso[6:])
+            dt = _dt.datetime.strptime(f"{year}-W{wn:02d}-1", "%G-W%V-%u")
+            month = dt.strftime("%B")
+            delta = row["delta"]
+            articles = _fetch_articles(signal_name, month, str(year))
+            commentary = _synthesise(signal_name, delta, articles)
+            c = get_connection()
+            c.execute(
+                """INSERT OR REPLACE INTO signal_intelligence
+                   (signal_name, week_iso, delta, articles, commentary, generated_at)
+                   VALUES (?, ?, ?, ?, ?, datetime('now'))""",
+                (signal_name, week_iso, delta, json.dumps(articles), commentary),
+            )
+            c.commit()
+            c.close()
+            print(f"  signal_intelligence refresh: {signal_name} ({week_iso}) — done")
+        except Exception as e:
+            print(f"  signal_intelligence refresh FAILED: {signal_name} ({week_iso}): {e}")
 
     threading.Thread(target=_refresh, daemon=True).start()
     return JSONResponse({"refreshing": True, "signal_name": signal_name, "week_iso": week_iso})
