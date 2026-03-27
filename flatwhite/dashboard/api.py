@@ -1653,15 +1653,6 @@ async def api_otc_pick(request: Request) -> JSONResponse:
     return JSONResponse({"id": row_id, "week_iso": get_current_week_iso()})
 
 
-# ── Models ────────────────────────────────────────────────────────────────────
-
-@app.get("/api/models")
-def api_models() -> JSONResponse:
-    """Return available LLM models based on configured API keys."""
-    from flatwhite.model_router import list_available_models
-    return JSONResponse({"models": list_available_models()})
-
-
 # ── Section outputs ───────────────────────────────────────────────────────────
 
 @app.get("/api/section-outputs")

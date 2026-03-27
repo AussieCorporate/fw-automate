@@ -276,6 +276,7 @@ var S = {
   loading: {},
   sectionProgress: {},   // { section: {step, total, step_name} }
   proceedModal: { open: false, section: null, prompt: "", lean: "", items: [], loading: false },
+  proceedModel: {},    // { section: model_id } — persisted to localStorage
   proceedData: {},
   signalIntelligence: {},   // { signal_name: {delta, articles, commentary} }
   signalIntelExpanded: {},  // { signal_name: bool }
@@ -1520,11 +1521,16 @@ function renderSectionProgress(section) {
    PROCEED MODAL
    ═══════════════════════════════════════════════════════════════════════ */
 function openProceedModal(section, items) {
-  S.proceedModal = { open: true, section: section, prompt: "", lean: "", items: items || [], loading: true };
+  S.proceedModal = {
+    open: true, section: section, prompt: "", lean: "",
+    items: items || [], loading: true,
+    contextBreakdown: null, excludedItems: {}, _tab: "prompt"
+  };
   render();
   api("/api/preview-prompt", { method: "POST", body: { section: section, data: S.proceedData[section] || {} } })
     .then(function(d) {
       S.proceedModal.prompt = d.prompt || "";
+      S.proceedModal.contextBreakdown = d.context_breakdown || null;
       S.proceedModal.loading = false;
       render();
     })
@@ -1536,7 +1542,7 @@ function openProceedModal(section, items) {
 }
 
 function closeProceedModal() {
-  S.proceedModal = { open: false, section: null, prompt: "", lean: "", items: [], loading: false };
+  S.proceedModal = { open: false, section: null, prompt: "", lean: "", items: [], loading: false, contextBreakdown: null, excludedItems: {}, _tab: "prompt" };
   render();
 }
 
@@ -1545,42 +1551,155 @@ function confirmAndGenerate() {
   var section = modal.section;
   var lean = modal.lean.trim();
   var customPrompt = lean ? lean + "\n\n" + modal.prompt : modal.prompt;
+  var model = S.proceedModel[section] || null;
   S.proceedModal.open = false;
   S.loading[section] = true;
   render();
   var body = Object.assign({}, S.proceedData[section] || {}, {
     section: section,
     custom_prompt: customPrompt,
+    model: model,
+    excluded: Object.keys(modal.excludedItems).filter(function(k) { return modal.excludedItems[k]; }),
   });
   api("/api/proceed-section", { method: "POST", body: body })
     .then(function(d) {
       S.sectionOutputs[section] = { output_text: d.output, model_used: d.model };
       S.loading[section] = false;
       render();
-      showToast(section.replace(/_/g, " ") + " generated");
+      showToast(section.replace(/_/g, " ") + " generated" + (d.model ? " · " + d.model : ""));
     })
-    .catch(function(e) {
-      S.loading[section] = false;
-      render();
-      showToast("Error: " + e.message, "error");
-    });
+    .catch(function(e) { S.loading[section] = false; render(); showToast("Error: " + e.message, "error"); });
 }
 
 function renderProceedModal() {
   if (!S.proceedModal.open) return "";
   var modal = S.proceedModal;
+  var section = modal.section;
+  var availableModels = S.models || [];
+
   var h = '<div class="modal-overlay" onclick="if(event.target===this)closeProceedModal()">';
-  h += '<div class="modal-box">';
-  h += '<h3>Generate ' + esc(modal.section.replace(/_/g, " ")) + '</h3>';
-  h += '<div class="modal-section-label">Editorial lean (optional)</div>';
-  h += '<input class="form-input" style="margin-bottom:12px;" placeholder="e.g. Focus on Big 4 this week..." value="' + esc(modal.lean) + '" oninput="S.proceedModal.lean=this.value">';
-  h += '<div class="modal-section-label">Prompt</div>';
-  if (modal.loading) {
-    h += '<div class="loading" style="padding:20px 0;">Loading prompt...</div>';
-  } else {
-    h += '<textarea class="form-input" rows="14" style="font-family:monospace;font-size:12px;" oninput="S.proceedModal.prompt=this.value">' + esc(modal.prompt) + '</textarea>';
+  h += '<div class="modal-box" style="max-width:900px;width:95vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;">';
+  h += '<h3 style="margin-bottom:12px;">Generate ' + esc(section.replace(/_/g, " ")) + '</h3>';
+
+  // Three-panel tabs
+  h += '<div style="display:flex;gap:0;border-bottom:1px solid var(--divider);margin-bottom:16px;">';
+  ['context','prompt','model'].forEach(function(tab) {
+    var active = (S.proceedModal._tab || 'prompt') === tab;
+    h += '<div onclick="S.proceedModal._tab=\'' + tab + '\';render()" style="padding:8px 20px;font-size:13px;cursor:pointer;border-bottom:2px solid ' + (active ? 'var(--amber)' : 'transparent') + ';color:' + (active ? 'var(--text-1)' : 'var(--text-3)') + ';">';
+    h += tab === 'context' ? 'Context' : tab === 'prompt' ? 'Prompt' : 'Model';
+    h += '</div>';
+  });
+  h += '</div>';
+
+  var activeTab = S.proceedModal._tab || 'prompt';
+
+  // ── Context panel ──
+  if (activeTab === 'context') {
+    if (modal.loading) {
+      h += '<div class="loading" style="padding:20px;">Loading context...</div>';
+    } else if (modal.contextBreakdown) {
+      var cb = modal.contextBreakdown;
+      h += '<div style="overflow-y:auto;max-height:50vh;font-size:13px;">';
+
+      // Signals
+      if (cb.signals && cb.signals.length) {
+        h += '<div style="font-weight:600;margin-bottom:8px;">Signals</div>';
+        h += '<table class="tbl" style="margin-bottom:16px;"><thead><tr><th></th><th>Signal</th><th>Score</th><th>WoW</th><th>Area</th></tr></thead><tbody>';
+        cb.signals.forEach(function(sig) {
+          var key = "sig_" + sig.name;
+          var checked = !modal.excludedItems[key];
+          var d = sig.delta;
+          var dc = d == null ? "" : (d > 0 ? "color:var(--red)" : d < 0 ? "color:var(--green)" : "");
+          h += '<tr>';
+          h += '<td><input type="checkbox"' + (checked ? " checked" : "") + ' onchange="S.proceedModal.excludedItems[' + "'" + key + "'" + ']=!this.checked;render()"></td>';
+          h += '<td>' + esc(sig.name) + '</td>';
+          h += '<td>' + (sig.score != null ? sig.score.toFixed(1) : "—") + '</td>';
+          h += '<td style="' + dc + '">' + (d != null ? (d > 0 ? "+" : "") + d.toFixed(1) : "—") + '</td>';
+          h += '<td><span class="chip chip-default">' + esc(sig.area) + '</span></td>';
+          h += '</tr>';
+        });
+        h += '</tbody></table>';
+      }
+
+      // Signal intelligence
+      if (cb.signal_intelligence && cb.signal_intelligence.length) {
+        h += '<div style="font-weight:600;margin-bottom:8px;">Signal Intelligence</div>';
+        cb.signal_intelligence.forEach(function(si) {
+          var key = "intel_" + si.signal_name;
+          var checked = !modal.excludedItems[key];
+          h += '<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:10px;">';
+          h += '<input type="checkbox"' + (checked ? " checked" : "") + ' onchange="S.proceedModal.excludedItems[' + "'" + key + "'" + ']=!this.checked;render()" style="margin-top:3px;">';
+          h += '<div>';
+          h += '<div style="font-weight:600;font-size:12px;">' + esc(si.signal_name) + ' (' + (si.delta > 0 ? "+" : "") + si.delta.toFixed(1) + ' pts)</div>';
+          h += '<div style="color:var(--text-2);">' + esc(si.commentary) + '</div>';
+          if (si.articles && si.articles.length) {
+            si.articles.slice(0, 2).forEach(function(a) {
+              h += '<div style="font-size:11px;color:var(--text-3);">' + esc(a.title) + '</div>';
+            });
+          }
+          h += '</div></div>';
+        });
+      }
+
+      // Items (finds/lobby/OTC)
+      if (cb.items && cb.items.length) {
+        h += '<div style="font-weight:600;margin-bottom:8px;">Items</div>';
+        cb.items.forEach(function(item, idx) {
+          var key = "item_" + idx;
+          var checked = !modal.excludedItems[key];
+          h += '<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">';
+          h += '<input type="checkbox"' + (checked ? " checked" : "") + ' onchange="S.proceedModal.excludedItems[' + "'" + key + "'" + ']=!this.checked;render()">';
+          h += '<span style="font-size:13px;">' + esc(item.name || item.category || "") + '</span>';
+          if (item.score != null) h += ' <span style="font-size:11px;color:var(--text-3);">(' + item.score.toFixed(1) + ')</span>';
+          h += '</div>';
+        });
+      }
+
+      h += '</div>';
+    } else {
+      h += '<div style="color:var(--text-3);padding:20px 0;">No context breakdown available for this section.</div>';
+    }
   }
-  h += '<div class="modal-footer">';
+
+  // ── Prompt panel ──
+  if (activeTab === 'prompt') {
+    h += '<div style="margin-bottom:8px;font-size:12px;color:var(--text-3);">Editorial lean (prepended to prompt)</div>';
+    h += '<input class="form-input" style="margin-bottom:12px;" placeholder="e.g. Focus on Big 4 this week..." value="' + esc(modal.lean) + '" oninput="S.proceedModal.lean=this.value">';
+    if (modal.loading) {
+      h += '<div class="loading" style="padding:20px 0;">Loading prompt...</div>';
+    } else {
+      h += '<textarea class="form-input" rows="16" style="font-family:monospace;font-size:12px;" oninput="S.proceedModal.prompt=this.value">' + esc(modal.prompt) + '</textarea>';
+    }
+  }
+
+  // ── Model panel ──
+  if (activeTab === 'model') {
+    var currentModel = S.proceedModel[section] || (availableModels.length ? availableModels[0].id : "");
+    h += '<div style="font-size:13px;color:var(--text-2);margin-bottom:16px;">Select the model for this section\'s generation. Only models with a configured API key are shown.</div>';
+
+    var byProvider = {};
+    var providerOrder = [];
+    availableModels.forEach(function(m) {
+      if (!byProvider[m.provider]) { byProvider[m.provider] = []; providerOrder.push(m.provider); }
+      byProvider[m.provider].push(m);
+    });
+
+    var providerLabels = { anthropic: "Anthropic", openai: "OpenAI", gemini: "Google" };
+    providerOrder.forEach(function(prov) {
+      h += '<div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px;margin-top:12px;">' + (providerLabels[prov] || prov) + '</div>';
+      byProvider[prov].forEach(function(m) {
+        var active = m.id === currentModel;
+        h += '<div onclick="S.proceedModel[\'' + section + '\']=\'' + m.id + '\';try{localStorage.setItem(\'fw_proceedModel\',JSON.stringify(S.proceedModel));}catch(e){}render()" ';
+        h += 'style="padding:10px 14px;border-radius:6px;cursor:pointer;background:' + (active ? 'var(--amber-soft, rgba(255,180,0,0.12))' : 'transparent') + ';border:1px solid ' + (active ? 'var(--amber)' : 'var(--divider)') + ';margin-bottom:6px;display:flex;align-items:center;gap:10px;">';
+        h += '<div style="width:10px;height:10px;border-radius:50%;background:' + (active ? 'var(--amber)' : 'var(--divider)') + ';flex-shrink:0;"></div>';
+        h += '<div><div style="font-size:13px;font-weight:' + (active ? '600' : '400') + ';">' + esc(m.label) + '</div>';
+        h += '<div style="font-size:11px;color:var(--text-3);">' + esc(m.id) + '</div></div>';
+        h += '</div>';
+      });
+    });
+  }
+
+  h += '<div class="modal-footer" style="margin-top:16px;">';
   h += '<button class="btn btn-secondary" onclick="closeProceedModal()">Cancel</button>';
   h += '<button class="btn btn-success" onclick="confirmAndGenerate()" ' + (modal.loading ? 'disabled' : '') + '>Confirm & Generate</button>';
   h += '</div></div></div>';
@@ -1598,6 +1717,7 @@ function init() {
     api("/api/pulse/trends").catch(function() { return null; }),
   ]).then(function(results) {
     S.models = results[0].models || [];
+    try { S.proceedModel = JSON.parse(localStorage.getItem("fw_proceedModel") || "{}"); } catch(e) {}
     S.sectionOutputs = results[1].outputs || {};
     S.weekIso = results[1].week_iso || results[2].week_iso || "";
     S.pulse = results[2].pulse;
