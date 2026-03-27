@@ -6,6 +6,7 @@ via Claude Haiku. Stored in the signal_intelligence table.
 """
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import time
 from urllib.parse import quote
@@ -86,8 +87,6 @@ def run_signal_intelligence() -> None:
 
     Skips gracefully if fewer than 2 weeks of signal data exist.
     """
-    import datetime as _dt
-
     week_iso = get_current_week_iso()
     year, wn = int(week_iso[:4]), int(week_iso[6:])
     dt = _dt.datetime.strptime(f"{year}-W{wn:02d}-1", "%G-W%V-%u")
@@ -129,8 +128,8 @@ def run_signal_intelligence() -> None:
     print(f"  signal_intelligence: processing {len(movers)} movers: {[m[0] for m in movers]}")
 
     for signal_name, delta in movers:
+        # fetch_rss already sleeps delay_seconds between requests; no extra sleep needed here
         articles = _fetch_articles(signal_name, month, str(year))
-        time.sleep(1.0)  # be polite to Google News
         commentary = _synthesise(signal_name, delta, articles)
 
         conn = get_connection()

@@ -88,7 +88,7 @@ def test_run_signal_intelligence_skips_when_cold(si_db):
         # Only insert signals for current week — no previous week
         db_module.insert_signal("asx_volatility", "pulse", "economic", 1.2, 60.0, 1.0, "2026-W13")
 
-        with patch("flatwhite.db.get_current_week_iso", return_value="2026-W13"):
+        with patch("flatwhite.signals.signal_intelligence.get_current_week_iso", return_value="2026-W13"):
             from flatwhite.signals.signal_intelligence import run_signal_intelligence
             run_signal_intelligence()  # Should not raise, should not write anything
 
@@ -110,7 +110,7 @@ def test_run_signal_intelligence_generates_for_movers(si_db):
 
         mock_articles = [{"title": "ASX swings wildly", "url": "http://afr.com/asx", "published": "2026-03-20", "snippet": "Markets volatile"}]
 
-        with patch("flatwhite.db.get_current_week_iso", return_value="2026-W13"):
+        with patch("flatwhite.signals.signal_intelligence.get_current_week_iso", return_value="2026-W13"):
             with patch("flatwhite.signals.signal_intelligence._fetch_articles", return_value=mock_articles):
                 with patch("flatwhite.model_router.route", return_value="ASX rose sharply this week due to global risk sentiment."):
                     from flatwhite.signals.signal_intelligence import run_signal_intelligence
