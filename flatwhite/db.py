@@ -335,8 +335,56 @@ def migrate_db() -> None:
         )
     """)
 
+    # v4 section_outputs table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS section_outputs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            week_iso TEXT NOT NULL,
+            section TEXT NOT NULL,
+            output_text TEXT NOT NULL,
+            model_used TEXT,
+            saved_at TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(week_iso, section)
+        )
+    """)
+
     conn.commit()
     conn.close()
+
+
+def save_section_output(
+    week_iso: str,
+    section: str,
+    output_text: str,
+    model_used: str | None = None,
+) -> None:
+    """Persist a generated section output. Replaces existing for the same week/section."""
+    conn = get_connection()
+    conn.execute(
+        """INSERT OR REPLACE INTO section_outputs (week_iso, section, output_text, model_used, saved_at)
+           VALUES (?, ?, ?, ?, datetime('now'))""",
+        (week_iso, section, output_text, model_used),
+    )
+    conn.commit()
+    conn.close()
+
+
+def load_all_section_outputs(week_iso: str) -> dict[str, dict]:
+    """Return all saved section outputs for a given week, keyed by section name."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT section, output_text, model_used, saved_at FROM section_outputs WHERE week_iso = ?",
+        (week_iso,),
+    ).fetchall()
+    conn.close()
+    return {
+        r["section"]: {
+            "output_text": r["output_text"],
+            "model_used": r["model_used"],
+            "saved_at": r["saved_at"],
+        }
+        for r in rows
+    }
 
 
 def init_db() -> None:
