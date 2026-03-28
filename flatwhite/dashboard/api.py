@@ -1776,16 +1776,22 @@ def _proceed_off_the_clock(data: dict, model: str | None, custom_prompt: str | N
 
     picks = data.get("picks", [])
     picks_block = "\n\n".join(
-        f"Category: {p.get('category', '')}\nTitle: {p.get('title', '')}\nDraft blurb: {p.get('blurb', '')}"
+        "Category: {}\nTitle: {}{}".format(
+            p.get("category", ""),
+            p.get("title", ""),
+            ("\nURL: " + p["url"]) if p.get("url") else "",
+        ) + "\nDraft blurb: {}".format(p.get("blurb", ""))
         for p in picks
     )
 
     prompt = (
         "Polish these Off the Clock blurbs for Flat White.\n\n"
         f"{picks_block}\n\n"
-        "For each, rewrite the blurb in 1-2 sentences. Voice: dry, specific, opinionated. "
-        "Not a review. A statement from someone who already knows. Australian English.\n\n"
-        "Output as: CATEGORY: BLURB (one per line)"
+        "For each, rewrite the blurb in 1 sentence. Voice: dry, specific, but not rude or arrogant or condescending. "
+        "Not a review. A statement from someone who already knows but done in a way that's fun and engaging and acts "
+        "like a hook to get people reading. Australian English.\n\n"
+        "After the sentence, append [LINK](url) using the URL provided for that item.\n\n"
+        "Output as: CATEGORY: BLURB [LINK](url) (one per line)"
     )
     return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE)
 
@@ -2036,15 +2042,21 @@ async def api_preview_prompt(request: Request) -> JSONResponse:
         elif section == "off_the_clock":
             picks = data.get("picks", [])
             picks_block = "\n\n".join(
-                f"Category: {p.get('category', '')}\nTitle: {p.get('title', '')}\nDraft blurb: {p.get('blurb', '')}"
+                "Category: {}\nTitle: {}{}".format(
+                    p.get("category", ""),
+                    p.get("title", ""),
+                    ("\nURL: " + p["url"]) if p.get("url") else "",
+                ) + "\nDraft blurb: {}".format(p.get("blurb", ""))
                 for p in picks
             )
             prompt = (
                 "Polish these Off the Clock blurbs for Flat White.\n\n"
                 f"{picks_block}\n\n"
-                "For each, rewrite the blurb in 1-2 sentences. Voice: dry, specific, opinionated. "
-                "Not a review. A statement from someone who already knows. Australian English.\n\n"
-                "Output as: CATEGORY: BLURB (one per line)"
+                "For each, rewrite the blurb in 1 sentence. Voice: dry, specific, but not rude or arrogant or condescending. "
+                "Not a review. A statement from someone who already knows but done in a way that's fun and engaging and acts "
+                "like a hook to get people reading. Australian English.\n\n"
+                "After the sentence, append [LINK](url) using the URL provided for that item.\n\n"
+                "Output as: CATEGORY: BLURB [LINK](url) (one per line)"
             )
             context_breakdown = {
                 "signals": [], "signal_intelligence": [],
