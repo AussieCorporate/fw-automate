@@ -270,6 +270,7 @@ var S = {
   findsBlurbs: {},
   lobbyChecked: {},
   pulseChecked: {},
+  signalSort: { col: null, dir: "desc" },
   otcPicks: {},
   otcBlurbs: {},
   otcSelected: {},
@@ -558,6 +559,38 @@ function renderCategoryTrends() {
   return h;
 }
 
+function sortSignals(col) {
+  if (S.signalSort.col === col) {
+    S.signalSort.dir = S.signalSort.dir === "desc" ? "asc" : "desc";
+  } else {
+    S.signalSort.col = col;
+    S.signalSort.dir = "desc";
+  }
+  render();
+}
+
+function getSortedSignals(signals, moverDeltas) {
+  var sort = S.signalSort;
+  if (!sort.col) return signals.slice();
+  return signals.slice().sort(function(a, b) {
+    var na = a.signal_name || a.name || "";
+    var nb = b.signal_name || b.name || "";
+    var val = 0;
+    if (sort.col === "name") {
+      val = na.localeCompare(nb);
+    } else if (sort.col === "score") {
+      val = (a.normalised_score || 0) - (b.normalised_score || 0);
+    } else if (sort.col === "delta") {
+      val = Math.abs(moverDeltas[na] || 0) - Math.abs(moverDeltas[nb] || 0);
+    } else if (sort.col === "area") {
+      val = (a.area || "").localeCompare(b.area || "");
+    } else if (sort.col === "evidence") {
+      val = (S.signalIntelligence[na] ? 1 : 0) - (S.signalIntelligence[nb] ? 1 : 0);
+    }
+    return sort.dir === "desc" ? -val : val;
+  });
+}
+
 function renderPulse(el) {
   var h = '<div class="sh"><div><h2>Pulse</h2><div class="sub">Disruption score, signals, and narrative</div></div></div>';
   h += '<div class="toolbar">';
@@ -612,7 +645,20 @@ function renderPulse(el) {
         S._pulseInitChecked = true;
         S.signals.forEach(function(sig) { S.pulseChecked[sig.signal_name || sig.name] = true; });
       }
-      h += '<table class="tbl"><thead><tr><th style="width:30px;"></th><th>Signal</th><th>Score</th><th>Delta</th><th>Category</th><th style="width:60px;">Evidence</th></tr></thead><tbody>';
+      function thSort(col, label, width) {
+        var active = S.signalSort.col === col;
+        var arrow = active ? (S.signalSort.dir === "desc" ? " \u25BC" : " \u25B2") : "";
+        var style = 'cursor:pointer;user-select:none;' + (width ? 'width:' + width + ';' : '');
+        return '<th onclick="sortSignals(\'' + col + '\')" style="' + style + '">' + label + arrow + '</th>';
+      }
+      h += '<table class="tbl"><thead><tr>';
+      h += '<th style="width:30px;"></th>';
+      h += thSort("name", "Signal");
+      h += thSort("score", "Score");
+      h += thSort("delta", "Delta");
+      h += thSort("area", "Category");
+      h += thSort("evidence", "Evidence", "60px");
+      h += '</tr></thead><tbody>';
       // Build delta lookup from all_signal_deltas (full set) with biggest_movers as fallback
       var moverDeltas = {};
       if (S.trends && S.trends.all_signal_deltas) {
@@ -622,7 +668,7 @@ function renderPulse(el) {
       } else if (S.trends && S.trends.biggest_movers) {
         S.trends.biggest_movers.forEach(function(m) { moverDeltas[m.signal_name || m.name] = m.delta || 0; });
       }
-      S.signals.forEach(function(sig) {
+      getSortedSignals(S.signals, moverDeltas).forEach(function(sig) {
         var name = sig.signal_name || sig.name || "";
         var checked = S.pulseChecked[name] ? " checked" : "";
         var dv = moverDeltas[name] != null ? moverDeltas[name] : 0;
