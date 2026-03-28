@@ -122,6 +122,7 @@ input, textarea, select { font-family: var(--font-sans); font-size: 14px; }
 .tbl th { text-align: left; padding: 10px 12px; font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid var(--border); font-weight: 600; }
 .tbl td { padding: 10px 12px; border-bottom: 1px solid var(--divider); vertical-align: top; }
 .tbl tr:hover td { background: var(--surface-warm); }
+.tbl tbody tr:hover { background: var(--bg-2); }
 .tbl input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--amber); }
 
 /* ── Forms ── */
@@ -640,11 +641,6 @@ function renderPulse(el) {
     // Signal table with checkboxes
     h += '<div class="card mb20"><div style="font-weight:600;margin-bottom:12px;">Signals</div>';
     if (S.signals && S.signals.length) {
-      // Pre-check top 3 movers on first load
-      if (!S._pulseInitChecked && S.signals.length) {
-        S._pulseInitChecked = true;
-        S.signals.forEach(function(sig) { S.pulseChecked[sig.signal_name || sig.name] = true; });
-      }
       function thSort(col, label, width) {
         var active = S.signalSort.col === col;
         var arrow = active ? (S.signalSort.dir === "desc" ? " \u25BC" : " \u25B2") : "";
@@ -676,8 +672,8 @@ function renderPulse(el) {
         var dc = !hasDelta ? 'color:var(--text-3)' : (SIGNAL_INVERTED_DISPLAY.has(name)
           ? (dv > 0 ? 'color:var(--red)' : 'color:var(--green)')
           : (dv > 0 ? 'color:var(--green)' : 'color:var(--red)'));
-        h += '<tr>';
-        h += '<td><input type="checkbox"' + checked + ' onchange="togglePulseCheck(\'' + esc(name) + '\',this.checked)"></td>';
+        h += '<tr style="cursor:pointer;" onclick="togglePulseCheck(\'' + esc(name) + '\',!S.pulseChecked[\'' + esc(name) + '\']);render()">';
+        h += '<td onclick="event.stopPropagation()"><input type="checkbox"' + checked + ' onchange="togglePulseCheck(\'' + esc(name) + '\',this.checked)"></td>';
         h += '<td>' + esc(name) + '</td>';
         h += '<td>' + esc(sig.normalised_score != null ? sig.normalised_score.toFixed(1) : "—") + '</td>';
         h += '<td style="font-weight:600;' + dc + '">' + (hasDelta ? ((dv > 0 ? "+" : "") + dv.toFixed(1)) : "—") + '</td>';
@@ -686,7 +682,7 @@ function renderPulse(el) {
         var evidenceBadge = intel
           ? '<span class="chip chip-default" style="cursor:pointer;font-size:10px;" onclick="toggleSignalIntel(\'' + esc(name) + '\')" title="' + esc((intel.commentary || "").slice(0, 80)) + '...">&#8801; evidence</span>'
           : '';
-        h += '<td>' + evidenceBadge + '</td>';
+        h += '<td onclick="event.stopPropagation()">' + evidenceBadge + '</td>';
         h += '</tr>';
         if (S.signalIntelExpanded[name] && intel) {
           h += '<tr><td colspan="6" style="background:var(--bg-2);padding:12px 16px;">';
