@@ -126,11 +126,19 @@ def api_pulse() -> JSONResponse:
     pulse = load_pulse_state()
     signals = load_signals_this_week()
     anomalies = detect_all_anomalies()
+    week_iso = get_current_week_iso()
+    _conn = get_connection()
+    _row = _conn.execute(
+        "SELECT max(pulled_at) FROM signals WHERE week_iso = ?", (week_iso,)
+    ).fetchone()
+    _conn.close()
+    last_scraped_at = _row[0] if _row else None
     return JSONResponse({
         "pulse": pulse,
         "signals": signals,
         "anomalies": anomalies,
-        "week_iso": get_current_week_iso(),
+        "week_iso": week_iso,
+        "last_scraped_at": last_scraped_at,
     })
 
 
@@ -150,7 +158,14 @@ def api_reddit_compare(week: str | None = None) -> JSONResponse:
 def api_items() -> JSONResponse:
     """Return curated items grouped by section for current week."""
     items = load_curated_items_by_section()
-    return JSONResponse({"items": items, "week_iso": get_current_week_iso()})
+    week_iso = get_current_week_iso()
+    _conn = get_connection()
+    _row = _conn.execute(
+        "SELECT max(pulled_at) FROM raw_items WHERE week_iso = ?", (week_iso,)
+    ).fetchone()
+    _conn.close()
+    last_scraped_at = _row[0] if _row else None
+    return JSONResponse({"items": items, "week_iso": week_iso, "last_scraped_at": last_scraped_at})
 
 
 @app.get("/api/thread")
@@ -171,7 +186,14 @@ def api_threads(limit: int = 10, weeks: int = 1) -> JSONResponse:
     limit = max(1, min(limit, 50))
     weeks = max(1, min(weeks, 4))
     threads = load_top_threads(limit=limit, weeks=weeks)
-    return JSONResponse({"threads": threads, "week_iso": get_current_week_iso()})
+    week_iso = get_current_week_iso()
+    _conn = get_connection()
+    _row = _conn.execute(
+        "SELECT max(pulled_at) FROM raw_items WHERE week_iso = ?", (week_iso,)
+    ).fetchone()
+    _conn.close()
+    last_scraped_at = _row[0] if _row else None
+    return JSONResponse({"threads": threads, "week_iso": week_iso, "last_scraped_at": last_scraped_at})
 
 
 @app.get("/api/seeds")
@@ -241,10 +263,18 @@ def api_off_the_clock() -> JSONResponse:
     """Return Off the Clock candidates grouped by category for current week."""
     candidates = load_otc_candidates()
     picks = load_otc_picks()
+    week_iso = get_current_week_iso()
+    _conn = get_connection()
+    _row = _conn.execute(
+        "SELECT max(pulled_at) FROM raw_items WHERE week_iso = ?", (week_iso,)
+    ).fetchone()
+    _conn.close()
+    last_scraped_at = _row[0] if _row else None
     return JSONResponse({
         "candidates": candidates,
         "picks": picks,
-        "week_iso": get_current_week_iso(),
+        "week_iso": week_iso,
+        "last_scraped_at": last_scraped_at,
     })
 
 
@@ -811,8 +841,13 @@ def api_big_conv_candidates() -> JSONResponse:
         (week_iso,),
     ).fetchall()
     conn.close()
-
-    return JSONResponse({"candidates": [dict(r) for r in rows], "week_iso": week_iso})
+    _conn = get_connection()
+    _row = _conn.execute(
+        "SELECT max(pulled_at) FROM raw_items WHERE week_iso = ?", (week_iso,)
+    ).fetchone()
+    _conn.close()
+    last_scraped_at = _row[0] if _row else None
+    return JSONResponse({"candidates": [dict(r) for r in rows], "week_iso": week_iso, "last_scraped_at": last_scraped_at})
 
 
 # ── Reingest (background pipeline refresh) ─────────────────────────────────
@@ -1371,10 +1406,18 @@ def api_lobby() -> JSONResponse:
         reverse=True,
     )
 
+    _conn = get_connection()
+    _row = _conn.execute(
+        "SELECT max(pulled_at) FROM raw_items WHERE week_iso = ?", (week_iso,)
+    ).fetchone()
+    _conn.close()
+    last_scraped_at = _row[0] if _row else None
+
     return JSONResponse({
         "employers": employers,
         "top_movers": movers[:10],
         "week_iso": week_iso,
+        "last_scraped_at": last_scraped_at,
     })
 
 
@@ -1401,10 +1444,18 @@ def api_off_the_clock() -> JSONResponse:
     """Return Off the Clock candidates grouped by category for current week."""
     candidates = load_otc_candidates()
     picks = load_otc_picks()
+    week_iso = get_current_week_iso()
+    _conn = get_connection()
+    _row = _conn.execute(
+        "SELECT max(pulled_at) FROM raw_items WHERE week_iso = ?", (week_iso,)
+    ).fetchone()
+    _conn.close()
+    last_scraped_at = _row[0] if _row else None
     return JSONResponse({
         "candidates": candidates,
         "picks": picks,
-        "week_iso": get_current_week_iso(),
+        "week_iso": week_iso,
+        "last_scraped_at": last_scraped_at,
     })
 
 
@@ -1547,8 +1598,13 @@ def api_big_conv_candidates() -> JSONResponse:
         (week_iso,),
     ).fetchall()
     conn.close()
-
-    return JSONResponse({"candidates": [dict(r) for r in rows], "week_iso": week_iso})
+    _conn = get_connection()
+    _row = _conn.execute(
+        "SELECT max(pulled_at) FROM raw_items WHERE week_iso = ?", (week_iso,)
+    ).fetchone()
+    _conn.close()
+    last_scraped_at = _row[0] if _row else None
+    return JSONResponse({"candidates": [dict(r) for r in rows], "week_iso": week_iso, "last_scraped_at": last_scraped_at})
 
 
 # ── Section proceed helpers ──────────────────────────────────────────────────
