@@ -1676,9 +1676,13 @@ def _proceed_big_conversation(data: dict, model: str | None, custom_prompt: str 
     if custom_prompt:
         return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE)
 
-    headline = data.get("headline", "")
-    pitch = data.get("pitch", "")
-    supporting_summaries = data.get("supporting_summaries", [])
+    # Accept both field name variants (frontend sends title/summary, custom form sends headline/pitch)
+    headline = data.get("headline") or data.get("title", "")
+    pitch = data.get("pitch") or data.get("summary", "")
+    supporting_summaries = data.get("supporting_summaries") or []
+    # Custom topic sends supporting_data as a plain string — convert to list
+    if not supporting_summaries and data.get("supporting_data"):
+        supporting_summaries = [data["supporting_data"]]
     items_block = "\n".join(f"- {s}" for s in supporting_summaries) if supporting_summaries else "(no supporting items)"
 
     prompt = BIG_CONVERSATION_DRAFT_PROMPT.format(

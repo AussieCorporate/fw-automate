@@ -862,17 +862,15 @@ function proceedBigConv() {
   var model = getModel("model-bigconv");
   var data = {};
   if (S.customBigConv && S.customBigConv.headline) {
-    data = { custom: true, headline: S.customBigConv.headline, pitch: S.customBigConv.pitch, supporting_data: S.customBigConv.data };
+    data = { headline: S.customBigConv.headline, pitch: S.customBigConv.pitch, supporting_data: S.customBigConv.data };
   } else if (S.selectedBigConv) {
-    var c = S.bigConvCandidates.find(function(x) { return x.id === S.selectedBigConv; });
-    if (c) data = { candidate_id: c.id, title: c.title, summary: c.summary, source: c.source };
+    var c = (S.bigConvCandidates || []).find(function(x) { return x.id === S.selectedBigConv; });
+    if (c) data = { headline: c.title, pitch: c.summary, source: c.source };
   } else {
     showToast("Select a candidate or add a custom topic", "error"); return;
   }
-  S.loading.big_conversation = true; render();
-  api("/api/proceed-section", { method: "POST", body: { section: "big_conversation", model: model, data: data } })
-    .then(function(d) { S.sectionOutputs.big_conversation = { output_text: d.output, model_used: d.model }; S.loading.big_conversation = false; render(); showToast("Big Conversation generated"); })
-    .catch(function(e) { S.loading.big_conversation = false; render(); showToast("Error: " + e.message, "error"); });
+  S.proceedData.big_conversation = { section: "big_conversation", model: model, data: data };
+  openProceedModal("big_conversation");
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
