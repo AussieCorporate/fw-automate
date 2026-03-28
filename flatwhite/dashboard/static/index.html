@@ -110,7 +110,7 @@ input, textarea, select { font-family: var(--font-sans); font-size: 14px; }
 
 /* ── Gauge ── */
 .gauge-wrap { text-align: center; }
-.gauge-num { font-family: var(--font-sans); font-size: 60px; font-weight: 700; letter-spacing: -3px; margin-top: -12px; line-height: 1; }
+.gauge-num { font-family: var(--font-sans); font-size: 60px; font-weight: 700; letter-spacing: -3px; margin-top: 4px; line-height: 1; }
 .gauge-lbl { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px; }
 .dir-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; }
 .dir-up { background: var(--red-bg); color: var(--red); border: 1px solid #FFCDD2; }
@@ -590,6 +590,7 @@ function renderPulse(el) {
     h += '<div class="gauge-lbl">DISRUPTION SCORE</div>';
     h += '<div class="gauge-num">' + esc(typeof score === "number" ? score.toFixed(1) : score) + '</div>';
     h += '<div style="margin-top:10px;"><span class="dir-pill ' + dirClass + '">' + arrow + ' ' + esc(dir) + (delta ? ' (' + (delta > 0 ? "+" : "") + delta.toFixed(1) + ')' : '') + '</span></div>';
+    h += '<div style="margin-top:8px;font-size:11px;color:var(--text-3);">Lower score = healthier market</div>';
     h += '</div>';
 
     h += renderCategoryTrends();
