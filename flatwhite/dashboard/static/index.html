@@ -626,7 +626,9 @@ function renderPulse(el) {
         var checked = S.pulseChecked[name] ? " checked" : "";
         var dv = moverDeltas[name] != null ? moverDeltas[name] : 0;
         var hasDelta = moverDeltas[name] != null;
-        var dc = dv > 0 ? 'color:var(--red)' : (dv < 0 ? 'color:var(--green)' : 'color:var(--text-3)');
+        var dc = !hasDelta ? 'color:var(--text-3)' : (SIGNAL_INVERTED_DISPLAY.has(name)
+          ? (dv > 0 ? 'color:var(--red)' : 'color:var(--green)')
+          : (dv > 0 ? 'color:var(--green)' : 'color:var(--red)'));
         h += '<tr>';
         h += '<td><input type="checkbox"' + checked + ' onchange="togglePulseCheck(\'' + esc(name) + '\',this.checked)"></td>';
         h += '<td>' + esc(name) + '</td>';
@@ -1131,6 +1133,10 @@ var OTC_CATS = [
   { key: "otc_going", label: "Going" },
 ];
 
+// Signals where a positive WoW delta = BAD news for readers (higher score = more disruption).
+// All other signals: positive delta = good news (higher score = better conditions).
+var SIGNAL_INVERTED_DISPLAY = new Set(["asx_volatility"]);
+
 function renderOTC(el) {
   var h = '<div class="sh"><div><h2>Off the Clock</h2><div class="sub">Lifestyle picks across 5 categories</div></div></div>';
   h += '<div class="toolbar">';
@@ -1630,7 +1636,7 @@ function renderProceedModal() {
           h += '<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:10px;">';
           h += '<input type="checkbox"' + (checked ? " checked" : "") + ' onchange="S.proceedModal.excludedItems[' + "'" + key + "'" + ']=!this.checked;render()" style="margin-top:3px;">';
           h += '<div>';
-          h += '<div style="font-weight:600;font-size:12px;">' + esc(si.signal_name) + ' (' + (si.delta > 0 ? "+" : "") + si.delta.toFixed(1) + ' pts)</div>';
+          h += '<div style="font-weight:600;font-size:12px;">' + esc(si.signal_name) + (si.delta != null ? ' (' + (si.delta > 0 ? "+" : "") + si.delta.toFixed(1) + ' pts)' : '') + '</div>';
           h += '<div style="color:var(--text-2);">' + esc(si.commentary) + '</div>';
           if (si.articles && si.articles.length) {
             si.articles.slice(0, 2).forEach(function(a) {
