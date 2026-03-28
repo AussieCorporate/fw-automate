@@ -825,13 +825,13 @@ function useCustomBigConv() {
 function runBigConv() {
   S.loading.big_conversation = true; render();
   // Start finds run in background
-  api("/api/run-section", { method: "POST", body: { section: "finds" } })
+  api("/api/run-section", { method: "POST", body: { section: "big_conversation" } })
     .then(function(d) {
       if (!d.started) { S.loading.big_conversation = false; render(); showToast(d.message || "Already running"); return; }
-      showToast("Pulling editorial sources for Big Conversation...");
+      showToast("Pulling Big Conversation sources (incl. top AU news)...");
       // Poll for finds completion, then load candidates
       var poll = setInterval(function() {
-        fetch("/api/section-status/finds").then(function(r) { return r.json(); }).then(function(st) {
+        fetch("/api/section-status/big_conversation").then(function(r) { return r.json(); }).then(function(st) {
           if (!st.running && st.done) {
             clearInterval(poll);
             if (st.error) {
