@@ -620,6 +620,38 @@ def update_raw_item_engagement(
     conn.close()
 
 
+def insert_curated_item(
+    raw_item_id: int,
+    section: str,
+    summary: str,
+    score_relevance: int,
+    score_novelty: int,
+    score_reliability: int,
+    score_tension: int,
+    score_usefulness: int,
+    weighted_composite: float,
+    confidence_tag: str | None = None,
+    tags: str | None = None,
+) -> int | None:
+    """Insert a curated item, ignoring duplicates. Returns inserted id or None if already exists."""
+    conn = get_connection()
+    conn.execute(
+        """INSERT OR IGNORE INTO curated_items
+           (raw_item_id, section, summary, score_relevance, score_novelty,
+            score_reliability, score_tension, score_usefulness, weighted_composite,
+            confidence_tag, tags)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (raw_item_id, section, summary, score_relevance, score_novelty,
+         score_reliability, score_tension, score_usefulness, weighted_composite,
+         confidence_tag, tags),
+    )
+    conn.commit()
+    # last_insert_rowid() returns 0 if INSERT was ignored (duplicate)
+    inserted_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.close()
+    return inserted_id if inserted_id else None
+
+
 def update_draft_status(draft_id: int, status: str) -> None:
     conn = get_connection()
     conn.execute(
