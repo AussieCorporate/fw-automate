@@ -67,7 +67,7 @@ def test_items_inserted_as_big_conversation_seed(top_db):
 def test_fetch_error_on_one_query_does_not_abort(top_db):
     # First query raises, rest succeed
     def side_effect(url, **kwargs):
-        if "australia+business+news" in url:
+        if "australia%20business%20news" in url:
             raise Exception("network error")
         return _fake_entries(3, prefix="Ok")
 
