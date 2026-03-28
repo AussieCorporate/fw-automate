@@ -218,6 +218,8 @@ def migrate_db() -> None:
     # v1 migrations
     simple_migrations = [
         "ALTER TABLE raw_items ADD COLUMN top_comments TEXT",
+        "ALTER TABLE raw_items ADD COLUMN post_score INTEGER",
+        "ALTER TABLE raw_items ADD COLUMN comment_engagement INTEGER",
         "ALTER TABLE curated_items ADD COLUMN our_take TEXT",
         "ALTER TABLE curated_items ADD COLUMN au_relevance INTEGER",
     ]
@@ -601,6 +603,21 @@ def insert_draft(
     row_id = cursor.lastrowid
     conn.close()
     return row_id
+
+
+def update_raw_item_engagement(
+    item_id: int,
+    post_score: int,
+    comment_engagement: int,
+) -> None:
+    """Update Reddit engagement metrics for a raw item after fetch."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE raw_items SET post_score = ?, comment_engagement = ? WHERE id = ?",
+        (post_score, comment_engagement, item_id),
+    )
+    conn.commit()
+    conn.close()
 
 
 def update_draft_status(draft_id: int, status: str) -> None:
