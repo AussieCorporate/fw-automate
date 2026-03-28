@@ -274,6 +274,8 @@ var S = {
   signalSort: { col: null, dir: "desc" },
   otcPicks: {},
   otcBlurbs: {},
+  otcPrompt: "",
+  otcPromptExpanded: false,
   lastScraped: {},
   loading: {},
   sectionProgress: {},   // { section: {step, total, step_name} }
@@ -1235,11 +1237,11 @@ function renderOTC(el) {
       if (!candidates.length) {
         h += '<p style="font-size:12px;color:var(--text-3);">No candidates</p>';
       } else {
-        // Pill row — one pill per candidate, click to pick (radio behaviour)
-        var selectedId = S.otcPicks[cat.key];
+        // Multi-pick pills — any number of items per category can be selected
+        var catPicks = S.otcPicks[cat.key] || {};
         h += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">';
         candidates.forEach(function(c) {
-          var active = selectedId === c.id;
+          var active = !!catPicks[c.id];
           var pillStyle = active
             ? 'background:rgba(255,180,0,0.12);border:1.5px solid var(--amber);color:var(--text-1);font-weight:600;'
             : 'background:var(--bg-2);border:1.5px solid var(--divider);color:var(--text-2);';
@@ -1252,13 +1254,36 @@ function renderOTC(el) {
           h += '</button>';
         });
         h += '</div>';
-        // Blurb textarea below pills — only when a pick is active
-        if (selectedId != null) {
-          h += '<textarea class="form-input" rows="2" placeholder="Optional blurb for this pick..." style="margin-top:4px;" oninput="updateOTCBlurb(\'' + cat.key + '\',this.value)">' + esc(S.otcBlurbs[cat.key] || "") + '</textarea>';
-        }
+        // Per-item blurb textareas — one for each selected pill
+        candidates.forEach(function(c) {
+          if (!catPicks[c.id]) return;
+          var blurbKey = cat.key + "__" + c.id;
+          var shortTitle = (c.title || c.summary || "").slice(0, 50);
+          h += '<div style="margin-bottom:8px;">';
+          h += '<div style="font-size:11px;color:var(--text-3);margin-bottom:3px;">Note for "' + esc(shortTitle) + '"</div>';
+          h += '<textarea class="form-input" rows="2" placeholder="Optional blurb..." style="font-size:12px;" oninput="updateOTCBlurb(\'' + blurbKey + '\',this.value)">' + esc(S.otcBlurbs[blurbKey] || "") + '</textarea>';
+          h += '</div>';
+        });
       }
       h += '</div>';
     });
+    h += '</div>';
+    // Prompt preview panel
+    var totalPicks = OTC_CATS.reduce(function(n, cat) {
+      return n + Object.keys(S.otcPicks[cat.key] || {}).length;
+    }, 0);
+    h += '<div style="margin-top:16px;">';
+    h += '<button onclick="toggleOtcPrompt()" style="background:none;border:none;cursor:pointer;font-size:12px;color:var(--text-2);padding:0;">';
+    h += (S.otcPromptExpanded ? '▲' : '▼') + ' Prompt preview';
+    if (totalPicks === 0) h += ' <span style="color:var(--text-3);">(select items above)</span>';
+    h += '</button>';
+    if (S.otcPromptExpanded) {
+      h += '<textarea id="otc-prompt-preview" class="form-input" rows="10" oninput="S.otcPrompt=this.value" ';
+      h += 'placeholder="Select at least one item above to preview the prompt." ';
+      h += 'style="margin-top:8px;font-size:12px;font-family:monospace;">';
+      h += esc(S.otcPrompt);
+      h += '</textarea>';
+    }
     h += '</div>';
   }
 
@@ -1267,44 +1292,80 @@ function renderOTC(el) {
   fillOutput("off_the_clock");
 }
 
+function buildOTCPrompt() {
+  var lines = [];
+  OTC_CATS.forEach(function(cat) {
+    var catPicks = S.otcPicks[cat.key] || {};
+    Object.keys(catPicks).forEach(function(id) {
+      var candidates = (S.otcData && S.otcData.candidates && S.otcData.candidates[cat.key]) || [];
+      var item = candidates.find(function(c) { return c.id === Number(id); });
+      if (!item) return;
+      var blurb = S.otcBlurbs[cat.key + "__" + id] || "";
+      lines.push("Category: " + cat.key + "\nTitle: " + (item.title || item.summary || "") + "\nDraft blurb: " + blurb);
+    });
+  });
+  if (!lines.length) return "";
+  return (
+    "Polish these Off the Clock blurbs for Flat White.\n\n" +
+    lines.join("\n\n") +
+    "\n\nFor each, rewrite the blurb in 1-2 sentences. Voice: dry, specific, opinionated. " +
+    "Not a review. A statement from someone who already knows. Australian English.\n\n" +
+    "Output as: CATEGORY: BLURB (one per line)"
+  );
+}
+
 function pickOTC(cat, id) {
-  if (S.otcPicks[cat] === id) {
-    delete S.otcPicks[cat];
+  if (!S.otcPicks[cat]) S.otcPicks[cat] = {};
+  if (S.otcPicks[cat][id]) {
+    delete S.otcPicks[cat][id];
+    delete S.otcBlurbs[cat + "__" + id];
   } else {
-    S.otcPicks[cat] = id;
+    S.otcPicks[cat][id] = true;
   }
+  S.otcPrompt = buildOTCPrompt();
   render();
 }
 
-function updateOTCBlurb(cat, val) { S.otcBlurbs[cat] = val; }
+function updateOTCBlurb(key, value) {
+  S.otcBlurbs[key] = value;
+  S.otcPrompt = buildOTCPrompt();
+  var el = document.getElementById("otc-prompt-preview");
+  if (el) el.value = S.otcPrompt;
+}
+
+function toggleOtcPrompt() {
+  S.otcPromptExpanded = !S.otcPromptExpanded;
+  render();
+}
 
 function proceedOTC() {
   var model = getModel("model-otc");
   var picks = [];
   OTC_CATS.forEach(function(cat) {
-    var id = S.otcPicks[cat.key];
-    if (id != null) {
+    var catPicks = S.otcPicks[cat.key] || {};
+    Object.keys(catPicks).forEach(function(id) {
+      var idNum = Number(id);
       var candidates = (S.otcData && S.otcData.candidates && S.otcData.candidates[cat.key]) || [];
-      var item = candidates.find(function(c) { return c.id === id; });
+      var item = candidates.find(function(c) { return c.id === idNum; });
       picks.push({
         category: cat.key,
-        curated_item_id: id,
+        curated_item_id: idNum,
         title: item ? (item.title || item.summary || "") : "",
-        blurb: S.otcBlurbs[cat.key] || "",
+        blurb: S.otcBlurbs[cat.key + "__" + id] || "",
       });
-    }
+    });
   });
+  if (!picks.length) {
+    alert("Select at least one item before proceeding.");
+    return;
+  }
   S.proceedData.off_the_clock = {
     section: "off_the_clock",
     model: model,
     data: { picks: picks },
+    custom_prompt: S.otcPrompt || null,
   };
-  var savePromises = picks.map(function(p) {
-    return api("/api/off-the-clock/pick", { method: "POST", body: p }).catch(function() {});
-  });
-  Promise.all(savePromises).then(function() {
-    openProceedModal("off_the_clock");
-  });
+  openProceedModal("off_the_clock");
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
