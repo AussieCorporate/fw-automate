@@ -274,6 +274,7 @@ var S = {
   signalSort: { col: null, dir: "desc" },
   otcPicks: {},
   otcBlurbs: {},
+  lastScraped: {},
   loading: {},
   sectionProgress: {},   // { section: {step, total, step_name} }
   proceedModal: { open: false, section: null, prompt: "", lean: "", items: [], loading: false, contextBreakdown: null, excludedItems: {}, _tab: "prompt" },
@@ -342,6 +343,13 @@ function esc(s) {
   return d.innerHTML;
 }
 
+function formatScrapedDate(isoStr) {
+  if (!isoStr) return null;
+  var d = new Date(isoStr.replace(" ", "T") + "Z");
+  var months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return d.getDate() + " " + months[d.getMonth()];
+}
+
 function showToast(msg, type) {
   var c = document.getElementById("toasts");
   var t = document.createElement("div");
@@ -388,6 +396,7 @@ function loadPageData(page) {
         }).catch(function() { S.signalIntelligence = {}; })
       ]).then(function(r) {
         S.pulse = r[0].pulse; S.signals = r[0].signals || []; S.anomalies = r[0].anomalies || []; S.weekIso = r[0].week_iso || "";
+        S.lastScraped.pulse = r[0].last_scraped_at || null;
         S.trends = r[1] || null;
       });
     case "big_conversation":
@@ -396,19 +405,19 @@ function loadPageData(page) {
       return api("/api/items").then(function(d) { S.whispers = (d.items && d.items.whisper) || []; S.weekIso = d.week_iso; });
     case "lobby":
       if (S.lobby) return Promise.resolve();
-      return api("/api/lobby").then(function(d) { S.lobby = d; S.weekIso = d.week_iso; });
+      return api("/api/lobby").then(function(d) { S.lobby = d; S.weekIso = d.week_iso; S.lastScraped.lobby = d.last_scraped_at || null; });
     case "finds":
       if (S.items) return Promise.resolve();
-      return api("/api/items").then(function(d) { S.items = d.items || {}; S.weekIso = d.week_iso; });
+      return api("/api/items").then(function(d) { S.items = d.items || {}; S.weekIso = d.week_iso; S.lastScraped.finds = d.last_scraped_at || null; S.lastScraped.editorial = d.last_scraped_at || null; });
     case "thread":
       if (S.threads) return Promise.resolve();
-      return api("/api/threads?limit=5").then(function(d) { S.threads = d.threads || []; S.weekIso = d.week_iso; });
+      return api("/api/threads?limit=5").then(function(d) { S.threads = d.threads || []; S.weekIso = d.week_iso; S.lastScraped.threads = d.last_scraped_at || null; });
     case "amp_finest":
       if (S.ampFinest !== null) return Promise.resolve();
       return api("/api/amp-finest").then(function(d) { S.ampFinest = d.data; S.weekIso = d.week_iso; });
     case "off_the_clock":
       if (S.otcData) return Promise.resolve();
-      return api("/api/off-the-clock").then(function(d) { S.otcData = d; S.weekIso = d.week_iso; });
+      return api("/api/off-the-clock").then(function(d) { S.otcData = d; S.weekIso = d.week_iso; S.lastScraped.off_the_clock = d.last_scraped_at || null; });
     case "events":
       if (S.events) return Promise.resolve();
       return api("/api/events").then(function(d) { S.events = d.events || []; S.weekIso = d.week_iso; });
@@ -507,6 +516,8 @@ function renderEditorial(el) {
   h += modelSelect("model-editorial");
   h += '<button class="btn btn-success" onclick="proceedEditorial()">PROCEED</button>';
   if (S.loading.editorial) h += renderSectionProgress('editorial');
+  var _ps = formatScrapedDate(S.lastScraped.editorial);
+  if (_ps) h += '<span style="font-size:11px;color:var(--text-3);margin-left:8px;">Scraped ' + _ps + '</span>';
   h += '</div>';
 
   // Show which sections are ready
@@ -601,6 +612,8 @@ function renderPulse(el) {
   h += modelSelect("model-pulse");
   h += '<button class="btn btn-success" onclick="proceedPulse()">PROCEED</button>';
   if (S.loading.pulse) h += renderSectionProgress('pulse');
+  var _ps = formatScrapedDate(S.lastScraped.pulse);
+  if (_ps) h += '<span style="font-size:11px;color:var(--text-3);margin-left:8px;">Scraped ' + _ps + '</span>';
   h += '</div>';
 
   if (!S.pulse) {
@@ -632,7 +645,7 @@ function renderPulse(el) {
     if (S.anomalies && S.anomalies.length) {
       h += '<div class="mb20">';
       S.anomalies.forEach(function(a) {
-        h += '<div class="anomaly"><span style="font-size:18px;">\u26A0</span><span>' + esc(a.message || a) + '</span></div>';
+        h += '<div class="anomaly"><span style="font-size:18px;">\u26A0</span><span>' + esc(a.signal + ': score ' + (a.current != null ? a.current : '\u2014') + ' (' + (a.direction || '') + ', ' + (a.confidence || '') + ' confidence)') + '</span></div>';
       });
       h += '</div>';
     }
@@ -751,6 +764,8 @@ function renderBigConv(el) {
   h += modelSelect("model-bigconv");
   h += '<button class="btn btn-success" onclick="proceedBigConv()">PROCEED</button>';
   if (S.loading.big_conversation) h += renderSectionProgress('big_conversation');
+  var _ps = formatScrapedDate(S.lastScraped.big_conversation);
+  if (_ps) h += '<span style="font-size:11px;color:var(--text-3);margin-left:8px;">Scraped ' + _ps + '</span>';
   h += '</div>';
 
   // Candidates
@@ -825,6 +840,7 @@ function runBigConv() {
             // Now load candidates
             api("/api/big-conversation-candidates").then(function(d) {
               S.bigConvCandidates = d.candidates || [];
+              S.lastScraped.big_conversation = d.last_scraped_at || null;
               S.items = null; // invalidate items cache
               S.loading.big_conversation = false;
               render();
@@ -911,6 +927,8 @@ function renderLobby(el) {
   h += modelSelect("model-lobby");
   h += '<button class="btn btn-success" onclick="proceedLobby()">PROCEED</button>';
   if (S.loading.lobby) h += renderSectionProgress('lobby');
+  var _ps = formatScrapedDate(S.lastScraped.lobby);
+  if (_ps) h += '<span style="font-size:11px;color:var(--text-3);margin-left:8px;">Scraped ' + _ps + '</span>';
   h += '</div>';
 
   if (!S.lobby || !S.lobby.employers || !S.lobby.employers.length) {
@@ -991,6 +1009,8 @@ function renderFinds(el) {
   h += modelSelect("model-finds");
   h += '<button class="btn btn-success" onclick="proceedFinds()">PROCEED</button>';
   if (S.loading.finds) h += renderSectionProgress('finds');
+  var _ps = formatScrapedDate(S.lastScraped.finds);
+  if (_ps) h += '<span style="font-size:11px;color:var(--text-3);margin-left:8px;">Scraped ' + _ps + '</span>';
   h += '</div>';
 
   var items = (S.items && S.items.finds) || [];
@@ -1059,6 +1079,8 @@ function renderThread(el) {
   h += modelSelect("model-thread");
   h += '<button class="btn btn-success" onclick="proceedThread()">PROCEED</button>';
   if (S.loading.thread) h += renderSectionProgress('thread');
+  var _ps = formatScrapedDate(S.lastScraped.threads);
+  if (_ps) h += '<span style="font-size:11px;color:var(--text-3);margin-left:8px;">Scraped ' + _ps + '</span>';
   h += '</div>';
 
   if (!S.threads || !S.threads.length) {
@@ -1187,6 +1209,8 @@ function renderOTC(el) {
   h += modelSelect("model-otc");
   h += '<button class="btn btn-success" onclick="proceedOTC()">PROCEED</button>';
   if (S.loading.off_the_clock) h += renderSectionProgress('off_the_clock');
+  var _ps = formatScrapedDate(S.lastScraped.off_the_clock);
+  if (_ps) h += '<span style="font-size:11px;color:var(--text-3);margin-left:8px;">Scraped ' + _ps + '</span>';
   h += '</div>';
 
   if (!S.otcData || !S.otcData.candidates) {
@@ -1762,6 +1786,7 @@ function init() {
     S.pulse = results[2].pulse;
     S.signals = results[2].signals || [];
     S.anomalies = results[2].anomalies || [];
+    S.lastScraped.pulse = results[2].last_scraped_at || null;
     S.trends = results[3] || null;
     render();
   });
