@@ -1035,6 +1035,12 @@ _SECTION_RUNNERS: dict[str, list[tuple[str, "Callable"]]] = {
     "classify_otc": [
         ("Classify OTC", lambda: __import__("flatwhite.classify.classifier", fromlist=["classify_all_otc_unclassified"]).classify_all_otc_unclassified()),
     ],
+    "big_conversation": [
+        ("Reddit RSS",  lambda: __import__("flatwhite.editorial.reddit_rss",             fromlist=["pull_reddit_editorial"]).pull_reddit_editorial()),
+        ("Google News", lambda: __import__("flatwhite.editorial.google_news_editorial",  fromlist=["pull_google_news_editorial"]).pull_google_news_editorial()),
+        ("Top AU news", lambda: __import__("flatwhite.editorial.google_news_top_au",     fromlist=["pull_google_news_top_au"]).pull_google_news_top_au()),
+        ("Classify",    lambda: __import__("flatwhite.classify.classifier",              fromlist=["classify_all_unclassified"]).classify_all_unclassified()),
+    ],
 }
 
 
