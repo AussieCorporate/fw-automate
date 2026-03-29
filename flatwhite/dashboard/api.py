@@ -1043,6 +1043,63 @@ _SECTION_RUNNERS: dict[str, list[tuple[str, "Callable"]]] = {
     ],
 }
 
+_SCRAPE_ALL_SECTIONS = [
+    "pulse", "editorial", "big_conversation", "finds", "lobby", "thread", "off_the_clock",
+]
+
+_scrape_all_state: dict = {
+    "running": False,
+    "current": None,   # section name currently being scraped
+    "results": [],     # list of {section, status: "ok"|"error"|"skipped", error: str|None}
+}
+
+
+def _run_scrape_all() -> None:
+    """Run all section scrapers sequentially. One failure does not stop others."""
+    _scrape_all_state.update({"running": True, "current": None, "results": []})
+    for section in _SCRAPE_ALL_SECTIONS:
+        _scrape_all_state["current"] = section
+        with _section_lock:
+            if _section_state.get(section, {}).get("running"):
+                _scrape_all_state["results"].append(
+                    {"section": section, "status": "skipped", "error": "already running"}
+                )
+                continue
+            steps = _SECTION_RUNNERS[section]
+            _section_state[section] = {
+                "running": True, "done": False, "error": None,
+                "step": 0, "total": len(steps),
+                "step_name": steps[0][0] if steps else "",
+                "completed_at": None,
+            }
+        _run_section_background(section)  # blocks until this section finishes
+        err = _section_state.get(section, {}).get("error")
+        _scrape_all_state["results"].append(
+            {"section": section, "status": "error" if err else "ok", "error": err}
+        )
+    _scrape_all_state.update({"running": False, "current": None})
+
+
+@app.post("/api/scrape-all")
+async def api_scrape_all() -> JSONResponse:
+    """Start scraping all sections sequentially in the background."""
+    if _scrape_all_state["running"]:
+        return JSONResponse({"error": "Scrape All already running"}, status_code=409)
+    thread = threading.Thread(target=_run_scrape_all, daemon=True)
+    thread.start()
+    return JSONResponse({"started": True, "sections": _SCRAPE_ALL_SECTIONS})
+
+
+@app.get("/api/scrape-all/status")
+def api_scrape_all_status() -> JSONResponse:
+    """Poll the current Scrape All progress."""
+    return JSONResponse({
+        "running": _scrape_all_state["running"],
+        "current": _scrape_all_state["current"],
+        "results": _scrape_all_state["results"],
+        "total": len(_SCRAPE_ALL_SECTIONS),
+    })
+
 
 def _run_section_background(section: str) -> None:
     """Run a section's steps sequentially, updating _section_state after each step.
