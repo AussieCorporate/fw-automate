@@ -1847,13 +1847,21 @@ def _proceed_off_the_clock(data: dict, model: str | None, custom_prompt: str | N
     )
 
     prompt = (
-        "Polish these Off the Clock blurbs for Flat White.\n\n"
+        "Write the Off the Clock entries for Flat White.\n\n"
         f"{picks_block}\n\n"
-        "For each, rewrite the blurb in 1 sentence. Voice: dry, specific, but not rude or arrogant or condescending. "
-        "Not a review. A statement from someone who already knows but done in a way that's fun and engaging and acts "
-        "like a hook to get people reading. Australian English.\n\n"
-        "After the sentence, append [LINK](url) using the URL provided for that item.\n\n"
-        "Output as: CATEGORY: BLURB [LINK](url) (one per line)"
+        "For each item, write:\n"
+        "1. A short, specific TITLE (4-8 words). This is the hook — make it feel like something worth clicking. "
+        "Examples of the right register: 'The $38 pasta that's taken over Sydney', "
+        "'Adolescence on Netflix', 'Uniqlo U drops this Friday', "
+        "'The 5 things to remove from your nightstand tonight'. "
+        "It can be an editorial take, the name of the thing, or a punchy framing — whatever works best for that item.\n"
+        "2. A BLURB: 1-2 sentences. Dry, specific, not a review. A statement from someone who already knows — "
+        "fun and engaging, acts as a hook. Australian English. No filler intensifiers.\n\n"
+        "After the blurb, append [LINK](url) using the URL provided.\n\n"
+        "Output each item as (blank line between items):\n"
+        "CATEGORY\n"
+        "TITLE\n"
+        "BLURB [LINK](url)"
     )
     return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE)
 
