@@ -234,6 +234,25 @@ select.form-input { appearance: auto; }
 .cat-card-delta.stable { background:var(--bg-3);color:var(--text-3); }
 .chip-au { background:#d4edda;color:#155724; }
 .chip-low-au { background:var(--bg-3);color:var(--text-3); }
+/* ── Phase accordion ─────────────────────────────── */
+.phase-card { border: 1.5px solid var(--border); border-radius: 8px; margin-bottom: 8px; overflow: hidden; transition: border-color 0.15s; }
+.phase-card.phase-open { border-color: var(--accent, #4a9); }
+.phase-card.phase-locked { opacity: 0.45; pointer-events: none; }
+.phase-hdr { display: flex; align-items: center; gap: 8px; padding: 10px 14px; cursor: pointer; background: var(--bg-2); user-select: none; }
+.phase-hdr:hover { background: var(--bg-3, #ebebeb); }
+.phase-num { background: var(--accent, #4a9); color: #fff; border-radius: 50%; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+.phase-locked .phase-num { background: var(--text-3, #ccc); }
+.phase-lbl { font-weight: 600; font-size: 13px; flex: 1; }
+.phase-done { color: var(--accent, #4a9); font-size: 12px; margin-right: 4px; }
+.phase-chevron { color: var(--text-2); font-size: 11px; }
+.phase-body { padding: 14px 16px; }
+/* ── Command bar ─────────────────────────────────── */
+.cmd-bar { display: flex; align-items: center; gap: 8px; padding: 7px 16px; background: #1a1a1a; border-bottom: 1px solid #333; flex-shrink: 0; }
+.cmd-pill { padding: 2px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; cursor: pointer; border: none; background: #333; color: #ccc; }
+.cmd-pill:hover { background: #444; }
+.cmd-pill.pill-green { background: #1e4a1e; color: #6f6; }
+.cmd-pill.pill-amber { background: #4a3a1e; color: #fa4; }
+.cmd-pill.pill-red { background: #4a1e1e; color: #f66; }
 </style>
 </head>
 <body>
@@ -280,6 +299,9 @@ var S = {
   lastScraped: {},
   loading: {},
   sectionProgress: {},   // { section: {step, total, step_name} }
+  sectionPhase: {},        // { section: 1|2|3 } — which accordion phase is open
+  scrapeAllRunning: false,
+  scrapeAllErrors: {},     // { section: errorMessage }
   proceedModal: { open: false, section: null, prompt: "", lean: "", items: [], loading: false, contextBreakdown: null, excludedItems: {}, _tab: "prompt" },
   proceedModel: {},    // { section: model_id } — persisted to localStorage
   proceedData: {},
@@ -1548,6 +1570,25 @@ function copyAssembly() {
 /* ═══════════════════════════════════════════════════════════════════════
    SHARED: Output box + Save + Run
    ═══════════════════════════════════════════════════════════════════════ */
+function openPhase(section, num) {
+  S.sectionPhase[section] = num;
+  render();
+}
+
+function phasePanel(section, num, label, unlocked, done, bodyHtml) {
+  var open = (S.sectionPhase[section] || 1) === num;
+  var h = '<div class="phase-card' + (open ? ' phase-open' : '') + (unlocked ? '' : ' phase-locked') + '">';
+  h += '<div class="phase-hdr"' + (unlocked ? ' onclick="openPhase(\'' + section + '\',' + num + ')"' : '') + '>';
+  h += '<span class="phase-num">' + num + '</span>';
+  h += '<span class="phase-lbl">' + label + '</span>';
+  if (done) h += '<span class="phase-done">✓</span>';
+  h += '<span class="phase-chevron">' + (open ? '▲' : '▼') + '</span>';
+  h += '</div>';
+  if (open && unlocked) h += '<div class="phase-body">' + bodyHtml + '</div>';
+  h += '</div>';
+  return h;
+}
+
 function outputBox(section) {
   var h = '<div class="output-box">';
   h += '<div class="fb mb8"><span style="font-weight:600;font-size:13px;">Output</span>';
@@ -1641,6 +1682,10 @@ function pollSectionStatus(section) {
         clearInterval(poll);
         S.loading[section] = false;
         delete S.sectionProgress[section];
+        // Auto-advance to Phase 2 when scrape completes successfully
+        if (!d.error && (S.sectionPhase[section] === 1 || !S.sectionPhase[section])) {
+          S.sectionPhase[section] = 2;
+        }
         if (d.error) {
           showToast(section.replace(/_/g, " ") + " failed: " + d.error, "error");
         } else {
@@ -1733,6 +1778,7 @@ function confirmAndGenerate() {
     .then(function(d) {
       S.sectionOutputs[section] = { output_text: d.output, model_used: d.model };
       S.loading[section] = false;
+      S.sectionPhase[section] = 3;
       render();
       showToast(section.replace(/_/g, " ") + " generated" + (d.model ? " · " + d.model : ""));
     })
