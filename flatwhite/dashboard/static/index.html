@@ -577,17 +577,8 @@ function render() {
 /* ═══════════════════════════════════════════════════════════════════════
    SECTION: EDITORIAL
    ═══════════════════════════════════════════════════════════════════════ */
-function renderEditorial(el) {
-  var h = '<div class="sh"><div><h2>GM Editorial</h2><div class="sub">Hook / intro paragraph. Depends on other sections being complete.</div></div></div>';
-  h += '<div class="toolbar">';
-  h += '<button class="btn btn-primary" onclick="runSection(\'editorial\')">SCRAPE</button>';
-  h += modelSelect("model-editorial");
-  h += '<button class="btn btn-success" onclick="proceedEditorial()">PROCEED</button>';
-  if (S.loading.editorial) h += renderSectionProgress('editorial');
-  var _ps = formatScrapedDate(S.lastScraped.editorial);
-  if (_ps) h += '<span style="font-size:11px;color:var(--text-3);margin-left:8px;">Scraped ' + _ps + '</span>';
-  h += '</div>';
-
+function renderEditorialBody() {
+  var h = '';
   // Show which sections are ready
   h += '<div class="card mb20"><div style="font-size:13px;color:var(--text-2);margin-bottom:10px;font-weight:600;">Section Readiness</div>';
   var deps = ["pulse","big_conversation","lobby","finds","thread","off_the_clock"];
@@ -596,10 +587,41 @@ function renderEditorial(el) {
     h += '<div class="fr mb8"><span style="width:10px;height:10px;border-radius:50%;background:' + (ready ? "var(--green)" : "var(--border)") + ';"></span> <span style="font-size:13px;">' + esc(d.replace(/_/g, " ")) + '</span></div>';
   });
   h += '</div>';
+  return h;
+}
 
-  h += outputBox("editorial");
+function renderEditorial(el) {
+  var hasScrapeData = !!(S.lastScraped && S.lastScraped.editorial);
+  var hasOutput = !!(S.sectionOutputs.editorial && S.sectionOutputs.editorial.output_text);
+  if (!S.sectionPhase.editorial) S.sectionPhase.editorial = hasOutput ? 3 : (hasScrapeData ? 2 : 1);
+
+  // Phase 1: Scrape
+  var p1 = '';
+  p1 += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">';
+  p1 += '<button class="btn btn-primary" onclick="runSection(\'editorial\')">SCRAPE</button>';
+  if (S.loading.editorial) p1 += renderSectionProgress('editorial');
+  var _ps = formatScrapedDate(S.lastScraped.editorial);
+  if (_ps) p1 += '<span class="scraped-badge">Scraped ' + _ps + '</span>';
+  p1 += '</div>';
+
+  // Phase 2: Review & Pick
+  var p2 = hasScrapeData ? renderEditorialBody() : '';
+
+  // Phase 3: Generate
+  var p3 = '';
+  p3 += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
+  p3 += modelSelect('model-editorial');
+  p3 += '<button class="btn btn-success" onclick="proceedEditorial()">PROCEED</button>';
+  p3 += '</div>';
+  p3 += outputBox('editorial');
+
+  var h = '<div class="sh"><div><h2>GM Editorial</h2><div class="sub">Hook / intro paragraph. Depends on other sections being complete.</div></div></div>';
+  h += phasePanel('editorial', 1, 'Scrape', true, hasScrapeData, p1);
+  h += phasePanel('editorial', 2, 'Review & Pick', hasScrapeData, false, p2);
+  h += phasePanel('editorial', 3, 'Generate', hasScrapeData, hasOutput, p3);
+
   el.innerHTML = h;
-  fillOutput("editorial");
+  fillOutput('editorial');
 }
 
 function proceedEditorial() {
@@ -670,20 +692,8 @@ function getSortedSignals(signals, moverDeltas) {
   });
 }
 
-function renderPulse(el) {
-  var h = '<div class="sh"><div><h2>Pulse</h2><div class="sub">Disruption score, signals, and narrative</div></div></div>';
-  h += '<div class="toolbar">';
-  h += '<button class="btn btn-primary" onclick="runSection(\'pulse\')">SCRAPE</button>';
-  if (S.trends && S.trends.weeks_available < 2) {
-    h += ' <button class="btn btn-secondary" onclick="runBackfill()" style="font-size:11px;">Backfill prev week</button>';
-  }
-  h += modelSelect("model-pulse");
-  h += '<button class="btn btn-success" onclick="proceedPulse()">PROCEED</button>';
-  if (S.loading.pulse) h += renderSectionProgress('pulse');
-  var _ps = formatScrapedDate(S.lastScraped.pulse);
-  if (_ps) h += '<span style="font-size:11px;color:var(--text-3);margin-left:8px;">Scraped ' + _ps + '</span>';
-  h += '</div>';
-
+function renderPulseBody() {
+  var h = '';
   if (!S.pulse) {
     h += '<div class="card"><p class="loading">No pulse data yet. Click RUN to pull signals.</p></div>';
   } else {
@@ -786,10 +796,44 @@ function renderPulse(el) {
     }
     h += '</div>';
   }
+  return h;
+}
 
-  h += outputBox("pulse");
+function renderPulse(el) {
+  var hasScrapeData = !!(S.signals && S.signals.length);
+  var hasOutput = !!(S.sectionOutputs.pulse && S.sectionOutputs.pulse.output_text);
+  if (!S.sectionPhase.pulse) S.sectionPhase.pulse = hasOutput ? 3 : (hasScrapeData ? 2 : 1);
+
+  // Phase 1: Scrape
+  var p1 = '';
+  p1 += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">';
+  p1 += '<button class="btn btn-primary" onclick="runSection(\'pulse\')">SCRAPE</button>';
+  if (S.trends && S.trends.weeks_available < 2) {
+    p1 += ' <button class="btn btn-secondary" onclick="runBackfill()" style="font-size:11px;">Backfill prev week</button>';
+  }
+  if (S.loading.pulse) p1 += renderSectionProgress('pulse');
+  var _ps1 = formatScrapedDate(S.lastScraped.pulse);
+  if (_ps1) p1 += '<span class="scraped-badge">Scraped ' + _ps1 + '</span>';
+  p1 += '</div>';
+
+  // Phase 2: Review & Pick
+  var p2 = hasScrapeData ? renderPulseBody() : '';
+
+  // Phase 3: Generate
+  var p3 = '';
+  p3 += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
+  p3 += modelSelect('model-pulse');
+  p3 += '<button class="btn btn-success" onclick="proceedPulse()">PROCEED</button>';
+  p3 += '</div>';
+  p3 += outputBox('pulse');
+
+  var h = '<div class="sh"><div><h2>Pulse</h2><div class="sub">Disruption score, signals, and narrative</div></div></div>';
+  h += phasePanel('pulse', 1, 'Scrape', true, hasScrapeData, p1);
+  h += phasePanel('pulse', 2, 'Review & Pick', hasScrapeData, false, p2);
+  h += phasePanel('pulse', 3, 'Generate', hasScrapeData, hasOutput, p3);
+
   el.innerHTML = h;
-  fillOutput("pulse");
+  fillOutput('pulse');
 }
 
 function togglePulseCheck(name, val) { S.pulseChecked[name] = val; }
@@ -825,17 +869,8 @@ function proceedPulse() {
 /* ═══════════════════════════════════════════════════════════════════════
    SECTION: BIG CONVERSATION
    ═══════════════════════════════════════════════════════════════════════ */
-function renderBigConv(el) {
-  var h = '<div class="sh"><div><h2>Big Conversation</h2><div class="sub">Top 5 candidates for this week\'s deep dive</div></div></div>';
-  h += '<div class="toolbar">';
-  h += '<button class="btn btn-primary" onclick="runBigConv()">SCRAPE</button>';
-  h += modelSelect("model-bigconv");
-  h += '<button class="btn btn-success" onclick="proceedBigConv()">PROCEED</button>';
-  if (S.loading.big_conversation) h += renderSectionProgress('big_conversation');
-  var _ps = formatScrapedDate(S.lastScraped.big_conversation);
-  if (_ps) h += '<span style="font-size:11px;color:var(--text-3);margin-left:8px;">Scraped ' + _ps + '</span>';
-  h += '</div>';
-
+function renderBigConvBody() {
+  var h = '';
   // Candidates
   h += '<div class="cand-list mb20">';
   if (S.bigConvCandidates && S.bigConvCandidates.length) {
@@ -865,10 +900,41 @@ function renderBigConv(el) {
     h += '<button class="btn btn-sm btn-primary" onclick="useCustomBigConv()">Use This Topic</button>';
   }
   h += '</div>';
+  return h;
+}
 
-  h += outputBox("big_conversation");
+function renderBigConv(el) {
+  var hasScrapeData = !!(S.bigConvCandidates && S.bigConvCandidates.length);
+  var hasOutput = !!(S.sectionOutputs.big_conversation && S.sectionOutputs.big_conversation.output_text);
+  if (!S.sectionPhase.big_conversation) S.sectionPhase.big_conversation = hasOutput ? 3 : (hasScrapeData ? 2 : 1);
+
+  // Phase 1: Scrape
+  var p1 = '';
+  p1 += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">';
+  p1 += '<button class="btn btn-primary" onclick="runBigConv()">SCRAPE</button>';
+  if (S.loading.big_conversation) p1 += renderSectionProgress('big_conversation');
+  var _ps = formatScrapedDate(S.lastScraped.big_conversation);
+  if (_ps) p1 += '<span class="scraped-badge">Scraped ' + _ps + '</span>';
+  p1 += '</div>';
+
+  // Phase 2: Review & Pick
+  var p2 = hasScrapeData ? renderBigConvBody() : '';
+
+  // Phase 3: Generate
+  var p3 = '';
+  p3 += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
+  p3 += modelSelect('model-bigconv');
+  p3 += '<button class="btn btn-success" onclick="proceedBigConv()">PROCEED</button>';
+  p3 += '</div>';
+  p3 += outputBox('big_conversation');
+
+  var h = '<div class="sh"><div><h2>Big Conversation</h2><div class="sub">Top 5 candidates for this week\'s deep dive</div></div></div>';
+  h += phasePanel('big_conversation', 1, 'Scrape', true, hasScrapeData, p1);
+  h += phasePanel('big_conversation', 2, 'Review & Pick', hasScrapeData, false, p2);
+  h += phasePanel('big_conversation', 3, 'Generate', hasScrapeData, hasOutput, p3);
+
   el.innerHTML = h;
-  fillOutput("big_conversation");
+  fillOutput('big_conversation');
 }
 
 function selectBigConv(id) { S.selectedBigConv = id; S.customBigConv = null; render(); }
