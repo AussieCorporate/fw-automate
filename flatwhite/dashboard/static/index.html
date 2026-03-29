@@ -401,7 +401,7 @@ var NAV_ITEMS = [
   { id: "off_the_clock", icon: "\uD83C\uDF77", label: "Off the Clock" },
   { id: "events",      icon: "\uD83D\uDCC5", label: "Events" },
   { id: "salary_vault", icon: "\uD83D\uDCB0", label: "Salary Vault", greyed: true },
-  { id: "assemble",    icon: "\u2709", label: "Assemble" },
+  { id: "assemble",    icon: "\u2709", label: "Composer" },
 ];
 
 function nav(page) {
@@ -1687,68 +1687,72 @@ function deleteEvent(id) {
    SECTION: ASSEMBLE
    ═══════════════════════════════════════════════════════════════════════ */
 function renderAssemble(el) {
-  var h = '<div class="sh"><div><h2>Assemble</h2><div class="sub">Preview and export the newsletter</div></div></div>';
+  var COMPOSER_ORDER = [
+    { id: "pulse",            label: "PULSE",            icon: "◉" },
+    { id: "big_conversation", label: "BIG CONVERSATION", icon: "¶" },
+    { id: "finds",            label: "FINDS",            icon: "🔥" },
+    { id: "lobby",            label: "THE LOBBY",        icon: "📊" },
+    { id: "thread",           label: "THREAD",           icon: "§" },
+    { id: "off_the_clock",    label: "OFF THE CLOCK",    icon: "🍷" },
+    { id: "amp_finest",       label: "AMP'S FINEST",     icon: "📈" },
+    { id: "events",           label: "EVENTS",           icon: "📅" },
+  ];
 
-  // Status grid
-  var sections = ["editorial","pulse","big_conversation","whispers","lobby","finds","thread","amp_finest","off_the_clock","events"];
-  h += '<div class="asm-grid">';
-  sections.forEach(function(s) {
-    var out = S.sectionOutputs[s];
-    var done = out && out.output_text;
-    var dotClass = done ? "done" : "pending";
-    // Events and whispers are always "done" if they have data
-    if (s === "events" && S.events && S.events.length) { dotClass = "done"; done = true; }
-    if (s === "whispers" && S.whispers && S.whispers.length) { dotClass = "done"; done = true; }
-    h += '<div class="card asm-item"><span class="asm-dot ' + dotClass + '"></span><span class="asm-name">' + esc(s.replace(/_/g, " ")) + '</span></div>';
-  });
+  var readyCount = COMPOSER_ORDER.filter(function(s) {
+    if (s.id === "events") {
+      return !!(S.events && S.events.length);
+    }
+    return !!(S.sectionOutputs[s.id] && S.sectionOutputs[s.id].output_text);
+  }).length;
+
+  var h = '<div style="max-width:780px;">';
+  h += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">';
+  h += '<div>';
+  h += '<h2 style="margin:0;font-size:20px;">Composer</h2>';
+  h += '<div style="font-size:12px;color:var(--text-2);margin-top:2px;">' + readyCount + '/' + COMPOSER_ORDER.length + ' sections ready · ' + esc(S.weekIso || '') + '</div>';
+  h += '</div>';
+  h += '<div style="flex:1"></div>';
+  h += '<button class="btn btn-success" onclick="copyComposerAll()">Copy All</button>';
   h += '</div>';
 
-  // Assembled preview
-  h += '<div class="card mb20">';
-  h += '<div class="fb mb8"><span style="font-weight:600;">Newsletter Preview</span>';
-  h += '<button class="btn btn-sm btn-primary" onclick="copyAssembly()">Copy to Clipboard</button></div>';
-  h += '<textarea class="form-input" id="assembly-preview" style="min-height:400px;font-size:13px;line-height:1.8;" readonly>';
-
-  // Concatenate all sections
-  var order = ["editorial","pulse","big_conversation","whispers","lobby","finds","thread","amp_finest","off_the_clock","events"];
-  var labels = {
-    editorial: "GM",
-    pulse: "THE PULSE",
-    big_conversation: "THE BIG CONVERSATION",
-    whispers: "WHISPERS",
-    lobby: "THE LOBBY",
-    finds: "FINDS",
-    thread: "THE THREAD",
-    amp_finest: "AMP'S FINEST",
-    off_the_clock: "OFF THE CLOCK",
-    events: "EVENTS",
-  };
-  order.forEach(function(s) {
-    var out = S.sectionOutputs[s];
-    if (out && out.output_text) {
-      h += "=== " + esc(labels[s] || s.toUpperCase()) + " ===\n\n";
-      h += esc(out.output_text) + "\n\n";
-    } else if (s === "events" && S.events && S.events.length) {
-      h += "=== EVENTS ===\n\n";
-      S.events.forEach(function(e) {
-        h += esc(e.title) + " - " + esc(e.event_date || "") + "\n";
-        if (e.location) h += esc(e.location);
-        if (e.time_range) h += " | " + esc(e.time_range);
-        if (e.price) h += " | " + esc(e.price);
-        h += "\n";
-        if (e.description) h += esc(e.description) + "\n";
-        h += "\n";
-      });
-    } else if (s === "whispers" && S.whispers && S.whispers.length) {
-      h += "=== WHISPERS ===\n\n";
-      S.whispers.forEach(function(w) {
-        h += "- " + esc(w.summary || w.title || w.text) + " [" + esc(w.confidence_tag || "yellow") + "]\n";
-      });
-      h += "\n";
+  COMPOSER_ORDER.forEach(function(s) {
+    var out = s.id === "events" ? null : (S.sectionOutputs[s.id] || null);
+    var hasOutput = !!(out && out.output_text);
+    var eventsText = "";
+    if (s.id === "events" && S.events && S.events.length) {
+      eventsText = S.events.map(function(e) {
+        return (e.event_date || "") + " · " + esc(e.title) + (e.location ? ", " + esc(e.location) : "");
+      }).join("\n");
+      hasOutput = !!eventsText;
     }
+
+    if (!hasOutput) {
+      h += '<div style="border:1.5px dashed #e0a040;border-radius:8px;margin-bottom:10px;overflow:hidden;">';
+      h += '<div style="background:#fdf5e8;padding:8px 14px;display:flex;align-items:center;gap:10px;">';
+      h += '<span style="font-weight:700;font-size:12px;color:#c07000;">⚠ ' + esc(s.icon + ' ' + s.label) + '</span>';
+      h += '<span style="flex:1;font-size:11px;color:#c07000;">No output yet</span>';
+      if (s.id !== "events") h += '<button class="btn btn-sm" onclick="nav(\'' + s.id + '\')" style="font-size:11px;">Go →</button>';
+      h += '</div></div>';
+      return;
+    }
+
+    var textContent = s.id === "events" ? eventsText : out.output_text;
+    var taId = "composer-ta-" + s.id;
+    var generated = out && out.model_used ? "Generated · " + esc(out.model_used) : "Ready";
+
+    h += '<div style="border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden;">';
+    h += '<div style="background:var(--bg-2);padding:8px 14px;display:flex;align-items:center;gap:8px;">';
+    h += '<span style="font-weight:700;font-size:12px;">' + esc(s.icon + ' ' + s.label) + '</span>';
+    h += '<span style="flex:1;font-size:11px;color:var(--text-2);">' + generated + '</span>';
+    h += '<button class="btn btn-sm" id="copy-btn-composer-' + s.id + '" onclick="copyComposerSection(\'' + s.id + '\',\'' + taId + '\')">Copy</button>';
+    h += '</div>';
+    h += '<textarea id="' + taId + '" style="width:100%;padding:12px 14px;border:none;border-top:1px solid var(--border);font-size:12px;line-height:1.6;resize:vertical;min-height:80px;box-sizing:border-box;background:var(--bg-1,#fff);">';
+    h += esc(textContent);
+    h += '</textarea>';
+    h += '</div>';
   });
 
-  h += '</textarea></div>';
+  h += '</div>';
   el.innerHTML = h;
 }
 
@@ -1809,6 +1813,47 @@ function copyOutput(section) {
     ta.select();
     document.execCommand("copy");
     var btn = $("copy-btn-" + section);
+    if (btn) { btn.textContent = "Copied!"; setTimeout(function() { btn.textContent = "Copy"; }, 1500); }
+  });
+}
+
+function copyComposerAll() {
+  var COMPOSER_ORDER = [
+    { id: "pulse",            label: "PULSE" },
+    { id: "big_conversation", label: "BIG CONVERSATION" },
+    { id: "finds",            label: "FINDS" },
+    { id: "lobby",            label: "THE LOBBY" },
+    { id: "thread",           label: "THREAD" },
+    { id: "off_the_clock",    label: "OFF THE CLOCK" },
+    { id: "amp_finest",       label: "AMP'S FINEST" },
+  ];
+  var parts = [];
+  COMPOSER_ORDER.forEach(function(s) {
+    var out = S.sectionOutputs[s.id];
+    if (out && out.output_text) {
+      parts.push("## " + s.label + "\n\n" + out.output_text.trim());
+    }
+  });
+  if (!parts.length) { showToast("No outputs to copy yet", "error"); return; }
+  navigator.clipboard.writeText(parts.join("\n\n---\n\n")).then(function() {
+    showToast("All sections copied to clipboard");
+  }).catch(function() {
+    var ta = document.createElement("textarea");
+    ta.value = parts.join("\n\n---\n\n");
+    document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta);
+    showToast("All sections copied to clipboard");
+  });
+}
+
+function copyComposerSection(sectionId, taId) {
+  var ta = document.getElementById(taId);
+  if (!ta || !ta.value) return;
+  navigator.clipboard.writeText(ta.value).then(function() {
+    var btn = document.getElementById("copy-btn-composer-" + sectionId);
+    if (btn) { btn.textContent = "Copied!"; setTimeout(function() { btn.textContent = "Copy"; }, 1500); }
+  }).catch(function() {
+    ta.select(); document.execCommand("copy");
+    var btn = document.getElementById("copy-btn-composer-" + sectionId);
     if (btn) { btn.textContent = "Copied!"; setTimeout(function() { btn.textContent = "Copy"; }, 1500); }
   });
 }
