@@ -502,20 +502,24 @@ THREAD_OUR_TAKE_SYSTEM = (
 )
 
 THREAD_OUR_TAKE_PROMPT = (
-    "Write a 2-3 sentence 'Our Take' for this week's Thread section.\n"
+    "Write exactly 2 sentences as the 'Our Take' for this week's Thread section.\n"
     "\n"
     "Thread title: {title}\n"
     "Thread body: {body}\n"
     "Top comments:\n{top_comments}\n"
     "Editorial frame: {editorial_frame}\n"
     "\n"
-    "The 'Our Take' should:\n"
-    "- Name the real tension (rights vs career capital, principle vs pragmatism, etc.)\n"
-    "- Offer a clear, experienced view on what the smart move actually is\n"
-    "- Acknowledge the complexity without hedging — take a position\n"
-    "- Be 40-70 words total\n"
+    "Sentence 1: State the legal or factual reality — what the person is actually entitled to.\n"
+    "Sentence 2: Give the practical career advice — what they should probably do and why, "
+    "drawing on anything concrete from the comments.\n"
     "\n"
-    "Output ONLY the 2-3 sentences. No preamble. No label. No sign-off."
+    "Rules:\n"
+    "- Exactly 2 sentences. No third sentence. No forward-looking observation.\n"
+    "- No filler intensifiers (genuinely, truly, really, clearly, simply, etc.)\n"
+    "- Take a clear position. Do not hedge.\n"
+    "- 35-60 words total.\n"
+    "\n"
+    "Output ONLY the 2 sentences. No preamble. No label. No sign-off."
 )
 
 # ─── OFF THE CLOCK CLASSIFICATION (consumed by classifier.py) ────────────────
