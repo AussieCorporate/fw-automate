@@ -44,7 +44,8 @@ input, textarea, select { font-family: var(--font-sans); font-size: 14px; }
   padding: 24px 0; position: fixed; top: 0; left: 0; z-index: 10;
   overflow-y: auto;
 }
-.main { flex: 1; margin-left: 200px; padding: 36px 48px; max-width: none; }
+.main { flex: 1; margin-left: 200px; max-width: none; display: flex; flex-direction: column; min-height: 100vh; }
+#content { flex: 1; overflow: auto; padding: 36px 48px; }
 .sidebar-brand { padding: 0 20px; margin-bottom: 32px; }
 .sidebar-brand h1 { font-family: var(--font-serif); font-size: 21px; font-weight: 700; letter-spacing: -0.5px; }
 .sidebar-brand span { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1.5px; display: block; margin-top: 2px; }
@@ -215,7 +216,8 @@ select.form-input { appearance: auto; }
 
 @media (max-width: 768px) {
   .sidebar { display: none; }
-  .main { margin-left: 0; padding: 20px; }
+  .main { margin-left: 0; }
+  #content { padding: 20px; }
   .g2 { grid-template-columns: 1fr; }
 }
 .modal-overlay { position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:flex-start;justify-content:center;padding-top:60px; }
@@ -257,7 +259,7 @@ select.form-input { appearance: auto; }
 </head>
 <body>
 <nav class="sidebar" id="sidebar"></nav>
-<div class="main" id="main"><div class="loading" style="padding:40px;text-align:center;">Loading dashboard...</div></div>
+<div class="main" id="main"><div id="cmd-bar-container"></div><div id="content"><div class="loading" style="padding:40px;text-align:center;">Loading dashboard...</div></div></div>
 <div class="toast-container" id="toasts"></div>
 <div id="modal-root"></div>
 <script>
@@ -477,6 +479,45 @@ function sectionStatus(sectionId) {
   return "";
 }
 
+var _CMD_PILL_SECTIONS = [
+  { id: "pulse",            label: "Pulse" },
+  { id: "big_conversation", label: "Big Conv" },
+  { id: "finds",            label: "Finds" },
+  { id: "lobby",            label: "Lobby" },
+  { id: "thread",           label: "Thread" },
+  { id: "off_the_clock",    label: "Off Clock" },
+];
+
+function renderCommandBar() {
+  var h = '<div class="cmd-bar">';
+  // Scrape All button
+  if (S.scrapeAllRunning) {
+    h += '<button class="btn btn-sm" disabled style="opacity:0.7;">⟳ Scraping…</button>';
+  } else {
+    h += '<button class="btn btn-sm btn-success" onclick="runScrapeAll()">⚡ Scrape All</button>';
+  }
+  h += '<div style="flex:1"></div>';
+  // Status pills
+  _CMD_PILL_SECTIONS.forEach(function(s) {
+    var cls = "cmd-pill";
+    var label = s.label;
+    var title = "";
+    if (S.scrapeAllErrors[s.id]) {
+      cls += " pill-red";
+      title = ' title="' + esc(S.scrapeAllErrors[s.id]) + '"';
+      label += " ✗";
+    } else if (S.sectionOutputs[s.id] && S.sectionOutputs[s.id].output_text) {
+      cls += " pill-green";
+      label += " ✓";
+    } else if (S.lastScraped && S.lastScraped[s.id]) {
+      cls += " pill-amber";
+    }
+    h += '<button class="' + cls + '"' + title + ' onclick="nav(\'' + s.id + '\')">' + esc(label) + '</button>';
+  });
+  h += '</div>';
+  return h;
+}
+
 /* ── Render sidebar ── */
 function renderSidebar() {
   var h = '<div class="sidebar-brand"><h1>Flat White</h1><span>The Aussie Corporate</span></div>';
@@ -511,7 +552,9 @@ function renderSidebar() {
 /* ── Main render dispatch ── */
 function render() {
   renderSidebar();
-  var m = $("main");
+  var cmdEl = document.getElementById("cmd-bar-container");
+  if (cmdEl) cmdEl.innerHTML = renderCommandBar();
+  var m = $("content");
   switch (S.page) {
     case "pulse": renderPulse(m); break;
     case "big_conversation": renderBigConv(m); break;
@@ -1655,6 +1698,43 @@ function runBackfill() {
       loadPageData("pulse").then(function() { render(); });
     })
     .catch(function(e) { showToast("Backfill failed: " + e.message, "error"); });
+}
+
+function runScrapeAll() {
+  if (S.scrapeAllRunning) return;
+  S.scrapeAllRunning = true;
+  S.scrapeAllErrors = {};
+  render();
+  api("/api/scrape-all", { method: "POST" })
+    .then(function() { pollScrapeAll(); })
+    .catch(function(e) {
+      S.scrapeAllRunning = false;
+      render();
+      showToast("Scrape All failed to start: " + e.message, "error");
+    });
+}
+
+function pollScrapeAll() {
+  var poll = setInterval(function() {
+    fetch("/api/scrape-all/status").then(function(r) { return r.json(); }).then(function(d) {
+      render(); // shows current section in pill
+      if (!d.running) {
+        clearInterval(poll);
+        S.scrapeAllRunning = false;
+        // Store errors from results
+        (d.results || []).forEach(function(r) {
+          if (r.status === "error") S.scrapeAllErrors[r.section] = r.error;
+        });
+        var failed = (d.results || []).filter(function(r) { return r.status === "error"; });
+        var ok = (d.results || []).filter(function(r) { return r.status === "ok"; });
+        var msg = "Scrape All done — " + ok.length + "/" + d.total + " succeeded";
+        if (failed.length) msg += " · " + failed.map(function(r) { return r.section; }).join(", ") + " failed";
+        showToast(msg, failed.length ? "error" : "");
+        // Reload current page data
+        loadPageData(S.page).then(function() { render(); });
+      }
+    }).catch(function() { /* ignore poll errors */ });
+  }, 2000);
 }
 
 function runSection(section) {
