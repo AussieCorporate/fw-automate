@@ -1576,15 +1576,16 @@ function openPhase(section, num) {
 }
 
 function phasePanel(section, num, label, unlocked, done, bodyHtml) {
-  var open = (S.sectionPhase[section] || 1) === num;
-  var h = '<div class="phase-card' + (open ? ' phase-open' : '') + (unlocked ? '' : ' phase-locked') + '">';
+  var open = unlocked && (S.sectionPhase[section] || 1) === num;
+  var classes = 'phase-card' + (open ? ' phase-open' : '') + (unlocked ? '' : ' phase-locked');
+  var h = '<div class="' + classes + '">';
   h += '<div class="phase-hdr"' + (unlocked ? ' onclick="openPhase(\'' + section + '\',' + num + ')"' : '') + '>';
   h += '<span class="phase-num">' + num + '</span>';
   h += '<span class="phase-lbl">' + label + '</span>';
   if (done) h += '<span class="phase-done">✓</span>';
-  h += '<span class="phase-chevron">' + (open ? '▲' : '▼') + '</span>';
+  if (unlocked) h += '<span class="phase-chevron">' + (open ? '▲' : '▼') + '</span>';
   h += '</div>';
-  if (open && unlocked) h += '<div class="phase-body">' + bodyHtml + '</div>';
+  if (open) h += '<div class="phase-body">' + bodyHtml + '</div>';
   h += '</div>';
   return h;
 }
