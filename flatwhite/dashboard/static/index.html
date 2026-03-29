@@ -1257,15 +1257,17 @@ function renderThreadBody() {
     h += '<div class="cand-meta">' + esc(t.source || "reddit") + ' &middot; Score: ' + esc(t.weighted_composite != null ? t.weighted_composite.toFixed(1) : "—") + '</div>';
     if (t.summary) h += '<div class="cand-summary">' + esc(t.summary) + '</div>';
     h += '</div></div>';
-    // Fetch comments button
+    // Show comments — use fetched comments if available, otherwise pre-loaded from scrape
+    var displayComments = comments || (t.top_comments && t.top_comments.length ? t.top_comments : null);
     h += '<div class="mt8">';
     if (loadingComments) {
       h += '<span class="ingest-spinner"></span> Loading comments...';
-    } else if (comments) {
+    } else if (displayComments) {
       h += '<div style="font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:6px;">Top Comments:</div>';
-      comments.forEach(function(c) {
+      displayComments.forEach(function(c) {
         h += '<div style="background:var(--surface-warm);border-radius:8px;padding:10px 14px;margin-bottom:6px;font-size:13px;line-height:1.5;">' + esc(typeof c === "string" ? c : c.body || c.text || JSON.stringify(c)) + '</div>';
       });
+      h += '<button class="btn btn-sm btn-secondary" style="margin-top:4px;" onclick="event.stopPropagation();fetchThreadComments(' + t.id + ')">Refresh Comments</button>';
     } else {
       h += '<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();fetchThreadComments(' + t.id + ')">Fetch Comments</button>';
     }
@@ -1323,10 +1325,16 @@ function proceedThread() {
   if (!S.selectedThread) { showToast("Select a thread first", "error"); return; }
   var model = getModel("model-thread");
   var t = S.threads.find(function(x) { return x.id === S.selectedThread; });
-  var data = { thread_id: t.id, title: t.title || t.summary, body: t.body || t.summary || '', summary: t.summary || '', top_comments: S.threadComments[t.id] || [], editorial_frame: t.editorial_frame || '' };
+  var resolvedComments = S.threadComments[t.id] || t.top_comments || [];
+  var data = { thread_id: t.id, title: t.title || t.summary, body: t.body || t.summary || '', summary: t.summary || '', top_comments: resolvedComments, editorial_frame: t.editorial_frame || '', url: t.url || '' };
   S.loading.thread = true; render();
   api("/api/proceed-section", { method: "POST", body: { section: "thread", model: model, data: data } })
-    .then(function(d) { S.sectionOutputs.thread = { output_text: d.output, model_used: d.model }; S.loading.thread = false; render(); showToast("Thread write-up generated"); })
+    .then(function(d) {
+      var output = d.output || '';
+      if (t.url) output += '\n\n[Read the thread →](' + t.url + ')';
+      S.sectionOutputs.thread = { output_text: output, model_used: d.model };
+      S.loading.thread = false; render(); showToast("Thread write-up generated");
+    })
     .catch(function(e) { S.loading.thread = false; render(); showToast("Error: " + e.message, "error"); });
 }
 
