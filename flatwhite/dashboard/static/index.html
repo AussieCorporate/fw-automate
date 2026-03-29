@@ -1052,73 +1052,91 @@ function addWhisper() {
 /* ═══════════════════════════════════════════════════════════════════════
    SECTION: THE LOBBY
    ═══════════════════════════════════════════════════════════════════════ */
-function renderLobby(el) {
-  var h = '<div class="sh"><div><h2>The Lobby</h2><div class="sub">Employer hiring data and top movers</div></div></div>';
-  h += '<div class="toolbar">';
-  h += '<button class="btn btn-primary" onclick="runSection(\'lobby\')">SCRAPE</button>';
-  h += modelSelect("model-lobby");
-  h += '<button class="btn btn-success" onclick="proceedLobby()">PROCEED</button>';
-  if (S.loading.lobby) h += renderSectionProgress('lobby');
-  var _ps = formatScrapedDate(S.lastScraped.lobby);
-  if (_ps) h += '<span style="font-size:11px;color:var(--text-3);margin-left:8px;">Scraped ' + _ps + '</span>';
-  h += '</div>';
-
+function renderLobbyBody() {
+  var h = '';
   if (!S.lobby || !S.lobby.employers || !S.lobby.employers.length) {
     h += '<div class="card"><p class="loading">No lobby data yet. Click RUN to pull employer data.</p></div>';
-  } else {
-    // Top movers cards
-    if (S.lobby.top_movers && S.lobby.top_movers.length) {
-      h += '<div style="font-weight:600;margin-bottom:10px;">Top Movers</div>';
-      h += '<div class="movers-grid">';
-      S.lobby.top_movers.slice(0, 6).forEach(function(m) {
-        var d = m.delta || 0;
-        var sign = d > 0 ? "+" : "";
-        var cls = d > 0 ? "up" : (d < 0 ? "down" : "");
-        h += '<div class="card mover-card">';
-        h += '<div class="mc-name">' + esc(m.employer_name) + '</div>';
-        h += '<div class="mc-sector">' + esc(m.sector || "") + '</div>';
-        h += '<div class="mc-delta ' + cls + '">' + sign + d + ' roles</div>';
-        h += '<div class="mc-detail">' + esc(m.open_roles_count || 0) + ' total' + (m.delta_pct != null ? ' (' + sign + m.delta_pct + '%)' : '') + '</div>';
-        var mom = m.mom_delta != null ? m.mom_delta : null;
-        if (mom != null) {
-          var momSign = mom > 0 ? "+" : "";
-          var momCls = mom > 0 ? "color:var(--green)" : (mom < 0 ? "color:var(--red)" : "color:var(--text-3)");
-          h += '<div style="font-size:11px;' + momCls + '">4-wk: ' + momSign + mom + '</div>';
-        }
-        h += '</div>';
-      });
-      h += '</div>';
-    }
-
-    // Full employer table
-    h += '<div class="card mb20"><div style="font-weight:600;margin-bottom:12px;">All Employers</div>';
-    h += '<table class="tbl"><thead><tr><th style="width:30px;"></th><th>Employer</th><th>Sector</th><th>Roles</th><th>WoW</th><th>MoM</th><th>Trend</th></tr></thead><tbody>';
-    S.lobby.employers.forEach(function(e) {
-      var name = e.employer_name || "";
-      var checked = S.lobbyChecked[name] ? " checked" : "";
-      var wow = e.delta != null ? e.delta : null;
-      var mom = e.mom_delta != null ? e.mom_delta : null;
-      var wowStyle = wow == null ? 'color:var(--text-3)' : (wow > 0 ? 'color:var(--green);font-weight:600' : (wow < 0 ? 'color:var(--red);font-weight:600' : 'color:var(--text-3)'));
-      var momStyle = mom == null ? 'color:var(--text-3)' : (mom > 0 ? 'color:var(--green);font-weight:600' : (mom < 0 ? 'color:var(--red);font-weight:600' : 'color:var(--text-3)'));
-      var wowText = wow == null ? "—" : (wow > 0 ? "+" : "") + wow;
-      var momText = mom == null ? "—" : (mom > 0 ? "+" : "") + mom;
-      var hist = e.history || [];
-      h += '<tr>';
-      h += '<td><input type="checkbox"' + checked + ' onchange="toggleLobbyCheck(\'' + esc(name).replace(/'/g, "\\'") + '\',this.checked)"></td>';
-      h += '<td><strong>' + esc(name) + '</strong></td>';
-      h += '<td>' + esc(e.sector || "") + '</td>';
-      h += '<td>' + esc(e.open_roles_count || 0) + '</td>';
-      h += '<td style="' + wowStyle + '">' + wowText + '</td>';
-      h += '<td style="' + momStyle + '">' + momText + '</td>';
-      h += '<td>' + barSparkline(hist, 64, 24) + '</td>';
-      h += '</tr>';
-    });
-    h += '</tbody></table></div>';
+    return h;
   }
+  // Top movers cards
+  if (S.lobby.top_movers && S.lobby.top_movers.length) {
+    h += '<div style="font-weight:600;margin-bottom:10px;">Top Movers</div>';
+    h += '<div class="movers-grid">';
+    S.lobby.top_movers.slice(0, 6).forEach(function(m) {
+      var d = m.delta || 0;
+      var sign = d > 0 ? "+" : "";
+      var cls = d > 0 ? "up" : (d < 0 ? "down" : "");
+      h += '<div class="card mover-card">';
+      h += '<div class="mc-name">' + esc(m.employer_name) + '</div>';
+      h += '<div class="mc-sector">' + esc(m.sector || "") + '</div>';
+      h += '<div class="mc-delta ' + cls + '">' + sign + d + ' roles</div>';
+      h += '<div class="mc-detail">' + esc(m.open_roles_count || 0) + ' total' + (m.delta_pct != null ? ' (' + sign + m.delta_pct + '%)' : '') + '</div>';
+      var mom = m.mom_delta != null ? m.mom_delta : null;
+      if (mom != null) {
+        var momSign = mom > 0 ? "+" : "";
+        var momCls = mom > 0 ? "color:var(--green)" : (mom < 0 ? "color:var(--red)" : "color:var(--text-3)");
+        h += '<div style="font-size:11px;' + momCls + '">4-wk: ' + momSign + mom + '</div>';
+      }
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+  // Full employer table
+  h += '<div class="card mb20"><div style="font-weight:600;margin-bottom:12px;">All Employers</div>';
+  h += '<table class="tbl"><thead><tr><th style="width:30px;"></th><th>Employer</th><th>Sector</th><th>Roles</th><th>WoW</th><th>MoM</th><th>Trend</th></tr></thead><tbody>';
+  S.lobby.employers.forEach(function(e) {
+    var name = e.employer_name || "";
+    var checked = S.lobbyChecked[name] ? " checked" : "";
+    var wow = e.delta != null ? e.delta : null;
+    var mom = e.mom_delta != null ? e.mom_delta : null;
+    var wowStyle = wow == null ? 'color:var(--text-3)' : (wow > 0 ? 'color:var(--green);font-weight:600' : (wow < 0 ? 'color:var(--red);font-weight:600' : 'color:var(--text-3)'));
+    var momStyle = mom == null ? 'color:var(--text-3)' : (mom > 0 ? 'color:var(--green);font-weight:600' : (mom < 0 ? 'color:var(--red);font-weight:600' : 'color:var(--text-3)'));
+    var wowText = wow == null ? "—" : (wow > 0 ? "+" : "") + wow;
+    var momText = mom == null ? "—" : (mom > 0 ? "+" : "") + mom;
+    var hist = e.history || [];
+    h += '<tr>';
+    h += '<td><input type="checkbox"' + checked + ' onchange="toggleLobbyCheck(\'' + esc(name).replace(/'/g, "\\'") + '\',this.checked)"></td>';
+    h += '<td><strong>' + esc(name) + '</strong></td>';
+    h += '<td>' + esc(e.sector || "") + '</td>';
+    h += '<td>' + esc(e.open_roles_count || 0) + '</td>';
+    h += '<td style="' + wowStyle + '">' + wowText + '</td>';
+    h += '<td style="' + momStyle + '">' + momText + '</td>';
+    h += '<td>' + barSparkline(hist, 64, 24) + '</td>';
+    h += '</tr>';
+  });
+  h += '</tbody></table></div>';
+  return h;
+}
 
-  h += outputBox("lobby");
+function renderLobby(el) {
+  var hasScrapeData = !!(S.lobby && S.lobby.employers && S.lobby.employers.length);
+  var hasOutput = !!(S.sectionOutputs.lobby && S.sectionOutputs.lobby.output_text);
+  if (!S.sectionPhase.lobby) S.sectionPhase.lobby = hasOutput ? 3 : (hasScrapeData ? 2 : 1);
+
+  var p1 = '';
+  p1 += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">';
+  p1 += '<button class="btn btn-primary" onclick="runSection(\'lobby\')">SCRAPE</button>';
+  if (S.loading.lobby) p1 += renderSectionProgress('lobby');
+  var _ps = formatScrapedDate(S.lastScraped.lobby);
+  if (_ps) p1 += '<span class="scraped-badge">Scraped ' + _ps + '</span>';
+  p1 += '</div>';
+
+  var p2 = hasScrapeData ? renderLobbyBody() : '';
+
+  var p3 = '';
+  p3 += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
+  p3 += modelSelect('model-lobby');
+  p3 += '<button class="btn btn-success" onclick="proceedLobby()">PROCEED</button>';
+  p3 += '</div>';
+  p3 += outputBox('lobby');
+
+  var h = '<div class="sh"><div><h2>The Lobby</h2><div class="sub">Employer hiring data and top movers</div></div></div>';
+  h += phasePanel('lobby', 1, 'Scrape', true, hasScrapeData, p1);
+  h += phasePanel('lobby', 2, 'Review & Pick', hasScrapeData, false, p2);
+  h += phasePanel('lobby', 3, 'Generate', hasScrapeData, hasOutput, p3);
+
   el.innerHTML = h;
-  fillOutput("lobby");
+  fillOutput('lobby');
 }
 
 function toggleLobbyCheck(name, val) { S.lobbyChecked[name] = val; }
@@ -1134,59 +1152,77 @@ function proceedLobby() {
 /* ═══════════════════════════════════════════════════════════════════════
    SECTION: FINDS
    ═══════════════════════════════════════════════════════════════════════ */
-function renderFinds(el) {
-  var h = '<div class="sh"><div><h2>Finds</h2><div class="sub">Curated news items. Pick 3-5 for the newsletter.</div></div></div>';
-  h += '<div class="toolbar">';
-  h += '<button class="btn btn-primary" onclick="runSection(\'finds\')">SCRAPE</button>';
-  h += modelSelect("model-finds");
-  h += '<button class="btn btn-success" onclick="proceedFinds()">PROCEED</button>';
-  if (S.loading.finds) h += renderSectionProgress('finds');
-  var _ps = formatScrapedDate(S.lastScraped.finds);
-  if (_ps) h += '<span style="font-size:11px;color:var(--text-3);margin-left:8px;">Scraped ' + _ps + '</span>';
-  h += '</div>';
-
+function renderFindsBody() {
   var items = (S.items && S.items.finds) || [];
-    // Re-rank: AU relevance counts for 30% of display score
-    items = items.slice().sort(function(a, b) {
-      var da = (a.weighted_composite || 0) * 0.7 + ((a.au_relevance != null ? a.au_relevance : 5) / 10.0) * 3.0;
-      var db = (b.weighted_composite || 0) * 0.7 + ((b.au_relevance != null ? b.au_relevance : 5) / 10.0) * 3.0;
-      return db - da;
-    });
+  // Re-rank: AU relevance counts for 30% of display score
+  items = items.slice().sort(function(a, b) {
+    var da = (a.weighted_composite || 0) * 0.7 + ((a.au_relevance != null ? a.au_relevance : 5) / 10.0) * 3.0;
+    var db = (b.weighted_composite || 0) * 0.7 + ((b.au_relevance != null ? b.au_relevance : 5) / 10.0) * 3.0;
+    return db - da;
+  });
   if (!items.length) {
-    h += '<div class="card"><p class="loading">No finds yet. Click RUN to pull editorial sources.</p></div>';
-  } else {
-    var checkedCount = Object.keys(S.findsChecked).filter(function(k) { return S.findsChecked[k]; }).length;
-    h += '<div style="font-size:13px;color:var(--text-2);margin-bottom:12px;">' + checkedCount + ' selected of ' + items.length + ' items</div>';
-    h += '<div class="fc">';
-    items.forEach(function(item) {
-      var checked = S.findsChecked[item.id];
-      h += '<div class="card hov' + (checked ? " sel" : "") + '">';
-      h += '<div class="fr mb8">';
-      h += '<input type="checkbox"' + (checked ? " checked" : "") + ' onchange="toggleFindsCheck(' + item.id + ',this.checked)" style="width:18px;height:18px;accent-color:var(--amber);">';
-      h += '<strong style="font-size:14px;">' + esc(item.title || item.summary) + '</strong>';
-      h += '</div>';
-        // AU relevance badge
-        var auRel = item.au_relevance != null ? item.au_relevance : null;
-        if (auRel != null) {
-          if (auRel >= 7) {
-            h += '<span class="chip chip-au" style="font-size:10px;">AU</span> ';
-          } else if (auRel < 4) {
-            h += '<span class="chip chip-low-au" style="font-size:10px;">low AU</span> ';
-          }
-        }
-      h += '<div style="font-size:12px;color:var(--text-3);margin-bottom:4px;">' + esc(item.source || "") + ' &middot; Score: ' + esc(item.weighted_composite != null ? item.weighted_composite.toFixed(1) : "—") + '</div>';
-      if (item.summary) h += '<div style="font-size:13px;color:var(--text-2);margin-bottom:8px;line-height:1.5;">' + esc(item.summary) + '</div>';
-      if (checked) {
-        h += '<div class="form-group mt8"><label>Blurb</label><textarea class="form-input" id="finds-blurb-' + item.id + '" rows="2" placeholder="Write a short blurb..." onchange="updateFindsBlurb(' + item.id + ',this.value)">' + esc(S.findsBlurbs[item.id] || "") + '</textarea></div>';
-      }
-      h += '</div>';
-    });
-    h += '</div>';
+    return '<div class="card"><p class="loading">No finds yet. Click RUN to pull editorial sources.</p></div>';
   }
+  var h = '';
+  var checkedCount = Object.keys(S.findsChecked).filter(function(k) { return S.findsChecked[k]; }).length;
+  h += '<div style="font-size:13px;color:var(--text-2);margin-bottom:12px;">' + checkedCount + ' selected of ' + items.length + ' items</div>';
+  h += '<div class="fc">';
+  items.forEach(function(item) {
+    var checked = S.findsChecked[item.id];
+    h += '<div class="card hov' + (checked ? " sel" : "") + '">';
+    h += '<div class="fr mb8">';
+    h += '<input type="checkbox"' + (checked ? " checked" : "") + ' onchange="toggleFindsCheck(' + item.id + ',this.checked)" style="width:18px;height:18px;accent-color:var(--amber);">';
+    h += '<strong style="font-size:14px;">' + esc(item.title || item.summary) + '</strong>';
+    h += '</div>';
+    // AU relevance badge
+    var auRel = item.au_relevance != null ? item.au_relevance : null;
+    if (auRel != null) {
+      if (auRel >= 7) {
+        h += '<span class="chip chip-au" style="font-size:10px;">AU</span> ';
+      } else if (auRel < 4) {
+        h += '<span class="chip chip-low-au" style="font-size:10px;">low AU</span> ';
+      }
+    }
+    h += '<div style="font-size:12px;color:var(--text-3);margin-bottom:4px;">' + esc(item.source || "") + ' &middot; Score: ' + esc(item.weighted_composite != null ? item.weighted_composite.toFixed(1) : "—") + '</div>';
+    if (item.summary) h += '<div style="font-size:13px;color:var(--text-2);margin-bottom:8px;line-height:1.5;">' + esc(item.summary) + '</div>';
+    if (checked) {
+      h += '<div class="form-group mt8"><label>Blurb</label><textarea class="form-input" id="finds-blurb-' + item.id + '" rows="2" placeholder="Write a short blurb..." onchange="updateFindsBlurb(' + item.id + ',this.value)">' + esc(S.findsBlurbs[item.id] || "") + '</textarea></div>';
+    }
+    h += '</div>';
+  });
+  h += '</div>';
+  return h;
+}
 
-  h += outputBox("finds");
+function renderFinds(el) {
+  var hasScrapeData = !!(S.items && S.items.finds && S.items.finds.length);
+  var hasOutput = !!(S.sectionOutputs.finds && S.sectionOutputs.finds.output_text);
+  if (!S.sectionPhase.finds) S.sectionPhase.finds = hasOutput ? 3 : (hasScrapeData ? 2 : 1);
+
+  var p1 = '';
+  p1 += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">';
+  p1 += '<button class="btn btn-primary" onclick="runSection(\'finds\')">SCRAPE</button>';
+  if (S.loading.finds) p1 += renderSectionProgress('finds');
+  var _ps = formatScrapedDate(S.lastScraped.finds);
+  if (_ps) p1 += '<span class="scraped-badge">Scraped ' + _ps + '</span>';
+  p1 += '</div>';
+
+  var p2 = hasScrapeData ? renderFindsBody() : '';
+
+  var p3 = '';
+  p3 += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
+  p3 += modelSelect('model-finds');
+  p3 += '<button class="btn btn-success" onclick="proceedFinds()">PROCEED</button>';
+  p3 += '</div>';
+  p3 += outputBox('finds');
+
+  var h = '<div class="sh"><div><h2>Finds</h2><div class="sub">Curated news items. Pick 3-5 for the newsletter.</div></div></div>';
+  h += phasePanel('finds', 1, 'Scrape', true, hasScrapeData, p1);
+  h += phasePanel('finds', 2, 'Review & Pick', hasScrapeData, false, p2);
+  h += phasePanel('finds', 3, 'Generate', hasScrapeData, hasOutput, p3);
+
   el.innerHTML = h;
-  fillOutput("finds");
+  fillOutput('finds');
 }
 
 function toggleFindsCheck(id, val) { S.findsChecked[id] = val; render(); }
@@ -1204,53 +1240,70 @@ function proceedFinds() {
 /* ═══════════════════════════════════════════════════════════════════════
    SECTION: THREAD
    ═══════════════════════════════════════════════════════════════════════ */
-function renderThread(el) {
-  var h = '<div class="sh"><div><h2>Thread</h2><div class="sub">Reddit thread pick for the week</div></div></div>';
-  h += '<div class="toolbar">';
-  h += '<button class="btn btn-primary" onclick="runSection(\'thread\')">SCRAPE</button>';
-  h += modelSelect("model-thread");
-  h += '<button class="btn btn-success" onclick="proceedThread()">PROCEED</button>';
-  if (S.loading.thread) h += renderSectionProgress('thread');
-  var _ps = formatScrapedDate(S.lastScraped.threads);
-  if (_ps) h += '<span style="font-size:11px;color:var(--text-3);margin-left:8px;">Scraped ' + _ps + '</span>';
-  h += '</div>';
-
+function renderThreadBody() {
   if (!S.threads || !S.threads.length) {
-    h += '<div class="card"><p class="loading">No threads yet. Click RUN to pull Reddit data.</p></div>';
-  } else {
-    h += '<div class="cand-list mb20">';
-    S.threads.forEach(function(t) {
-      var sel = S.selectedThread === t.id;
-      var comments = S.threadComments[t.id];
-      var loadingComments = S.threadCommentsLoading[t.id];
-      h += '<div class="card hov' + (sel ? " sel" : "") + '">';
-      h += '<div class="cand-card" onclick="selectThread(' + t.id + ')">';
-      h += '<div class="radio' + (sel ? " on" : "") + '">' + (sel ? "\u2713" : "") + '</div>';
-      h += '<div class="cand-body">';
-      h += '<div class="cand-title">' + esc(t.title || t.summary) + '</div>';
-      h += '<div class="cand-meta">' + esc(t.source || "reddit") + ' &middot; Score: ' + esc(t.weighted_composite != null ? t.weighted_composite.toFixed(1) : "—") + '</div>';
-      if (t.summary) h += '<div class="cand-summary">' + esc(t.summary) + '</div>';
-      h += '</div></div>';
-      // Fetch comments button
-      h += '<div class="mt8">';
-      if (loadingComments) {
-        h += '<span class="ingest-spinner"></span> Loading comments...';
-      } else if (comments) {
-        h += '<div style="font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:6px;">Top Comments:</div>';
-        comments.forEach(function(c) {
-          h += '<div style="background:var(--surface-warm);border-radius:8px;padding:10px 14px;margin-bottom:6px;font-size:13px;line-height:1.5;">' + esc(typeof c === "string" ? c : c.body || c.text || JSON.stringify(c)) + '</div>';
-        });
-      } else {
-        h += '<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();fetchThreadComments(' + t.id + ')">Fetch Comments</button>';
-      }
-      h += '</div></div>';
-    });
-    h += '</div>';
+    return '<div class="card"><p class="loading">No threads yet. Click RUN to pull Reddit data.</p></div>';
   }
+  var h = '<div class="cand-list mb20">';
+  S.threads.forEach(function(t) {
+    var sel = S.selectedThread === t.id;
+    var comments = S.threadComments[t.id];
+    var loadingComments = S.threadCommentsLoading[t.id];
+    h += '<div class="card hov' + (sel ? " sel" : "") + '">';
+    h += '<div class="cand-card" onclick="selectThread(' + t.id + ')">';
+    h += '<div class="radio' + (sel ? " on" : "") + '">' + (sel ? "\u2713" : "") + '</div>';
+    h += '<div class="cand-body">';
+    h += '<div class="cand-title">' + esc(t.title || t.summary) + '</div>';
+    h += '<div class="cand-meta">' + esc(t.source || "reddit") + ' &middot; Score: ' + esc(t.weighted_composite != null ? t.weighted_composite.toFixed(1) : "—") + '</div>';
+    if (t.summary) h += '<div class="cand-summary">' + esc(t.summary) + '</div>';
+    h += '</div></div>';
+    // Fetch comments button
+    h += '<div class="mt8">';
+    if (loadingComments) {
+      h += '<span class="ingest-spinner"></span> Loading comments...';
+    } else if (comments) {
+      h += '<div style="font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:6px;">Top Comments:</div>';
+      comments.forEach(function(c) {
+        h += '<div style="background:var(--surface-warm);border-radius:8px;padding:10px 14px;margin-bottom:6px;font-size:13px;line-height:1.5;">' + esc(typeof c === "string" ? c : c.body || c.text || JSON.stringify(c)) + '</div>';
+      });
+    } else {
+      h += '<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();fetchThreadComments(' + t.id + ')">Fetch Comments</button>';
+    }
+    h += '</div></div>';
+  });
+  h += '</div>';
+  return h;
+}
 
-  h += outputBox("thread");
+function renderThread(el) {
+  var hasScrapeData = !!(S.threads && S.threads.length);
+  var hasOutput = !!(S.sectionOutputs.thread && S.sectionOutputs.thread.output_text);
+  if (!S.sectionPhase.thread) S.sectionPhase.thread = hasOutput ? 3 : (hasScrapeData ? 2 : 1);
+
+  var p1 = '';
+  p1 += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">';
+  p1 += '<button class="btn btn-primary" onclick="runSection(\'thread\')">SCRAPE</button>';
+  if (S.loading.thread) p1 += renderSectionProgress('thread');
+  var _ps = formatScrapedDate(S.lastScraped.threads);
+  if (_ps) p1 += '<span class="scraped-badge">Scraped ' + _ps + '</span>';
+  p1 += '</div>';
+
+  var p2 = hasScrapeData ? renderThreadBody() : '';
+
+  var p3 = '';
+  p3 += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
+  p3 += modelSelect('model-thread');
+  p3 += '<button class="btn btn-success" onclick="proceedThread()">PROCEED</button>';
+  p3 += '</div>';
+  p3 += outputBox('thread');
+
+  var h = '<div class="sh"><div><h2>Thread</h2><div class="sub">Reddit thread pick for the week</div></div></div>';
+  h += phasePanel('thread', 1, 'Scrape', true, hasScrapeData, p1);
+  h += phasePanel('thread', 2, 'Review & Pick', hasScrapeData, false, p2);
+  h += phasePanel('thread', 3, 'Generate', hasScrapeData, hasOutput, p3);
+
   el.innerHTML = h;
-  fillOutput("thread");
+  fillOutput('thread');
 }
 
 function selectThread(id) { S.selectedThread = id; render(); }
