@@ -1715,8 +1715,10 @@ function runScrapeAll() {
 }
 
 function pollScrapeAll() {
+  var failCount = 0;
   var poll = setInterval(function() {
     fetch("/api/scrape-all/status").then(function(r) { return r.json(); }).then(function(d) {
+      failCount = 0; // reset on success
       render(); // shows current section in pill
       if (!d.running) {
         clearInterval(poll);
@@ -1733,7 +1735,15 @@ function pollScrapeAll() {
         // Reload current page data
         loadPageData(S.page).then(function() { render(); });
       }
-    }).catch(function() { /* ignore poll errors */ });
+    }).catch(function() {
+      failCount++;
+      if (failCount >= 3) {
+        clearInterval(poll);
+        S.scrapeAllRunning = false;
+        render();
+        showToast("Scrape All: lost connection to server", "error");
+      }
+    });
   }, 2000);
 }
 
