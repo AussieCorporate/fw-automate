@@ -1829,9 +1829,10 @@ function copyComposerAll() {
   ];
   var parts = [];
   COMPOSER_ORDER.forEach(function(s) {
-    var out = S.sectionOutputs[s.id];
-    if (out && out.output_text) {
-      parts.push("## " + s.label + "\n\n" + out.output_text.trim());
+    var ta = document.getElementById("composer-ta-" + s.id);
+    var text = ta ? ta.value : (S.sectionOutputs[s.id] ? S.sectionOutputs[s.id].output_text : null);
+    if (text && text.trim()) {
+      parts.push("## " + s.label + "\n\n" + text.trim());
     }
   });
   if (!parts.length) { showToast("No outputs to copy yet", "error"); return; }
