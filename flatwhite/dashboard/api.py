@@ -1052,11 +1052,12 @@ _scrape_all_state: dict = {
     "current": None,   # section name currently being scraped
     "results": [],     # list of {section, status: "ok"|"error"|"skipped", error: str|None}
 }
+_scrape_all_lock = threading.Lock()
 
 
 def _run_scrape_all() -> None:
     """Run all section scrapers sequentially. One failure does not stop others."""
-    _scrape_all_state.update({"running": True, "current": None, "results": []})
+    _scrape_all_state.update({"current": None, "results": []})
     for section in _SCRAPE_ALL_SECTIONS:
         _scrape_all_state["current"] = section
         with _section_lock:
@@ -1083,8 +1084,10 @@ def _run_scrape_all() -> None:
 @app.post("/api/scrape-all")
 async def api_scrape_all() -> JSONResponse:
     """Start scraping all sections sequentially in the background."""
-    if _scrape_all_state["running"]:
-        return JSONResponse({"error": "Scrape All already running"}, status_code=409)
+    with _scrape_all_lock:
+        if _scrape_all_state["running"]:
+            return JSONResponse({"error": "Scrape All already running"}, status_code=409)
+        _scrape_all_state["running"] = True  # set under lock before releasing
     thread = threading.Thread(target=_run_scrape_all, daemon=True)
     thread.start()
     return JSONResponse({"started": True, "sections": _SCRAPE_ALL_SECTIONS})
