@@ -1333,22 +1333,36 @@ function proceedThread() {
 /* ═══════════════════════════════════════════════════════════════════════
    SECTION: AMP'S FINEST
    ═══════════════════════════════════════════════════════════════════════ */
-function renderAmpFinest(el) {
-  var h = '<div class="sh"><div><h2>AMP\'s Finest</h2><div class="sub">Manual chart and commentary</div></div></div>';
-  h += '<div class="toolbar">';
-  h += modelSelect("model-amp");
-  h += '<button class="btn btn-success" onclick="proceedAmpFinest()">PROCEED</button>';
-  if (S.loading.amp_finest) h += ' <span class="ingest-spinner"></span>';
-  h += '</div>';
-
+function renderAmpFinestBody() {
   var existing = S.ampFinest || {};
+  var h = '';
   h += '<div class="card mb20">';
   h += '<div class="form-group"><label>Data Description</label><textarea class="form-input" id="amp-data-desc" rows="4" placeholder="Describe the data / chart...">' + esc(existing.data_description || "") + '</textarea></div>';
   h += '<div class="form-group"><label>Notes</label><textarea class="form-input" id="amp-notes" rows="4" placeholder="Any additional notes...">' + esc(existing.notes || "") + '</textarea></div>';
   h += '<button class="btn btn-sm btn-secondary" onclick="saveAmpData()">Save Data</button>';
   h += '</div>';
+  return h;
+}
 
-  h += outputBox("amp_finest");
+function renderAmpFinest(el) {
+  var hasData = !!(S.ampFinest && (S.ampFinest.data_description || S.ampFinest.notes));
+  var hasOutput = !!(S.sectionOutputs.amp_finest && S.sectionOutputs.amp_finest.output_text);
+  if (!S.sectionPhase.amp_finest) S.sectionPhase.amp_finest = hasOutput ? 2 : 1;
+
+  var p1 = renderAmpFinestBody();
+
+  var p2 = '';
+  p2 += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
+  p2 += modelSelect("model-amp");
+  p2 += '<button class="btn btn-success" onclick="proceedAmpFinest()">PROCEED</button>';
+  if (S.loading.amp_finest) p2 += ' <span class="ingest-spinner"></span>';
+  p2 += '</div>';
+  p2 += outputBox("amp_finest");
+
+  var h = '';
+  h += phasePanel('amp_finest', 1, 'Data Entry', true, hasData, p1);
+  h += phasePanel('amp_finest', 2, 'Generate', hasData, hasOutput, p2);
+
   el.innerHTML = h;
   fillOutput("amp_finest");
 }
@@ -1386,98 +1400,119 @@ var OTC_CATS = [
 // All other signals: positive delta = good news (higher score = better conditions).
 var SIGNAL_INVERTED_DISPLAY = new Set(["asx_volatility"]);
 
-function renderOTC(el) {
-  var h = '<div class="sh"><div><h2>Off the Clock</h2><div class="sub">Lifestyle picks across 5 categories</div></div></div>';
-  h += '<div class="toolbar">';
-  h += '<button class="btn btn-primary" onclick="runSection(\'off_the_clock\')">SCRAPE</button>';
-  h += '<button class="btn btn-sm btn-secondary" onclick="runSection(\'classify_otc\')">Classify OTC</button>';
-  h += modelSelect("model-otc");
-  h += '<button class="btn btn-success" onclick="proceedOTC()">PROCEED</button>';
-  if (S.loading.off_the_clock) h += renderSectionProgress('off_the_clock');
-  var _ps = formatScrapedDate(S.lastScraped.off_the_clock);
-  if (_ps) h += '<span style="font-size:11px;color:var(--text-3);margin-left:8px;">Scraped ' + _ps + '</span>';
-  h += '</div>';
-
+function renderOTCBody() {
+  var h = '';
   if (!S.otcData || !S.otcData.candidates) {
-    h += '<div class="card"><p class="loading">No data yet. Click RUN to pull lifestyle sources.</p></div>';
-  } else {
-    // Existing picks
-    if (S.otcData.picks && S.otcData.picks.length) {
-      h += '<div class="card mb20"><div style="font-weight:600;margin-bottom:10px;">Current Picks</div>';
-      S.otcData.picks.forEach(function(p) {
-        h += '<div class="fr mb8"><span class="chip chip-amber">' + esc(p.category || "") + '</span> <span style="font-size:13px;">' + esc(p.summary || p.editor_blurb || "") + '</span></div>';
-      });
-      h += '</div>';
-    }
+    h += '<div class="card"><p class="loading">No data yet. Click SCRAPE to pull lifestyle sources.</p></div>';
+    return h;
+  }
 
-    // Categories with candidates
-    h += '<div class="otc-cats">';
-    OTC_CATS.forEach(function(cat) {
-      var candidates = S.otcData.candidates[cat.key] || [];
-      h += '<div class="card otc-cat-card">';
-      h += '<div class="otc-cat-title">' + esc(cat.label) + ' ';
-      h += '<span style="font-size:11px;color:var(--text-3);">' + candidates.length + ' items</span></div>';
-      if (!candidates.length) {
-        h += '<p style="font-size:12px;color:var(--text-3);">No candidates</p>';
-      } else {
-        // Multi-pick pills — any number of items per category can be selected
-        var catPicks = S.otcPicks[cat.key] || {};
-        h += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">';
-        candidates.forEach(function(c) {
-          var active = !!catPicks[c.id];
-          var pillStyle = active
-            ? 'background:rgba(255,180,0,0.12);border:1.5px solid var(--amber);color:var(--text-1);font-weight:600;'
-            : 'background:var(--bg-2);border:1.5px solid var(--divider);color:var(--text-2);';
-          var label = (c.title || c.summary || "").slice(0, 44) + ((c.title || c.summary || "").length > 44 ? "…" : "");
-          h += '<button onclick="pickOTC(\'' + cat.key + '\',' + c.id + ')" ';
-          h += 'title="' + esc(c.title || c.summary || "") + '" ';
-          h += 'style="' + pillStyle + 'padding:6px 12px;border-radius:20px;cursor:pointer;font-size:12px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">';
-          h += esc(label);
-          if (c.city) h += ' <span style="font-size:10px;opacity:0.65;">(' + esc(c.city) + ')</span>';
-          h += '</button>';
-        });
-        h += '</div>';
-        // Per-item blurb textareas — one for each selected pill
-        candidates.forEach(function(c) {
-          if (!catPicks[c.id]) return;
-          var blurbKey = cat.key + "__" + c.id;
-          var shortTitle = (c.title || c.summary || "").slice(0, 50);
-          h += '<div style="margin-bottom:8px;">';
-          h += '<div style="font-size:11px;color:var(--text-3);margin-bottom:3px;">Note for "' + esc(shortTitle) + '"</div>';
-          h += '<textarea class="form-input" rows="2" placeholder="Optional blurb..." style="font-size:12px;" oninput="updateOTCBlurb(\'' + blurbKey + '\',this.value)">' + esc(S.otcBlurbs[blurbKey] || "") + '</textarea>';
-          h += '</div>';
-        });
-      }
-      h += '</div>';
+  // Existing picks
+  if (S.otcData.picks && S.otcData.picks.length) {
+    h += '<div class="card mb20"><div style="font-weight:600;margin-bottom:10px;">Current Picks</div>';
+    S.otcData.picks.forEach(function(p) {
+      h += '<div class="fr mb8"><span class="chip chip-amber">' + esc(p.category || "") + '</span> <span style="font-size:13px;">' + esc(p.summary || p.editor_blurb || "") + '</span></div>';
     });
-    h += '</div>';
-    // Prompt preview panel
-    var totalPicks = OTC_CATS.reduce(function(n, cat) {
-      return n + Object.keys(S.otcPicks[cat.key] || {}).length;
-    }, 0);
-    h += '<div style="margin-top:16px;">';
-    h += '<button onclick="toggleOtcPrompt()" style="background:none;border:none;cursor:pointer;font-size:12px;color:var(--text-2);padding:0;">';
-    h += (S.otcPromptExpanded ? '▲' : '▼') + ' Prompt preview';
-    if (totalPicks === 0) h += ' <span style="color:var(--text-3);">(select items above)</span>';
-    h += '</button>';
-    if (S.otcPromptExpanded) {
-      h += '<textarea id="otc-prompt-preview" class="form-input" rows="10" oninput="S.otcPrompt=this.value" ';
-      h += 'placeholder="Select at least one item above to preview the prompt." ';
-      h += 'style="margin-top:8px;font-size:12px;font-family:monospace;">';
-      h += esc(S.otcPrompt);
-      h += '</textarea>';
-      h += '<div style="margin-top:8px;font-size:11px;color:var(--text-2);">Instruction (persists when picks change)</div>';
-      h += '<textarea class="form-input" rows="4" oninput="updateOTCInstruction(this.value)" ';
-      h += 'style="margin-top:4px;font-size:12px;font-family:monospace;">';
-      h += esc(S.otcInstruction !== null ? S.otcInstruction : OTC_DEFAULT_INSTRUCTION);
-      h += '</textarea>';
-    }
     h += '</div>';
   }
 
-  h += '<div class="mt20">' + outputBox("off_the_clock") + '</div>';
+  // Categories with candidates
+  h += '<div class="otc-cats">';
+  OTC_CATS.forEach(function(cat) {
+    var candidates = S.otcData.candidates[cat.key] || [];
+    h += '<div class="card otc-cat-card">';
+    h += '<div class="otc-cat-title">' + esc(cat.label) + ' ';
+    h += '<span style="font-size:11px;color:var(--text-3);">' + candidates.length + ' items</span></div>';
+    if (!candidates.length) {
+      h += '<p style="font-size:12px;color:var(--text-3);">No candidates</p>';
+    } else {
+      // Multi-pick pills — any number of items per category can be selected
+      var catPicks = S.otcPicks[cat.key] || {};
+      h += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">';
+      candidates.forEach(function(c) {
+        var active = !!catPicks[c.id];
+        var pillStyle = active
+          ? 'background:rgba(255,180,0,0.12);border:1.5px solid var(--amber);color:var(--text-1);font-weight:600;'
+          : 'background:var(--bg-2);border:1.5px solid var(--divider);color:var(--text-2);';
+        var label = (c.title || c.summary || "").slice(0, 44) + ((c.title || c.summary || "").length > 44 ? "…" : "");
+        h += '<button onclick="pickOTC(\'' + cat.key + '\',' + c.id + ')" ';
+        h += 'title="' + esc(c.title || c.summary || "") + '" ';
+        h += 'style="' + pillStyle + 'padding:6px 12px;border-radius:20px;cursor:pointer;font-size:12px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">';
+        h += esc(label);
+        if (c.city) h += ' <span style="font-size:10px;opacity:0.65;">(' + esc(c.city) + ')</span>';
+        h += '</button>';
+      });
+      h += '</div>';
+      // Per-item blurb textareas — one for each selected pill
+      candidates.forEach(function(c) {
+        if (!catPicks[c.id]) return;
+        var blurbKey = cat.key + "__" + c.id;
+        var shortTitle = (c.title || c.summary || "").slice(0, 50);
+        h += '<div style="margin-bottom:8px;">';
+        h += '<div style="font-size:11px;color:var(--text-3);margin-bottom:3px;">Note for "' + esc(shortTitle) + '"</div>';
+        h += '<textarea class="form-input" rows="2" placeholder="Optional blurb..." style="font-size:12px;" oninput="updateOTCBlurb(\'' + blurbKey + '\',this.value)">' + esc(S.otcBlurbs[blurbKey] || "") + '</textarea>';
+        h += '</div>';
+      });
+    }
+    h += '</div>';
+  });
+  h += '</div>';
+  // Prompt preview panel
+  var totalPicks = OTC_CATS.reduce(function(n, cat) {
+    return n + Object.keys(S.otcPicks[cat.key] || {}).length;
+  }, 0);
+  h += '<div style="margin-top:16px;">';
+  h += '<button onclick="toggleOtcPrompt()" style="background:none;border:none;cursor:pointer;font-size:12px;color:var(--text-2);padding:0;">';
+  h += (S.otcPromptExpanded ? '▲' : '▼') + ' Prompt preview';
+  if (totalPicks === 0) h += ' <span style="color:var(--text-3);">(select items above)</span>';
+  h += '</button>';
+  if (S.otcPromptExpanded) {
+    h += '<textarea id="otc-prompt-preview" class="form-input" rows="10" oninput="S.otcPrompt=this.value" ';
+    h += 'placeholder="Select at least one item above to preview the prompt." ';
+    h += 'style="margin-top:8px;font-size:12px;font-family:monospace;">';
+    h += esc(S.otcPrompt);
+    h += '</textarea>';
+    h += '<div style="margin-top:8px;font-size:11px;color:var(--text-2);">Instruction (persists when picks change)</div>';
+    h += '<textarea class="form-input" rows="4" oninput="updateOTCInstruction(this.value)" ';
+    h += 'style="margin-top:4px;font-size:12px;font-family:monospace;">';
+    h += esc(S.otcInstruction !== null ? S.otcInstruction : OTC_DEFAULT_INSTRUCTION);
+    h += '</textarea>';
+  }
+  h += '</div>';
+  return h;
+}
+
+function renderOTC(el) {
+  var hasScrapeData = !!(S.otcData && S.otcData.candidates);
+  var hasPickedAny = OTC_CATS.some(function(cat) { return Object.keys(S.otcPicks[cat.key] || {}).length > 0; });
+  var hasOutput = !!(S.sectionOutputs.off_the_clock && S.sectionOutputs.off_the_clock.output_text);
+  if (!S.sectionPhase.off_the_clock) S.sectionPhase.off_the_clock = hasOutput ? 3 : (hasScrapeData ? 2 : 1);
+
+  var p1 = '';
+  p1 += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">';
+  p1 += '<button class="btn btn-primary" onclick="runSection(\'off_the_clock\')">SCRAPE</button>';
+  p1 += '<button class="btn btn-sm btn-secondary" onclick="runSection(\'classify_otc\')">Classify OTC</button>';
+  if (S.loading.off_the_clock) p1 += renderSectionProgress('off_the_clock');
+  var _ps = formatScrapedDate(S.lastScraped && S.lastScraped.off_the_clock);
+  if (_ps) p1 += '<span class="scraped-badge">Scraped ' + _ps + '</span>';
+  p1 += '</div>';
+
+  var p2 = hasScrapeData ? renderOTCBody() : '';
+
+  var p3 = '';
+  p3 += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
+  p3 += modelSelect("model-otc");
+  p3 += '<button class="btn btn-success" onclick="proceedOTC()">PROCEED</button>';
+  p3 += '</div>';
+  p3 += outputBox("off_the_clock");
+
+  var h = '';
+  h += phasePanel('off_the_clock', 1, 'Scrape', true, hasScrapeData, p1);
+  h += phasePanel('off_the_clock', 2, 'Review & Pick', hasScrapeData, false, p2);
+  h += phasePanel('off_the_clock', 3, 'Generate', hasPickedAny, hasOutput, p3);
+
   el.innerHTML = h;
-  fillOutput("off_the_clock");
+  fillOutput('off_the_clock');
 }
 
 var OTC_DEFAULT_INSTRUCTION = (
