@@ -1793,7 +1793,9 @@ def _proceed_thread(data: dict, model: str | None, custom_prompt: str | None = N
     title = data.get("title", "")
     body = data.get("body", data.get("summary", ""))
     top_comments = data.get("top_comments", [])
-    comments_block = "\n".join(f"- {c}" for c in top_comments[:5]) if top_comments else "(no comments)"
+    comments_block = "\n".join(
+        f"- {c['text'] if isinstance(c, dict) else c}" for c in top_comments[:5]
+    ) if top_comments else "(no comments)"
     editorial_frame = data.get("editorial_frame", "")
 
     prompt = THREAD_OUR_TAKE_PROMPT.format(
