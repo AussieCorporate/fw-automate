@@ -1323,7 +1323,7 @@ function proceedThread() {
   if (!S.selectedThread) { showToast("Select a thread first", "error"); return; }
   var model = getModel("model-thread");
   var t = S.threads.find(function(x) { return x.id === S.selectedThread; });
-  var data = { thread_id: t.id, title: t.title || t.summary, comments: S.threadComments[t.id] || [] };
+  var data = { thread_id: t.id, title: t.title || t.summary, body: t.body || t.summary || '', summary: t.summary || '', top_comments: S.threadComments[t.id] || [], editorial_frame: t.editorial_frame || '' };
   S.loading.thread = true; render();
   api("/api/proceed-section", { method: "POST", body: { section: "thread", model: model, data: data } })
     .then(function(d) { S.sectionOutputs.thread = { output_text: d.output, model_used: d.model }; S.loading.thread = false; render(); showToast("Thread write-up generated"); })
