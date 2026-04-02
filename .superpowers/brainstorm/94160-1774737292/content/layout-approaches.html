@@ -1,0 +1,86 @@
+<h2>Overall layout approach</h2>
+<p class="subtitle">Three ways to structure the dashboard for a cleaner, step-by-step workflow</p>
+
+<div class="options">
+
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Command Bar (recommended)</h3>
+      <p>A persistent horizontal bar sits above every section showing a <strong>Scrape All</strong> button + per-section status pills (scraped / generated / failed). Each section page gets a clear <strong>3-phase layout</strong>: ① Scrape → ② Review &amp; Pick → ③ Generate. Composer is the final nav item.</p>
+      <div style="margin-top:10px;padding:10px;background:#f5f5f5;border-radius:6px;font-size:12px;">
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:#1a1a1a;border-radius:4px;color:#fff;margin-bottom:8px;">
+          <span style="font-weight:600;">Flat White</span>
+          <span style="flex:1"></span>
+          <span style="background:#2a7a2a;padding:2px 10px;border-radius:3px;font-size:11px;">⚡ Scrape All</span>
+          <span style="background:#333;padding:2px 8px;border-radius:3px;font-size:11px;">Pulse ✓</span>
+          <span style="background:#333;padding:2px 8px;border-radius:3px;font-size:11px;">Finds ✓</span>
+          <span style="background:#7a2a2a;padding:2px 8px;border-radius:3px;font-size:11px;">Lobby ✗</span>
+        </div>
+        <div style="display:flex;gap:6px;height:60px;">
+          <div style="width:120px;background:#222;border-radius:4px;padding:6px;color:#aaa;font-size:10px;">
+            <div style="color:#fff;margin-bottom:4px;">◉ Pulse</div>
+            <div>¶ Big Conv</div>
+            <div>🔥 Finds</div>
+            <div style="color:#4a9;font-size:9px;">✉ Assemble →</div>
+          </div>
+          <div style="flex:1;background:#fff;border-radius:4px;padding:8px;font-size:10px;">
+            <div style="display:flex;gap:4px;margin-bottom:6px;">
+              <span style="background:#e8f0e8;padding:1px 6px;border-radius:3px;border:1px solid #4a9;">① Scrape</span>
+              <span style="color:#999;">→ ② Review → ③ Generate</span>
+            </div>
+            <div style="height:30px;background:#f5f5f5;border-radius:3px;display:flex;align-items:center;padding:0 8px;color:#666;font-size:10px;">Content &amp; picks here</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Status Sidebar</h3>
+      <p>The sidebar expands to show <strong>live state per section</strong> (not scraped / scraped / output ready) with a <strong>Scrape All</strong> button at the top of the sidebar. Section pages are cleaned up but no explicit step numbering — just cleaner visual grouping of actions.</p>
+      <div style="margin-top:10px;padding:10px;background:#f5f5f5;border-radius:6px;font-size:12px;">
+        <div style="display:flex;gap:6px;height:80px;">
+          <div style="width:140px;background:#222;border-radius:4px;padding:6px;color:#aaa;font-size:10px;">
+            <div style="background:#2a7a2a;color:#fff;padding:2px 6px;border-radius:3px;text-align:center;margin-bottom:6px;font-size:10px;">⚡ Scrape All</div>
+            <div style="display:flex;justify-content:space-between;color:#fff;"><span>◉ Pulse</span><span style="color:#4a9">✓ done</span></div>
+            <div style="display:flex;justify-content:space-between;"><span>🔥 Finds</span><span style="color:#fa4">⟳ scraped</span></div>
+            <div style="display:flex;justify-content:space-between;"><span>📊 Lobby</span><span style="color:#f44">✗ failed</span></div>
+          </div>
+          <div style="flex:1;background:#fff;border-radius:4px;padding:8px;font-size:10px;">
+            <div style="font-weight:600;margin-bottom:4px;">Pulse</div>
+            <div style="display:flex;gap:4px;margin-bottom:4px;">
+              <button style="font-size:9px;padding:1px 6px;border:1px solid #ccc;border-radius:3px;background:#fff;">Scrape</button>
+              <button style="font-size:9px;padding:1px 6px;border:1px solid #ccc;border-radius:3px;background:#fff;">Generate</button>
+            </div>
+            <div style="height:30px;background:#f5f5f5;border-radius:3px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Build / Publish Modes</h3>
+      <p>A top-level <strong>mode toggle</strong>: "Build" mode works section by section (with Scrape All available), "Publish" mode opens the Composer full-screen. Each section in Build mode shows a compact card with its status — clicking opens a drawer/modal to work on it.</p>
+      <div style="margin-top:10px;padding:10px;background:#f5f5f5;border-radius:6px;font-size:12px;">
+        <div style="background:#1a1a1a;border-radius:4px;padding:6px 10px;color:#fff;font-size:10px;margin-bottom:6px;display:flex;align-items:center;gap:10px;">
+          <span style="font-weight:600;">Flat White</span>
+          <span style="flex:1"></span>
+          <span style="background:#333;padding:1px 8px;border-radius:3px;">Build</span>
+          <span style="background:#4a9;padding:1px 8px;border-radius:3px;">Publish</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;">
+          <div style="background:#fff;border-radius:4px;padding:6px;font-size:10px;"><div style="font-weight:600">◉ Pulse</div><div style="color:#4a9;font-size:9px;">✓ output ready</div></div>
+          <div style="background:#fff;border-radius:4px;padding:6px;font-size:10px;"><div style="font-weight:600">🔥 Finds</div><div style="color:#fa4;font-size:9px;">⟳ scraped</div></div>
+          <div style="background:#fff;border-radius:4px;padding:6px;font-size:10px;"><div style="font-weight:600">📊 Lobby</div><div style="color:#f44;font-size:9px;">✗ not scraped</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>

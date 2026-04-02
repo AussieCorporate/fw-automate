@@ -1,0 +1,134 @@
+<h2>Per-section layout: how are the 3 phases shown?</h2>
+<p class="subtitle">Using Pulse as the example. Both have the command bar at top.</p>
+
+<div class="split">
+
+  <div class="mockup">
+    <div class="mockup-header">A — Accordion phases (click to expand)</div>
+    <div class="mockup-body" style="padding:0;font-size:11px;">
+      <!-- Command bar -->
+      <div style="background:#1a1a1a;padding:6px 12px;display:flex;align-items:center;gap:8px;color:#fff;font-size:11px;">
+        <span style="font-weight:700;">Flat White</span>
+        <span style="flex:1"></span>
+        <span style="background:#2a6e2a;padding:2px 10px;border-radius:3px;font-size:10px;">⚡ Scrape All</span>
+        <span style="background:#1e4a1e;color:#6f6;padding:2px 8px;border-radius:3px;font-size:10px;">Pulse ✓</span>
+        <span style="background:#4a3a1e;color:#fa4;padding:2px 8px;border-radius:3px;font-size:10px;">Finds ⟳</span>
+        <span style="background:#4a1e1e;color:#f66;padding:2px 8px;border-radius:3px;font-size:10px;">Lobby ✗</span>
+      </div>
+      <!-- Sidebar + content -->
+      <div style="display:flex;height:260px;">
+        <div style="width:110px;background:#111;padding:8px;color:#aaa;font-size:10px;flex-shrink:0;">
+          <div style="color:#fff;margin-bottom:6px;font-size:10px;">◉ Pulse</div>
+          <div style="margin-bottom:4px;">¶ Big Conv</div>
+          <div style="margin-bottom:4px;">🔥 Finds</div>
+          <div style="margin-bottom:4px;">📊 Lobby</div>
+          <div style="margin-bottom:4px;">🍷 Off Clock</div>
+          <div style="margin-top:auto;color:#4a9;font-size:9px;position:absolute;bottom:16px;">✉ Assemble</div>
+        </div>
+        <div style="flex:1;padding:10px;overflow:auto;">
+          <!-- Phase 1 - expanded -->
+          <div style="border:1.5px solid #4a9;border-radius:6px;margin-bottom:6px;">
+            <div style="background:#e8f5ee;padding:6px 10px;border-radius:4px 4px 0 0;display:flex;align-items:center;gap:6px;">
+              <span style="background:#4a9;color:#fff;border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0;">1</span>
+              <span style="font-weight:600;font-size:11px;">Scrape</span>
+              <span style="color:#888;font-size:10px;flex:1;">Last run: 2 hrs ago</span>
+              <span style="font-size:10px;color:#4a9;">▲</span>
+            </div>
+            <div style="padding:8px 10px;">
+              <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+                <button style="font-size:10px;padding:3px 10px;background:#333;color:#fff;border:none;border-radius:3px;">Run Pulse Scrape</button>
+                <span style="font-size:10px;color:#888;">Scraped 29 Mar · 10 signals</span>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
+                <div style="background:#f5f5f5;border-radius:3px;padding:4px 6px;font-size:10px;">Consumer conf: 3.2 ↓</div>
+                <div style="background:#f5f5f5;border-radius:3px;padding:4px 6px;font-size:10px;">ASX volatility: 4.1 ↑</div>
+              </div>
+            </div>
+          </div>
+          <!-- Phase 2 - collapsed -->
+          <div style="border:1.5px solid #ddd;border-radius:6px;margin-bottom:6px;opacity:0.7;">
+            <div style="padding:6px 10px;display:flex;align-items:center;gap:6px;">
+              <span style="background:#ccc;color:#fff;border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0;">2</span>
+              <span style="font-weight:600;font-size:11px;">Review &amp; Pick</span>
+              <span style="flex:1"></span>
+              <span style="font-size:10px;color:#aaa;">▼</span>
+            </div>
+          </div>
+          <!-- Phase 3 - collapsed -->
+          <div style="border:1.5px solid #ddd;border-radius:6px;opacity:0.5;">
+            <div style="padding:6px 10px;display:flex;align-items:center;gap:6px;">
+              <span style="background:#ccc;color:#fff;border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0;">3</span>
+              <span style="font-weight:600;font-size:11px;">Generate</span>
+              <span style="flex:1"></span>
+              <span style="font-size:10px;color:#aaa;">▼</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">B — All phases visible, clearly separated</div>
+    <div class="mockup-body" style="padding:0;font-size:11px;">
+      <!-- Command bar -->
+      <div style="background:#1a1a1a;padding:6px 12px;display:flex;align-items:center;gap:8px;color:#fff;font-size:11px;">
+        <span style="font-weight:700;">Flat White</span>
+        <span style="flex:1"></span>
+        <span style="background:#2a6e2a;padding:2px 10px;border-radius:3px;font-size:10px;">⚡ Scrape All</span>
+        <span style="background:#1e4a1e;color:#6f6;padding:2px 8px;border-radius:3px;font-size:10px;">Pulse ✓</span>
+        <span style="background:#4a3a1e;color:#fa4;padding:2px 8px;border-radius:3px;font-size:10px;">Finds ⟳</span>
+        <span style="background:#4a1e1e;color:#f66;padding:2px 8px;border-radius:3px;font-size:10px;">Lobby ✗</span>
+      </div>
+      <div style="display:flex;height:260px;">
+        <div style="width:110px;background:#111;padding:8px;color:#aaa;font-size:10px;flex-shrink:0;">
+          <div style="color:#fff;margin-bottom:6px;">◉ Pulse</div>
+          <div style="margin-bottom:4px;">¶ Big Conv</div>
+          <div style="margin-bottom:4px;">🔥 Finds</div>
+          <div style="margin-bottom:4px;">📊 Lobby</div>
+          <div style="margin-bottom:4px;">🍷 Off Clock</div>
+          <div style="color:#4a9;font-size:9px;position:absolute;bottom:16px;">✉ Assemble</div>
+        </div>
+        <div style="flex:1;padding:10px;overflow:auto;">
+          <!-- Step indicator -->
+          <div style="display:flex;align-items:center;gap:4px;margin-bottom:10px;">
+            <span style="background:#4a9;color:#fff;border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;">1</span>
+            <div style="flex:1;height:2px;background:#4a9;"></div>
+            <span style="background:#ddd;color:#999;border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;">2</span>
+            <div style="flex:1;height:2px;background:#ddd;"></div>
+            <span style="background:#ddd;color:#999;border-radius:50%;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;">3</span>
+          </div>
+          <!-- Phase 1 block -->
+          <div style="background:#f8fdf8;border-left:3px solid #4a9;padding:8px;margin-bottom:8px;border-radius:0 4px 4px 0;">
+            <div style="font-weight:600;font-size:11px;margin-bottom:4px;">① Scrape</div>
+            <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+              <button style="font-size:10px;padding:3px 10px;background:#333;color:#fff;border:none;border-radius:3px;">Run Pulse Scrape</button>
+              <span style="font-size:10px;color:#888;">29 Mar · 10 signals</span>
+            </div>
+          </div>
+          <!-- Phase 2 block -->
+          <div style="background:#f9f9f9;border-left:3px solid #ddd;padding:8px;margin-bottom:8px;border-radius:0 4px 4px 0;opacity:0.7;">
+            <div style="font-weight:600;font-size:11px;margin-bottom:4px;color:#999;">② Review &amp; Pick</div>
+            <div style="font-size:10px;color:#bbb;">Scrape first to unlock</div>
+          </div>
+          <!-- Phase 3 block -->
+          <div style="background:#f9f9f9;border-left:3px solid #ddd;padding:8px;border-radius:0 4px 4px 0;opacity:0.5;">
+            <div style="font-weight:600;font-size:11px;color:#999;">③ Generate</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="options" style="margin-top:16px;">
+  <div class="option" data-choice="accordion" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content"><h3>Accordion</h3><p>One phase open at a time. Cleaner, less scrolling. Active phase auto-expands when step completes.</p></div>
+  </div>
+  <div class="option" data-choice="visible" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content"><h3>All visible</h3><p>All three phases always on screen. Good for seeing the full picture at once. More scrolling on sections with lots of content.</p></div>
+  </div>
+</div>
