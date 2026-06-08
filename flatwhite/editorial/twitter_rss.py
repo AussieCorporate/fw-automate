@@ -10,8 +10,25 @@ from flatwhite.utils.http import fetch_rss
 from flatwhite.db import insert_raw_item, get_current_week_iso
 import yaml
 from pathlib import Path
+from datetime import datetime, timedelta
+from email.utils import parsedate_to_datetime
 
 CONFIG_PATH = Path(__file__).parent.parent.parent / "config.yaml"
+
+MAX_AGE_DAYS = 7
+
+
+def _is_recent(entry: dict, max_age_days: int = MAX_AGE_DAYS) -> bool:
+    """Return True if the entry was published within max_age_days, or has no date."""
+    pub = entry.get("published", "")
+    if not pub:
+        return True
+    try:
+        dt = parsedate_to_datetime(pub)
+        cutoff = datetime.utcnow() - timedelta(days=max_age_days)
+        return dt.replace(tzinfo=None) >= cutoff
+    except Exception:
+        return True
 
 
 def pull_twitter_editorial() -> int:
@@ -48,6 +65,8 @@ def pull_twitter_editorial() -> int:
         try:
             entries = fetch_rss(url, delay_seconds=delay)
             for entry in entries[:max_posts]:
+                if not _is_recent(entry):
+                    continue
                 insert_raw_item(
                     title=entry["title"][:200],
                     body=entry["body"][:2000] if entry["body"] else None,

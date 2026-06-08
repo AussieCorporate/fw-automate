@@ -14,25 +14,34 @@ from flatwhite.utils.http import fetch_rss
 from flatwhite.db import insert_raw_item, get_current_week_iso
 import yaml
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 
 CONFIG_PATH = Path(__file__).parent.parent.parent / "config.yaml"
 
-MAX_AGE_DAYS = 14
+MAX_AGE_DAYS = 7
 
 
 def _is_recent(entry: dict, max_age_days: int = MAX_AGE_DAYS) -> bool:
-    """Return True if the article was published within max_age_days, or has no date."""
+    """Return True if the article was published within max_age_days.
+
+    Tries ISO 8601 first, then RFC 2822. Fails closed when the date is
+    missing or unparseable to prevent stale items leaking through.
+    """
     pub = entry.get("published", "")
     if not pub:
-        return True
+        return False
     try:
-        dt = parsedate_to_datetime(pub)
-        cutoff = datetime.utcnow() - timedelta(days=max_age_days)
-        return dt.replace(tzinfo=None) >= cutoff
+        try:
+            dt = datetime.fromisoformat(pub.replace("Z", "+00:00"))
+        except ValueError:
+            dt = parsedate_to_datetime(pub)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+        return dt >= cutoff
     except Exception:
-        return True
+        return False
 
 
 def _fetch_single_feed(feed: dict, max_items: int, week_iso: str) -> dict:
@@ -59,6 +68,7 @@ def _fetch_single_feed(feed: dict, max_items: int, week_iso: str) -> dict:
                 lane="editorial",
                 subreddit=None,
                 week_iso=week_iso,
+                published_at=entry.get("published") or None,
             )
             count += 1
         return {"name": name, "count": count, "skipped": skipped, "error": None}

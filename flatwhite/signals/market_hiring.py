@@ -1,10 +1,10 @@
 from bs4 import BeautifulSoup
-from flatwhite.utils.http import fetch_url_playwright
 from flatwhite.db import insert_signal, get_current_week_iso, get_recent_signals
 from flatwhite.signals.normalise import get_min_weeks_warm, normalise_hybrid
 import yaml
 from pathlib import Path
 import re
+import time
 
 CONFIG_PATH = Path(__file__).parent.parent.parent / "config.yaml"
 
@@ -17,21 +17,44 @@ def _extract_listing_count(html: str) -> int:
     return 0
 
 def pull_market_hiring() -> float:
+    from playwright.sync_api import sync_playwright
+
     with open(CONFIG_PATH) as f:
         config = yaml.safe_load(f)
 
     total_count = 0
     n_categories = len(config["seek"]["categories"])
     n_failed = 0
-    for category in config["seek"]["categories"]:
-        try:
-            html = fetch_url_playwright(category["url"], delay_seconds=2.0, wait_seconds=5.0)
-            count = _extract_listing_count(html)
-            total_count += count
-        except Exception as e:
-            print(f"  ⚠ SEEK fetch failed for '{category['name']}': {e}")
-            n_failed += 1
-            continue
+
+    # Single browser instance for all SEEK fetches
+    with sync_playwright() as p:
+        browser = p.chromium.launch(
+            headless=True,
+            args=["--disable-blink-features=AutomationControlled"],
+        )
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            viewport={"width": 1280, "height": 800},
+            locale="en-AU",
+            timezone_id="Australia/Sydney",
+        )
+        page = context.new_page()
+        page.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+
+        for category in config["seek"]["categories"]:
+            try:
+                time.sleep(1.0)
+                page.goto(category["url"], wait_until="networkidle", timeout=30000)
+                page.wait_for_timeout(3000)
+                html = page.content()
+                count = _extract_listing_count(html)
+                total_count += count
+            except Exception as e:
+                print(f"  ⚠ SEEK fetch failed for '{category['name']}': {e}")
+                n_failed += 1
+                continue
+
+        browser.close()
 
     week_iso = get_current_week_iso()
 

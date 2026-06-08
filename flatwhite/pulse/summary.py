@@ -26,11 +26,80 @@ from flatwhite.db import get_connection, get_current_week_iso, get_pulse_history
 from flatwhite.signals.macro_context import fetch_macro_headlines
 
 
+# Human-readable signal names for LLM prompts
+SIGNAL_DISPLAY_NAMES: dict[str, str] = {
+    "job_anxiety": "job anxiety (Google searches)",
+    "career_mobility": "career mobility (Google searches)",
+    "contractor_proxy": "contractor demand",
+    "market_hiring": "SEEK job postings",
+    "employer_hiring_breadth": "employer hiring breadth (% of tracked firms adding roles)",
+    "employer_req_freshness": "new role freshness",
+    "employer_net_delta": "employer net headcount change",
+    "salary_pressure": "salary pressure",
+    "layoff_news_velocity": "layoff news volume",
+    "consumer_confidence": "consumer confidence",
+    "asx_volatility": "ASX volatility",
+    "asx_momentum": "ASX momentum",
+    "reddit_topic_velocity": "corporate stress chatter (Reddit)",
+    "resume_anxiety": "resume anxiety (Google searches)",
+    "auslaw_velocity": "legal sector stress (Reddit)",
+    "indeed_job_postings": "Indeed job postings",
+    "indeed_remote_pct": "remote work share (Indeed)",
+    "asic_insolvency": "ASIC insolvency filings",
+}
+
+# Stress convention: every stored normalised_score now reads "higher = more stress"
+# regardless of the raw signal's direction. The set below is retained only so the
+# prompt can hint to the LLM which signals were inverted at the raw level (useful
+# editorial context — e.g. high layoff_news_velocity raw = bad, score reflects that).
+INVERTED_SIGNALS: set[str] = {
+    "job_anxiety", "layoff_news_velocity", "asx_volatility",
+    "reddit_topic_velocity", "auslaw_velocity", "resume_anxiety",
+    "asic_insolvency",
+}
+
+
+def _format_signal_name(raw: str) -> str:
+    """Convert snake_case signal name to human-readable for prompts."""
+    return SIGNAL_DISPLAY_NAMES.get(raw, raw.replace("_", " "))
+
+
 def _prev_week_iso(week_iso: str) -> str:
     """Return the ISO week string for the week before week_iso."""
     year, wn = int(week_iso[:4]), int(week_iso[6:])
     dt = datetime.datetime.strptime(f"{year}-W{wn:02d}-1", "%G-W%V-%u")
     return (dt - datetime.timedelta(weeks=1)).strftime("%G-W%V")
+
+
+def _fetch_editorial_evidence(week_iso: str, limit: int = 10) -> str:
+    """Fetch top curated item summaries for the current week as editorial evidence.
+
+    Returns a formatted block of section-tagged summaries ordered by weighted_composite,
+    or empty string if no curated items exist yet.
+    """
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT ci.section, ci.summary, ri.title, ri.source
+        FROM curated_items ci
+        JOIN raw_items ri ON ci.raw_item_id = ri.id
+        WHERE ri.week_iso = ? AND ci.section != 'discard'
+        ORDER BY ci.weighted_composite DESC
+        LIMIT ?""",
+        (week_iso, limit),
+    ).fetchall()
+    conn.close()
+
+    if not rows:
+        return ""
+
+    lines = [
+        "Editorial evidence from this week's classified items "
+        "(use these to ground your interpretation in what is actually happening):"
+    ]
+    for r in rows:
+        lines.append(f"- [{r['section']}] {r['title']} ({r['source']}): {r['summary']}")
+
+    return "\n".join(lines) + "\n"
 
 
 def generate_pulse_summary() -> str:
@@ -85,15 +154,19 @@ def generate_pulse_summary() -> str:
     signal_lines = []
     for s in curr_signals:
         name = s["signal_name"]
+        display = _format_signal_name(name)
         score = round(s["normalised_score"], 1)
         prev = prev_sig_map.get(name)
+        inv_tag = " [INVERTED]" if name in INVERTED_SIGNALS else ""
+        fallback_tag = " [FALLBACK]" if s["source_weight"] < 1.0 else ""
         if prev is not None:
             delta = round(score - prev, 1)
-            flag = " [FALLBACK]" if s["source_weight"] < 1.0 else ""
-            signal_lines.append(f"{name}: {score} (prev: {round(prev,1)}, Δ: {delta:+.1f}){flag}")
+            signal_lines.append(f"{display}: {score}/100 (prev: {round(prev,1)}, Δ: {delta:+.1f}){inv_tag}{fallback_tag}")
         else:
-            signal_lines.append(f"{name}: {score}")
+            signal_lines.append(f"{display}: {score}/100{inv_tag}{fallback_tag}")
     drivers_with_delta = "\n".join(signal_lines)
+
+    editorial_evidence = _fetch_editorial_evidence(week_iso)
 
     prompt = PULSE_SUMMARY_PROMPT.format(
         smoothed=current["smoothed_score"],
@@ -102,6 +175,7 @@ def generate_pulse_summary() -> str:
         prev_smoothed=prev_smoothed,
         interactions_block=interactions_block,
         macro_context=macro_context,
+        editorial_evidence=editorial_evidence,
     )
 
     try:
@@ -173,10 +247,11 @@ def generate_driver_bullets() -> list[dict]:
         delta = round(score - prev, 1) if prev is not None else None
         fallback = "[FALLBACK — data may be stale]" if s["source_weight"] < 1.0 else ""
         entry = {
-            "signal": name,
+            "signal": _format_signal_name(name),
             "score": round(score, 1),
             "prev_score": round(prev, 1) if prev is not None else None,
             "delta": delta,
+            "inverted": name in INVERTED_SIGNALS,
         }
         if fallback:
             entry["note"] = fallback
@@ -191,9 +266,12 @@ def generate_driver_bullets() -> list[dict]:
     else:
         interactions_block = ""
 
+    editorial_evidence = _fetch_editorial_evidence(week_iso, limit=8)
+
     prompt = DRIVER_BULLETS_PROMPT.format(
         signals_json=json.dumps(signals_data, indent=2),
         interactions_block=interactions_block,
+        editorial_evidence=editorial_evidence,
     )
 
     try:
@@ -263,6 +341,8 @@ def generate_top_line_hooks(top_items_text: str = "") -> list[str]:
 
     macro_context = fetch_macro_headlines()
 
+    editorial_evidence = _fetch_editorial_evidence(current["week_iso"])
+
     prompt = TOP_LINE_HOOKS_PROMPT.format(
         smoothed=current["smoothed_score"],
         direction=current["direction"],
@@ -270,6 +350,7 @@ def generate_top_line_hooks(top_items_text: str = "") -> list[str]:
         top_items=items_text,
         interactions_block=interactions_block,
         macro_context=macro_context,
+        editorial_evidence=editorial_evidence,
     )
 
     try:

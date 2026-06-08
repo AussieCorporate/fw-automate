@@ -836,7 +836,7 @@ def api_big_conv_candidates() -> JSONResponse:
         JOIN raw_items ri ON ci.raw_item_id = ri.id
         WHERE ri.week_iso = ?
           AND ci.section IN ('big_conversation_seed', 'what_we_watching', 'finds')
-        ORDER BY (ci.score_relevance * 0.3 + ci.score_tension * 0.4 + ci.score_novelty * 0.3) DESC
+        ORDER BY (COALESCE(ri.post_score, 0) * 0.5 + COALESCE(ri.comment_engagement, 0) * 0.3 + (ci.score_relevance * 0.3 + ci.score_tension * 0.4 + ci.score_novelty * 0.3) * 20) DESC
         LIMIT 5""",
         (week_iso,),
     ).fetchall()
@@ -1010,6 +1010,8 @@ _SECTION_RUNNERS: dict[str, list[tuple[str, "Callable"]]] = {
         ("Google News",   lambda: __import__("flatwhite.editorial.google_news_editorial",   fromlist=["pull_google_news_editorial"]).pull_google_news_editorial()),
         ("RSS feeds",     lambda: __import__("flatwhite.editorial.rss_feeds",               fromlist=["pull_rss_feeds"]).pull_rss_feeds()),
         ("Podcast feeds", lambda: __import__("flatwhite.editorial.podcast_feeds",           fromlist=["pull_podcast_feeds"]).pull_podcast_feeds()),
+        ("Prune stale",   lambda: __import__("flatwhite.db", fromlist=["prune_stale_raw_items"]).prune_stale_raw_items(max_age_days=7)),
+        ("Classify",      lambda: __import__("flatwhite.classify.classifier",               fromlist=["classify_all_unclassified"]).classify_all_unclassified()),
     ],
     "classify": [
         ("Classify items", lambda: __import__("flatwhite.classify.classifier", fromlist=["classify_all_unclassified"]).classify_all_unclassified()),
@@ -1019,17 +1021,23 @@ _SECTION_RUNNERS: dict[str, list[tuple[str, "Callable"]]] = {
         ("Google News",   lambda: __import__("flatwhite.editorial.google_news_editorial", fromlist=["pull_google_news_editorial"]).pull_google_news_editorial()),
         ("RSS feeds",     lambda: __import__("flatwhite.editorial.rss_feeds",             fromlist=["pull_rss_feeds"]).pull_rss_feeds()),
         ("Podcast feeds", lambda: __import__("flatwhite.editorial.podcast_feeds",         fromlist=["pull_podcast_feeds"]).pull_podcast_feeds()),
+        ("Prune stale",   lambda: __import__("flatwhite.db", fromlist=["prune_stale_raw_items"]).prune_stale_raw_items(max_age_days=7)),
         ("Classify",      lambda: __import__("flatwhite.classify.classifier",             fromlist=["classify_all_unclassified"]).classify_all_unclassified()),
     ],
     "lobby": [
         ("Employer snapshots", lambda: __import__("flatwhite.signals.hiring_pulse", fromlist=["pull_hiring_pulse"]).pull_hiring_pulse()),
     ],
     "thread": [
-        ("Reddit RSS", lambda: __import__("flatwhite.editorial.reddit_rss",    fromlist=["pull_reddit_editorial"]).pull_reddit_editorial()),
-        ("Classify",   lambda: __import__("flatwhite.classify.classifier",     fromlist=["classify_all_unclassified"]).classify_all_unclassified()),
+        ("Reddit RSS",  lambda: __import__("flatwhite.editorial.reddit_rss", fromlist=["pull_reddit_editorial"]).pull_reddit_editorial()),
+        ("Prune stale", lambda: __import__("flatwhite.db", fromlist=["prune_stale_raw_items"]).prune_stale_raw_items(max_age_days=7)),
+        ("Classify",    lambda: __import__("flatwhite.classify.classifier",  fromlist=["classify_all_unclassified"]).classify_all_unclassified()),
+    ],
+    "linkedin_insights": [
+        ("LinkedIn Insights", lambda: __import__("flatwhite.signals.linkedin_insights", fromlist=["scrape_all_company_insights"]).scrape_all_company_insights()),
     ],
     "off_the_clock": [
         ("Off the Clock", lambda: __import__("flatwhite.editorial.off_the_clock", fromlist=["pull_off_the_clock"]).pull_off_the_clock()),
+        ("Prune stale",   lambda: __import__("flatwhite.db", fromlist=["prune_stale_raw_items"]).prune_stale_raw_items(max_age_days=7)),
         ("Classify OTC",  lambda: __import__("flatwhite.classify.classifier",     fromlist=["classify_all_otc_unclassified"]).classify_all_otc_unclassified()),
     ],
     "classify_otc": [
@@ -1039,6 +1047,7 @@ _SECTION_RUNNERS: dict[str, list[tuple[str, "Callable"]]] = {
         ("Reddit RSS",  lambda: __import__("flatwhite.editorial.reddit_rss",             fromlist=["pull_reddit_editorial"]).pull_reddit_editorial()),
         ("Google News", lambda: __import__("flatwhite.editorial.google_news_editorial",  fromlist=["pull_google_news_editorial"]).pull_google_news_editorial()),
         ("Top AU news", lambda: __import__("flatwhite.editorial.google_news_top_au",     fromlist=["pull_google_news_top_au"]).pull_google_news_top_au()),
+        ("Prune stale", lambda: __import__("flatwhite.db", fromlist=["prune_stale_raw_items"]).prune_stale_raw_items(max_age_days=7)),
         ("Classify",    lambda: __import__("flatwhite.classify.classifier",              fromlist=["classify_all_unclassified"]).classify_all_unclassified()),
     ],
 }
@@ -1401,14 +1410,14 @@ async def save_manual_feedback(request: Request) -> JSONResponse:
 
 @app.get("/api/lobby")
 def api_lobby() -> JSONResponse:
-    """Return employer hiring data with 8-week trend history."""
+    """Return employer hiring data with full available trend history."""
     conn = get_connection()
     week_iso = get_current_week_iso()
 
-    # Build last 8 ISO weeks (oldest first, current last)
+    # Build last 26 ISO weeks (6 months) for trend data
     year, week_num = int(week_iso[:4]), int(week_iso[6:])
     dt = _dt.datetime.strptime(f"{year}-W{week_num:02d}-1", "%G-W%V-%u")
-    week_isos = [(dt - _dt.timedelta(weeks=i)).strftime("%G-W%V") for i in range(7, -1, -1)]
+    week_isos = [(dt - _dt.timedelta(weeks=i)).strftime("%G-W%V") for i in range(25, -1, -1)]
     # week_isos[0] = 8 weeks ago, week_isos[-1] = current
     prev_week = week_isos[-2]
     month_ago_week = week_isos[-5]  # 4 weeks ago
@@ -1448,9 +1457,17 @@ def api_lobby() -> JSONResponse:
         mom_delta = current_count - month_ago_count if month_ago_count is not None else None
         wow_pct = round(wow_delta / prev_count * 100, 1) if prev_count and wow_delta is not None else None
 
-        # History: last 6 weeks of counts (oldest first), None-filled if missing
-        history_weeks = week_isos[-6:]
-        history = [weeks.get(w) for w in history_weeks]
+        # History: all available weeks of counts (oldest first), None-filled if missing
+        history = [weeks.get(w) for w in week_isos]
+
+        # Compute trend direction over available data (sustained hiring vs cutting)
+        non_null = [h for h in history if h is not None]
+        if len(non_null) >= 3:
+            first_third = sum(non_null[:len(non_null)//3]) / (len(non_null)//3)
+            last_third = sum(non_null[-(len(non_null)//3):]) / (len(non_null)//3)
+            trend_pct = round((last_third - first_third) / first_third * 100, 1) if first_third > 0 else None
+        else:
+            trend_pct = None
 
         employers.append({
             "employer_id": emp_id,
@@ -1461,6 +1478,7 @@ def api_lobby() -> JSONResponse:
             "delta": wow_delta,
             "delta_pct": wow_pct,
             "mom_delta": mom_delta,
+            "trend_pct": trend_pct,
             "history": history,
         })
 
@@ -1479,9 +1497,17 @@ def api_lobby() -> JSONResponse:
     _conn.close()
     last_scraped_at = _row[0] if _row else None
 
+    # Load LinkedIn insights if available
+    try:
+        from flatwhite.signals.linkedin_insights import load_linkedin_insights
+        li_insights = load_linkedin_insights(week_iso)
+    except Exception:
+        li_insights = {}
+
     return JSONResponse({
         "employers": employers,
         "top_movers": movers[:10],
+        "linkedin_insights": {k: {kk: vv for kk, vv in v.items() if kk != "raw_text"} for k, v in li_insights.items()},
         "week_iso": week_iso,
         "last_scraped_at": last_scraped_at,
     })
@@ -1659,7 +1685,7 @@ def api_big_conv_candidates() -> JSONResponse:
         JOIN raw_items ri ON ci.raw_item_id = ri.id
         WHERE ri.week_iso = ?
           AND ci.section IN ('big_conversation_seed', 'what_we_watching', 'finds')
-        ORDER BY (ci.score_relevance * 0.3 + ci.score_tension * 0.4 + ci.score_novelty * 0.3) DESC
+        ORDER BY (COALESCE(ri.post_score, 0) * 0.5 + COALESCE(ri.comment_engagement, 0) * 0.3 + (ci.score_relevance * 0.3 + ci.score_tension * 0.4 + ci.score_novelty * 0.3) * 20) DESC
         LIMIT 5""",
         (week_iso,),
     ).fetchall()
@@ -1681,6 +1707,7 @@ def _proceed_pulse(data: dict, model: str | None, custom_prompt: str | None = No
     from flatwhite.dashboard.state import load_pulse_state, load_signals_this_week
     from flatwhite.db import get_interactions
     from flatwhite.signals.macro_context import fetch_macro_headlines
+    from flatwhite.pulse.summary import _fetch_editorial_evidence
 
     if custom_prompt:
         return route(task_type="summary", prompt=custom_prompt, system=PULSE_SUMMARY_SYSTEM)
@@ -1700,16 +1727,25 @@ def _proceed_pulse(data: dict, model: str | None, custom_prompt: str | None = No
     conn.close()
     prev_map = {s["signal_name"]: s["normalised_score"] for s in prev_rows}
 
+    # Respect selected signals from the dashboard checkboxes
+    selected_signals = data.get("selected_signals", [s["signal_name"] for s in signals])
+
+    from flatwhite.pulse.summary import _format_signal_name, INVERTED_SIGNALS
+
     signal_lines = []
     for s in signals:
         name = s["signal_name"]
+        if name not in selected_signals:
+            continue
+        display = _format_signal_name(name)
         score = round(s["normalised_score"], 1)
         prev = prev_map.get(name)
+        inv_tag = " [INVERTED]" if name in INVERTED_SIGNALS else ""
         if prev is not None:
             delta = round(score - prev, 1)
-            signal_lines.append(f"{name}: {score} (prev: {round(prev, 1)}, Δ: {delta:+.1f})")
+            signal_lines.append(f"{display}: {score}/100 (prev: {round(prev, 1)}, Δ: {delta:+.1f}){inv_tag}")
         else:
-            signal_lines.append(f"{name}: {score}")
+            signal_lines.append(f"{display}: {score}/100{inv_tag}")
 
     interactions = get_interactions(week_iso)
     interactions_block = ""
@@ -1724,6 +1760,25 @@ def _proceed_pulse(data: dict, model: str | None, custom_prompt: str | None = No
     except Exception:
         pass
 
+    editorial_evidence = _fetch_editorial_evidence(week_iso)
+
+    # Include signal intelligence commentary for selected signals
+    intel_conn = get_connection()
+    intel_rows = intel_conn.execute(
+        "SELECT signal_name, commentary, articles FROM signal_intelligence WHERE week_iso = ?",
+        (week_iso,),
+    ).fetchall()
+    intel_conn.close()
+    intel_lines = []
+    for r in intel_rows:
+        if r["signal_name"] in selected_signals and r["commentary"]:
+            intel_lines.append(f"- {r['signal_name']}: {r['commentary']}")
+    if intel_lines:
+        editorial_evidence += (
+            "\nSignal evidence (analyst commentary on key movers):\n"
+            + "\n".join(intel_lines) + "\n"
+        )
+
     prompt = PULSE_SUMMARY_PROMPT.format(
         smoothed=f"{pulse['smoothed_score']:.0f}" if pulse else "50",
         direction=pulse["direction"] if pulse else "stable",
@@ -1731,8 +1786,105 @@ def _proceed_pulse(data: dict, model: str | None, custom_prompt: str | None = No
         drivers="\n".join(signal_lines[:10]),
         interactions_block=interactions_block,
         macro_context=macro_context,
+        editorial_evidence=editorial_evidence,
     )
     return route(task_type="summary", prompt=prompt, system=PULSE_SUMMARY_SYSTEM)
+
+
+def _load_big_conv_evidence(
+    headline: str, pitch: str,
+    supporting_ids: list[int], supporting_summaries: list[str],
+    data: dict,
+) -> str:
+    """Load full article bodies and find related articles for Big Conversation.
+
+    Returns a formatted text block with:
+    1. The selected article's full body text
+    2. Explicitly provided supporting items (with bodies)
+    3. Auto-discovered related articles from the same week matching the topic
+    """
+    conn = get_connection()
+    week_iso = get_current_week_iso()
+    evidence_parts: list[str] = []
+
+    # 1. Load supporting items by ID with full body text
+    loaded_ids: set[int] = set()
+    if supporting_ids:
+        for sid in supporting_ids:
+            row = conn.execute(
+                """SELECT ci.id, ci.summary, ri.title, ri.source, ri.url, ri.body
+                FROM curated_items ci JOIN raw_items ri ON ci.raw_item_id = ri.id
+                WHERE ci.id = ?""",
+                (sid,),
+            ).fetchone()
+            if row:
+                loaded_ids.add(row["id"])
+                body = (row["body"] or "")[:3000]
+                # Skip bodies that are just HTML redirect links
+                if body.startswith("<a href=") or len(body) < 30:
+                    body = ""
+                body_block = f"\n  Full text: {body}" if body else ""
+                evidence_parts.append(
+                    f"- {row['title']} ({row['source']})\n"
+                    f"  Summary: {row['summary']}{body_block}"
+                )
+                if row["url"]:
+                    evidence_parts[-1] += f"\n  URL: {row['url']}"
+
+    # 2. Add pre-formatted supporting summaries (from frontend)
+    for s in supporting_summaries:
+        if s not in [e.split("\n")[0].lstrip("- ") for e in evidence_parts]:
+            evidence_parts.append(f"- {s}")
+
+    # 3. If still no summaries, try custom topic data
+    if not evidence_parts and data.get("supporting_data"):
+        evidence_parts.append(f"- {data['supporting_data']}")
+
+    # 4. Auto-discover related articles from same week
+    # Extract key words from headline for matching
+    stop_words = {"the", "a", "an", "is", "are", "was", "were", "for", "of", "to", "in", "and", "or", "on", "at", "by", "its", "has", "have", "with", "this", "that", "from"}
+    keywords = [w.lower() for w in re.sub(r"[^\w\s]", "", headline).split() if len(w) > 3 and w.lower() not in stop_words]
+
+    if keywords:
+        # Find articles with matching keywords in title or body
+        all_items = conn.execute(
+            """SELECT ci.id, ci.summary, ci.section, ri.title, ri.source, ri.url, ri.body
+            FROM curated_items ci JOIN raw_items ri ON ci.raw_item_id = ri.id
+            WHERE ri.week_iso = ? AND ci.section != 'discard' AND ci.id NOT IN ({})
+            ORDER BY ci.weighted_composite DESC""".format(
+                ",".join("?" for _ in loaded_ids) if loaded_ids else "0"
+            ),
+            (week_iso, *loaded_ids),
+        ).fetchall()
+
+        related: list[dict] = []
+        for item in all_items:
+            title_lower = (item["title"] or "").lower()
+            body_lower = (item["body"] or "").lower()
+            text = title_lower + " " + body_lower
+            match_count = sum(1 for kw in keywords if kw in text)
+            if match_count >= 2:  # At least 2 keyword matches
+                related.append(dict(item))
+
+        if related:
+            evidence_parts.append("")
+            evidence_parts.append("RELATED ARTICLES on the same topic from this week:")
+            for r in related[:5]:
+                body = (r["body"] or "")[:2000]
+                if body.startswith("<a href=") or len(body) < 30:
+                    body = ""
+                body_block = f"\n  Full text: {body}" if body else ""
+                evidence_parts.append(
+                    f"- {r['title']} ({r['source']})\n"
+                    f"  Summary: {r['summary']}{body_block}"
+                )
+
+    conn.close()
+
+    if not evidence_parts:
+        return "(no supporting items)"
+
+    return "\n".join(evidence_parts)
 
 
 def _proceed_big_conversation(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
@@ -1745,11 +1897,10 @@ def _proceed_big_conversation(data: dict, model: str | None, custom_prompt: str 
     # Accept both field name variants (frontend sends title/summary, custom form sends headline/pitch)
     headline = data.get("headline") or data.get("title", "")
     pitch = data.get("pitch") or data.get("summary", "")
+    supporting_ids = data.get("supporting_item_ids", [])
     supporting_summaries = data.get("supporting_summaries") or []
-    # Custom topic sends supporting_data as a plain string — convert to list
-    if not supporting_summaries and data.get("supporting_data"):
-        supporting_summaries = [data["supporting_data"]]
-    items_block = "\n".join(f"- {s}" for s in supporting_summaries) if supporting_summaries else "(no supporting items)"
+
+    items_block = _load_big_conv_evidence(headline, pitch, supporting_ids, supporting_summaries, data)
 
     prompt = BIG_CONVERSATION_DRAFT_PROMPT.format(
         headline=headline,
@@ -1849,19 +2000,30 @@ def _proceed_off_the_clock(data: dict, model: str | None, custom_prompt: str | N
     prompt = (
         "Write the Off the Clock entries for Flat White.\n\n"
         f"{picks_block}\n\n"
-        "For each item, write:\n"
-        "1. A short, specific TITLE (4-8 words). This is the hook — make it feel like something worth clicking. "
-        "Examples of the right register: 'The $38 pasta that's taken over Sydney', "
-        "'Adolescence on Netflix', 'Uniqlo U drops this Friday', "
-        "'The 5 things to remove from your nightstand tonight'. "
-        "It can be an editorial take, the name of the thing, or a punchy framing — whatever works best for that item.\n"
-        "2. A BLURB: 1-2 sentences. Dry, specific, not a review. A statement from someone who already knows — "
-        "fun and engaging, acts as a hook. Australian English. No filler intensifiers.\n\n"
-        "After the blurb, append [LINK](url) using the URL provided.\n\n"
-        "Output each item as (blank line between items):\n"
-        "CATEGORY\n"
-        "TITLE\n"
-        "BLURB [LINK](url)"
+        "For each item, write EXACTLY this format:\n\n"
+        "CATEGORY (uppercase, one word: EATING, WATCHING, READING, WEARING, or GOING)\n"
+        "A catchy title (4-8 words, sentence case, no period)\n\n"
+        "One sentence that is dry, specific, fun and engaging. Not a review. A statement from "
+        "someone who already knows. Australian English. No filler intensifiers. The sentence "
+        "should make you want to click. End with LINK\n\n"
+        "EXAMPLES OF THE RIGHT OUTPUT:\n\n"
+        "EATING\n"
+        "The dinner with no commute costs\n\n"
+        "Melbourne's Elpiet Group is covering your transport costs to get you through the door "
+        "of their Italian restaurants, which, given fuel prices, is either generous hospitality "
+        "or very good marketing. LINK\n\n"
+        "WATCHING\n"
+        "The Office spin-off dropped last week\n\n"
+        "The Office spin-off drops this week, so if you were planning to be productive on Friday "
+        "afternoon, now you have a reason not to be. LINK\n\n"
+        "READING\n"
+        "Should you keep your holiday flights?\n\n"
+        "With the Iran conflict escalating, here's a practical rundown for Australian travellers "
+        "trying to work out whether their upcoming flights are still worth keeping. LINK\n\n"
+        "---\n\n"
+        "Replace LINK with [LINK](url) using the URL provided for each item.\n"
+        "One entry per item. Blank line between category header and blurb. "
+        "Blank line between entries."
     )
     return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE)
 
@@ -1903,21 +2065,55 @@ def _proceed_lobby(data: dict, model: str | None, custom_prompt: str | None = No
             current = e.get("open_roles_count", "?")
             wow = e.get("delta")
             mom = e.get("mom_delta")
+            trend = e.get("trend_pct")
+            sector = e.get("sector", "")
             wow_str = f"+{wow}" if wow and wow > 0 else str(wow) if wow is not None else "—"
             mom_str = f"+{mom}" if mom and mom > 0 else str(mom) if mom is not None else "—"
-            employer_lines.append(f"- {name}: {current} roles (WoW: {wow_str}, MoM: {mom_str})")
+            trend_str = f", overall trend {trend:+.1f}%" if trend is not None else ""
+            # Include the full history as a sparkline of numbers
+            history = e.get("history", [])
+            history_vals = [str(h) if h is not None else "—" for h in history]
+            history_str = f" | Weekly history: [{', '.join(history_vals[-8:])}]" if any(h is not None for h in history) else ""
+
+            employer_lines.append(
+                f"- {name} [{sector}]: {current} open roles (WoW: {wow_str}, MoM: {mom_str}{trend_str}){history_str}"
+            )
         else:
             employer_lines.append(f"- {name}")
 
     employer_block = "\n".join(employer_lines) if employer_lines else "No employers selected."
 
+    # Add LinkedIn insights if available
+    linkedin_block = ""
+    try:
+        from flatwhite.signals.linkedin_insights import load_linkedin_insights, format_insights_for_prompt
+        li_data = load_linkedin_insights()
+        if li_data:
+            # Filter to selected employers only
+            selected_names = {
+                (e.get("employer_name") if isinstance(e, dict) else str(e))
+                for e in selected
+            }
+            filtered = {k: v for k, v in li_data.items() if k in selected_names}
+            if filtered:
+                linkedin_block = "\n" + format_insights_for_prompt(filtered) + "\n"
+    except Exception:
+        pass
+
     prompt = (
         "Write The Lobby section for this week's Flat White newsletter.\n\n"
-        f"Employer hiring movements this week:\n{employer_block}\n\n"
-        "Analyse these hiring movements. What do they signal about the corporate job market? "
-        "Are companies restructuring, expanding, or pulling back? Identify employers with "
-        "sustained trends (same direction for multiple weeks) vs one-week anomalies. "
-        "Connect the dots for someone working in Big 4, law, banking, or tech.\n\n"
+        f"Employer hiring movements this week (from ATS scraping of careers pages):\n{employer_block}\n\n"
+        f"{linkedin_block}"
+        "ANALYSIS GUIDANCE:\n"
+        "- Use the weekly history to identify sustained trends vs one-week anomalies. "
+        "A company cutting roles for 4 consecutive weeks tells a different story than a single-week dip.\n"
+        "- Cross-reference WoW (this week's move) with the overall trend. A company adding 10 roles "
+        "this week but down 15% over 6 months is backfilling attrition, not expanding.\n"
+        "- Compare across sectors: are all Big 4 moving the same way, or is one diverging?\n"
+        "- If LinkedIn data is available, use headcount growth and new hires to add context "
+        "that raw job postings alone cannot provide (e.g. net growth vs churn).\n"
+        "- Connect the dots for someone working in Big 4, law, banking, or tech.\n\n"
+        "Voice: dry, observant, Australian corporate commentary. 3-4 paragraphs.\n"
         "Output ONLY the commentary text. No title. No sign-off."
     )
     return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE)
@@ -2000,18 +2196,21 @@ async def api_preview_prompt(request: Request) -> JSONResponse:
             ).fetchall()
             conn.close()
             prev_map = {s["signal_name"]: s["normalised_score"] for s in prev_rows}
+            from flatwhite.pulse.summary import _format_signal_name, INVERTED_SIGNALS
             selected_signals = data.get("selected_signals", [s["signal_name"] for s in signals])
             signal_lines = []
             for s in signals:
                 if s["signal_name"] in selected_signals:
                     name = s["signal_name"]
+                    display = _format_signal_name(name)
                     score = round(s["normalised_score"], 1)
                     prev = prev_map.get(name)
+                    inv_tag = " [INVERTED]" if name in INVERTED_SIGNALS else ""
                     if prev is not None:
                         delta = round(score - prev, 1)
-                        signal_lines.append(f"{name}: {score} (prev: {round(prev,1)}, Δ: {delta:+.1f})")
+                        signal_lines.append(f"{display}: {score}/100 (prev: {round(prev,1)}, Δ: {delta:+.1f}){inv_tag}")
                     else:
-                        signal_lines.append(f"{name}: {score}")
+                        signal_lines.append(f"{display}: {score}/100{inv_tag}")
 
             interactions = get_interactions(week_iso)
             interactions_block = ""
@@ -2025,13 +2224,43 @@ async def api_preview_prompt(request: Request) -> JSONResponse:
             except Exception:
                 pass
 
+            from flatwhite.pulse.summary import _fetch_editorial_evidence
+            editorial_evidence = _fetch_editorial_evidence(week_iso)
+
+            # Include signal intelligence for selected signals
+            intel_conn2 = get_connection()
+            intel_rows2 = intel_conn2.execute(
+                "SELECT signal_name, commentary FROM signal_intelligence WHERE week_iso = ?",
+                (week_iso,),
+            ).fetchall()
+            intel_conn2.close()
+            intel_lines2 = []
+            for r2 in intel_rows2:
+                if r2["signal_name"] in selected_signals and r2["commentary"]:
+                    intel_lines2.append(f"- {r2['signal_name']}: {r2['commentary']}")
+            if intel_lines2:
+                editorial_evidence += (
+                    "\nSignal evidence (analyst commentary on key movers):\n"
+                    + "\n".join(intel_lines2) + "\n"
+                )
+
+            # Fetch previous week's smoothed score for accurate WoW comparison
+            prev_pulse_conn = get_connection()
+            prev_pulse_row = prev_pulse_conn.execute(
+                "SELECT smoothed_score FROM pulse_history WHERE week_iso = ?",
+                (prev_wk,),
+            ).fetchone()
+            prev_pulse_conn.close()
+            prev_smoothed_val = prev_pulse_row["smoothed_score"] if prev_pulse_row else (pulse.get("smoothed_score", 50) if pulse else 50)
+
             prompt = PULSE_SUMMARY_PROMPT.format(
                 smoothed=f"{pulse['smoothed_score']:.0f}" if pulse else "50",
                 direction=pulse["direction"] if pulse else "stable",
-                prev_smoothed=f"{pulse.get('smoothed_score', 50):.0f}" if pulse else "50",
+                prev_smoothed=f"{prev_smoothed_val:.0f}",
                 drivers="\n".join(signal_lines[:10]),
                 interactions_block=interactions_block,
                 macro_context=macro_context,
+                editorial_evidence=editorial_evidence,
             )
 
             # Build moverDeltas for context_breakdown
@@ -2079,6 +2308,26 @@ async def api_preview_prompt(request: Request) -> JSONResponse:
 
             return JSONResponse({"prompt": prompt, "section": section, "context_breakdown": context_breakdown})
 
+        elif section == "big_conversation":
+            from flatwhite.classify.prompts import BIG_CONVERSATION_DRAFT_PROMPT
+            headline = data.get("headline") or data.get("title", "")
+            pitch = data.get("pitch") or data.get("summary", "")
+            supporting_ids = data.get("supporting_item_ids", [])
+            supporting_summaries = data.get("supporting_summaries", [])
+
+            items_with_bodies = _load_big_conv_evidence(headline, pitch, supporting_ids, supporting_summaries, data)
+
+            prompt = BIG_CONVERSATION_DRAFT_PROMPT.format(
+                headline=headline,
+                pitch=pitch,
+                supporting_items=items_with_bodies,
+            )
+            context_breakdown = {
+                "signals": [], "signal_intelligence": [],
+                "composite": {},
+                "items": [{"name": line[:80]} for line in items_with_bodies.split("\n") if line.strip().startswith("-")],
+            }
+
         elif section == "lobby":
             selected = data.get("selected_employers", [])
             employer_lines = []
@@ -2120,13 +2369,13 @@ async def api_preview_prompt(request: Request) -> JSONResponse:
                 for p in picks
             )
             prompt = (
-                "Polish these Off the Clock blurbs for Flat White.\n\n"
+                "Write the Off the Clock entries for Flat White.\n\n"
                 f"{picks_block}\n\n"
-                "For each, rewrite the blurb in 1 sentence. Voice: dry, specific, but not rude or arrogant or condescending. "
-                "Not a review. A statement from someone who already knows but done in a way that's fun and engaging and acts "
-                "like a hook to get people reading. Australian English.\n\n"
-                "After the sentence, append [LINK](url) using the URL provided for that item.\n\n"
-                "Output as: CATEGORY: BLURB [LINK](url) (one per line)"
+                "For each item, output EXACTLY this format:\n\n"
+                "CATEGORY (uppercase: EATING, WATCHING, READING, WEARING, or GOING)\n"
+                "A catchy title (4-8 words, sentence case)\n\n"
+                "One dry, specific, fun sentence. Not a review. Australian English. End with [LINK](url).\n\n"
+                "Blank line between entries."
             )
             context_breakdown = {
                 "signals": [], "signal_intelligence": [],
@@ -2161,3 +2410,98 @@ async def api_preview_prompt(request: Request) -> JSONResponse:
 
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ── Topic Heat (Big Conversation engagement signals) ─────────────────────────
+
+# Cache for Google rising queries (expensive to fetch — store per session)
+_rising_queries_cache: dict[str, Any] = {"data": None, "fetched_at": None}
+
+
+@app.get("/api/topic-heat")
+def api_topic_heat() -> JSONResponse:
+    """Return current topic heat data: Reddit anomalies + cached rising queries."""
+    from flatwhite.signals.topic_heat import fetch_reddit_topic_heat
+    week_iso = get_current_week_iso()
+    reddit = fetch_reddit_topic_heat(week_iso)
+    return JSONResponse({
+        "reddit_heat": reddit,
+        "rising_queries": _rising_queries_cache["data"] or [],
+        "rising_queries_fetched_at": _rising_queries_cache["fetched_at"],
+        "week_iso": week_iso,
+    })
+
+
+@app.post("/api/topic-heat/fetch-trends")
+async def api_fetch_rising_trends() -> JSONResponse:
+    """Fetch Google Trends rising queries for AusCorp seed keywords.
+
+    Expensive call (~5 min due to rate limits). Results are cached in memory
+    and automatically injected into Big Conversation angle generation.
+    """
+    import asyncio
+    loop = asyncio.get_event_loop()
+    try:
+        from flatwhite.signals.topic_heat import fetch_google_rising_queries
+        queries = await loop.run_in_executor(None, fetch_google_rising_queries)
+        now = _dt.datetime.utcnow().isoformat() + "Z"
+        _rising_queries_cache["data"] = queries
+        _rising_queries_cache["fetched_at"] = now
+        return JSONResponse({
+            "rising_queries": queries,
+            "fetched_at": now,
+        })
+    except Exception as e:
+        return JSONResponse({"rising_queries": [], "error": str(e)}, status_code=500)
+
+
+# ── Top Picks (Beehiiv Pick & Scroll) ────────────────────────────────────────
+
+# In-memory cache so we don't re-scrape on every page load
+_top_picks_cache: dict[str, Any] = {"data": None, "scraped_at": None}
+
+
+@app.get("/api/top-picks")
+def api_top_picks() -> JSONResponse:
+    """Return cached Top Picks data (Beehiiv click rankings).
+
+    Returns cached results if available, otherwise returns empty list.
+    Frontend must POST /api/top-picks/scrape to trigger a fresh fetch.
+    """
+    return JSONResponse({
+        "picks": _top_picks_cache["data"] or [],
+        "scraped_at": _top_picks_cache["scraped_at"],
+        "week_iso": get_current_week_iso(),
+    })
+
+
+@app.post("/api/top-picks/scrape")
+async def api_top_picks_scrape(request: Request) -> JSONResponse:
+    """Scrape last 7 days of Pick & Scroll click data from Beehiiv.
+
+    Body (optional): {"days": int}  — defaults to 7
+    Returns: {"picks": [...], "scraped_at": str}
+    """
+    import asyncio
+
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    days = body.get("days", 7)
+
+    loop = asyncio.get_event_loop()
+    try:
+        from flatwhite.editorial.beehiiv_picks import scrape_top_picks
+        picks = await loop.run_in_executor(None, scrape_top_picks, days, 20)
+        now = _dt.datetime.utcnow().isoformat() + "Z"
+        _top_picks_cache["data"] = picks
+        _top_picks_cache["scraped_at"] = now
+        return JSONResponse({
+            "picks": picks,
+            "scraped_at": now,
+            "week_iso": get_current_week_iso(),
+        })
+    except Exception as e:
+        return JSONResponse({"picks": [], "error": str(e)}, status_code=500)

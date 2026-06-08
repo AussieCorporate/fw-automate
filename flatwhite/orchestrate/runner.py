@@ -151,8 +151,13 @@ def run_full_pipeline(skip_assemble: bool = True) -> dict:
         from flatwhite.signals.auslaw_velocity import pull_auslaw_velocity
         pull_auslaw_velocity()
 
+        # Prune anything older than the 7-day editorial window
+        from flatwhite.db import prune_stale_raw_items
+        pruned = prune_stale_raw_items(max_age_days=7)
+
         signal_count = len(gt) + 11  # gt dict + 11 individual signals
-        return f"{signal_count} signals, {reddit_count + news_count} editorial items"
+        suffix = f", pruned {pruned['raw_items']} stale" if pruned['raw_items'] else ""
+        return f"{signal_count} signals, {reddit_count + news_count} editorial items{suffix}"
 
     steps.append(run_step("ingest", _ingest))
 

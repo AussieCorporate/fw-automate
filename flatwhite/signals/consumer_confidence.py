@@ -5,8 +5,8 @@ from flatwhite.utils.http import fetch_url
 from flatwhite.db import insert_signal, get_current_week_iso
 
 ROYMORGAN_URL = "https://www.roymorgan.com/morgan-poll/consumer-confidence-anz-roy-morgan-australian-cc-summary/"
-FLOOR = 65.0    # Headroom for crisis — COVID low was ~60; current min is 73.4
-CEILING = 95.0   # Calibrated so recent mean (~82.5) maps to ~58
+FLOOR = 55.0    # True crisis floor — COVID-era trough was ~55
+CEILING = 95.0   # Calibrated so recent mean (~82.5) maps to ~69
 
 def _parse_latest_index(html: str) -> float | None:
     """Parse the most recent weekly value from the ANZ-Roy Morgan summary table."""
@@ -40,8 +40,10 @@ def pull_consumer_confidence() -> float:
         is_fallback = True
         print(f"  ⚠ Consumer confidence scrape failed ({e}) — using fallback (85.0, weight 0.3)")
 
-    normalised = ((raw_value - FLOOR) / (CEILING - FLOOR)) * 100.0
-    normalised = max(0.0, min(100.0, normalised))
+    # Stress convention: higher consumer confidence → lower stress score.
+    health = ((raw_value - FLOOR) / (CEILING - FLOOR)) * 100.0
+    health = max(0.0, min(100.0, health))
+    normalised = 100.0 - health
 
     source_weight = 0.3 if is_fallback else 1.0
 

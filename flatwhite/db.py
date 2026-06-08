@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS raw_items (
     body TEXT,
     source TEXT NOT NULL,
     url TEXT,
-    lane TEXT NOT NULL CHECK (lane IN ('pulse', 'editorial')),
+    lane TEXT NOT NULL CHECK (lane IN ('pulse', 'editorial', 'lifestyle')),
     subreddit TEXT,
     pulled_at TEXT NOT NULL,
     week_iso TEXT NOT NULL,
@@ -222,6 +222,16 @@ def migrate_db() -> None:
         "ALTER TABLE raw_items ADD COLUMN comment_engagement INTEGER",
         "ALTER TABLE curated_items ADD COLUMN our_take TEXT",
         "ALTER TABLE curated_items ADD COLUMN au_relevance INTEGER",
+        "ALTER TABLE raw_items ADD COLUMN published_at TEXT",
+        "ALTER TABLE raw_items ADD COLUMN num_comments INTEGER",
+        # section_outputs gained saved_at; legacy DBs created with
+        # created_at/updated_at need the column added (no expression default —
+        # SQLite forbids it in ADD COLUMN; save_section_output sets it on write).
+        "ALTER TABLE section_outputs ADD COLUMN saved_at TEXT",
+        # lifestyle_category was added to the live DB out-of-band when Off the
+        # Clock ingest landed; without this migration, fresh DBs (and the test
+        # suite's temp_db) blow up on every lifestyle insert.
+        "ALTER TABLE raw_items ADD COLUMN lifestyle_category TEXT",
     ]
     for sql in simple_migrations:
         try:
@@ -337,7 +347,23 @@ def migrate_db() -> None:
         )
     """)
 
-    # v4 section_outputs table
+    # v4 linkedin_insights table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS linkedin_insights (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            employer_name TEXT NOT NULL,
+            week_iso TEXT NOT NULL,
+            employee_count INTEGER,
+            headcount_growth_pct TEXT,
+            median_tenure REAL,
+            new_hires_6m INTEGER,
+            raw_text TEXT,
+            scraped_at TEXT,
+            UNIQUE(employer_name, week_iso)
+        )
+    """)
+
+    # v5 section_outputs table
     conn.execute("""
         CREATE TABLE IF NOT EXISTS section_outputs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -349,6 +375,48 @@ def migrate_db() -> None:
             UNIQUE(week_iso, section)
         )
     """)
+
+    # v6 polarity flip: convert pulse signal + composite scores from
+    # health convention (high = healthy) to stress convention (high = stressed).
+    # Gated by PRAGMA user_version so it only runs once.
+    polarity_version = conn.execute("PRAGMA user_version").fetchone()[0]
+    if polarity_version < 1:
+        conn.execute(
+            "UPDATE signals SET normalised_score = 100.0 - normalised_score "
+            "WHERE lane = 'pulse'"
+        )
+        conn.execute(
+            "UPDATE pulse_history SET "
+            "composite_score = 100.0 - composite_score, "
+            "smoothed_score = 100.0 - smoothed_score"
+        )
+        # Direction: 'up' previously meant the health score rose (good); under
+        # stress convention the same underlying movement is the score falling.
+        # Swap the labels so 'up' now means stress is climbing (bad).
+        conn.execute(
+            "UPDATE pulse_history SET direction = "
+            "CASE direction WHEN 'up' THEN 'down' WHEN 'down' THEN 'up' ELSE direction END"
+        )
+        # Flip per-driver scores stored in drivers_json so the dashboard's
+        # top-drivers display matches the new convention.
+        import json as _json
+        for row in conn.execute("SELECT id, drivers_json FROM pulse_history WHERE drivers_json IS NOT NULL").fetchall():
+            try:
+                drivers = _json.loads(row["drivers_json"])
+            except Exception:
+                continue
+            if not isinstance(drivers, list):
+                continue
+            for d in drivers:
+                if isinstance(d, dict) and "score" in d:
+                    d["score"] = round(100.0 - float(d["score"]), 1)
+                    if "weight" in d:
+                        d["contribution"] = round(d["score"] * float(d["weight"]), 2)
+            conn.execute(
+                "UPDATE pulse_history SET drivers_json = ? WHERE id = ?",
+                (_json.dumps(drivers), row["id"]),
+            )
+        conn.execute("PRAGMA user_version = 1")
 
     conn.commit()
     conn.close()
@@ -427,13 +495,14 @@ def insert_raw_item(
     lane: str,
     subreddit: str | None,
     week_iso: str,
+    published_at: str | None = None,
 ) -> int:
     conn = get_connection()
     cursor = conn.execute(
         """INSERT OR IGNORE INTO raw_items
-        (title, body, source, url, lane, subreddit, pulled_at, week_iso)
-        VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?)""",
-        (title, body, source, url, lane, subreddit, week_iso),
+        (title, body, source, url, lane, subreddit, pulled_at, week_iso, published_at)
+        VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, ?)""",
+        (title, body, source, url, lane, subreddit, week_iso, published_at),
     )
     conn.commit()
     row_id = cursor.lastrowid
@@ -446,6 +515,62 @@ def insert_raw_item(
         return existing["id"] if existing else 0
     conn.close()
     return row_id
+
+
+def prune_stale_raw_items(max_age_days: int = 7, lanes: tuple[str, ...] = ("editorial", "lifestyle")) -> dict:
+    """Hard-delete raw_items whose published_at is older than max_age_days.
+
+    Cascades through editor_decisions → curated_items → raw_items so dashboard
+    views, classified pools, and editor history all stay consistent.
+
+    Only deletes rows with a non-null published_at; rows lacking a publish date
+    are left alone (callers without upstream date info would otherwise be wiped).
+    Limited to the named lanes — pulse signals never have a publish date.
+
+    Returns a counts dict for logging.
+    """
+    conn = get_connection()
+    placeholders = ",".join("?" for _ in lanes)
+    stale = conn.execute(
+        f"""SELECT id FROM raw_items
+        WHERE published_at IS NOT NULL
+          AND published_at < datetime('now', ?)
+          AND lane IN ({placeholders})""",
+        (f"-{max_age_days} days", *lanes),
+    ).fetchall()
+    stale_ids = [r["id"] for r in stale]
+    if not stale_ids:
+        conn.close()
+        return {"raw_items": 0, "curated_items": 0, "editor_decisions": 0}
+
+    id_placeholders = ",".join("?" for _ in stale_ids)
+    curated = conn.execute(
+        f"SELECT id FROM curated_items WHERE raw_item_id IN ({id_placeholders})",
+        stale_ids,
+    ).fetchall()
+    curated_ids = [r["id"] for r in curated]
+
+    ed_count = 0
+    if curated_ids:
+        cur_placeholders = ",".join("?" for _ in curated_ids)
+        ed_count = conn.execute(
+            f"DELETE FROM editor_decisions WHERE curated_item_id IN ({cur_placeholders})",
+            curated_ids,
+        ).rowcount
+        ci_count = conn.execute(
+            f"DELETE FROM curated_items WHERE id IN ({cur_placeholders})",
+            curated_ids,
+        ).rowcount
+    else:
+        ci_count = 0
+
+    ri_count = conn.execute(
+        f"DELETE FROM raw_items WHERE id IN ({id_placeholders})",
+        stale_ids,
+    ).rowcount
+    conn.commit()
+    conn.close()
+    return {"raw_items": ri_count, "curated_items": ci_count, "editor_decisions": ed_count}
 
 
 def insert_pulse(
@@ -547,6 +672,77 @@ def get_current_week_iso() -> str:
     return f"{d.isocalendar()[0]}-W{d.isocalendar()[1]:02d}"
 
 
+def purge_old_data(keep_weeks: int = 2, keep_weeks_otc: int = 3) -> dict[str, int]:
+    """Delete raw_items and cascading curated_items older than the retention window.
+
+    Editorial items: kept for `keep_weeks` (default 2 = current + previous week).
+    OTC/lifestyle items: kept for `keep_weeks_otc` (default 3 = ~2 weeks back).
+    Signals and pulse_history are kept indefinitely (needed for EMA/trend).
+
+    Returns counts of deleted rows.
+    """
+    from datetime import date, timedelta
+
+    today = date.today()
+    conn = get_connection()
+
+    # Build the cutoff week_iso strings
+    editorial_cutoff_date = today - timedelta(weeks=keep_weeks)
+    editorial_cutoff_iso = f"{editorial_cutoff_date.isocalendar()[0]}-W{editorial_cutoff_date.isocalendar()[1]:02d}"
+
+    otc_cutoff_date = today - timedelta(weeks=keep_weeks_otc)
+    otc_cutoff_iso = f"{otc_cutoff_date.isocalendar()[0]}-W{otc_cutoff_date.isocalendar()[1]:02d}"
+
+    # Find raw_item IDs to delete (editorial older than keep_weeks)
+    editorial_ids = conn.execute(
+        """SELECT id FROM raw_items
+           WHERE lane = 'editorial' AND week_iso < ?""",
+        (editorial_cutoff_iso,),
+    ).fetchall()
+    editorial_ids = [r["id"] for r in editorial_ids]
+
+    # Find raw_item IDs to delete (lifestyle/OTC older than keep_weeks_otc)
+    otc_ids = conn.execute(
+        """SELECT id FROM raw_items
+           WHERE lane = 'lifestyle' AND week_iso < ?""",
+        (otc_cutoff_iso,),
+    ).fetchall()
+    otc_ids = [r["id"] for r in otc_ids]
+
+    all_ids = editorial_ids + otc_ids
+    if not all_ids:
+        conn.close()
+        return {"raw_items": 0, "curated_items": 0, "editor_decisions": 0}
+
+    placeholders = ",".join("?" for _ in all_ids)
+
+    # Delete editor_decisions referencing curated_items about to be deleted
+    ed_deleted = conn.execute(
+        f"""DELETE FROM editor_decisions
+            WHERE curated_item_id IN (
+                SELECT id FROM curated_items WHERE raw_item_id IN ({placeholders})
+            )""",
+        all_ids,
+    ).rowcount
+
+    # Delete curated_items referencing old raw_items
+    ci_deleted = conn.execute(
+        f"DELETE FROM curated_items WHERE raw_item_id IN ({placeholders})",
+        all_ids,
+    ).rowcount
+
+    # Delete old raw_items
+    ri_deleted = conn.execute(
+        f"DELETE FROM raw_items WHERE id IN ({placeholders})",
+        all_ids,
+    ).rowcount
+
+    conn.commit()
+    conn.close()
+
+    return {"raw_items": ri_deleted, "curated_items": ci_deleted, "editor_decisions": ed_deleted}
+
+
 def insert_employer_snapshot(
     employer_id: int,
     open_roles_count: int,
@@ -609,13 +805,26 @@ def update_raw_item_engagement(
     item_id: int,
     post_score: int,
     comment_engagement: int,
+    num_comments: int | None = None,
 ) -> None:
-    """Update Reddit engagement metrics for a raw item after fetch."""
+    """Update Reddit engagement metrics for a raw item after fetch.
+
+    post_score        = upvotes on the post.
+    comment_engagement = sum of top-N comment scores (i.e. comment karma).
+    num_comments       = total comment count on the post (optional — only
+                         primary-sub path captures this from Reddit's listing JSON).
+    """
     conn = get_connection()
-    conn.execute(
-        "UPDATE raw_items SET post_score = ?, comment_engagement = ? WHERE id = ?",
-        (post_score, comment_engagement, item_id),
-    )
+    if num_comments is None:
+        conn.execute(
+            "UPDATE raw_items SET post_score = ?, comment_engagement = ? WHERE id = ?",
+            (post_score, comment_engagement, item_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE raw_items SET post_score = ?, comment_engagement = ?, num_comments = ? WHERE id = ?",
+            (post_score, comment_engagement, num_comments, item_id),
+        )
     conn.commit()
     conn.close()
 

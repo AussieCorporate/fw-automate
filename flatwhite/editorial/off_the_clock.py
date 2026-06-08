@@ -15,7 +15,7 @@ from flatwhite.utils.http import fetch_rss
 from flatwhite.db import get_connection, get_current_week_iso
 import yaml
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import quote
 
@@ -30,16 +30,26 @@ def _load_config() -> dict:
 
 
 def _is_recent(entry: dict, max_age_days: int) -> bool:
-    """Return True if the article was published within max_age_days, or has no date."""
+    """Return True if the article was published within max_age_days.
+
+    Tries ISO 8601 first (Reddit + most modern RSS), then RFC 2822 (older RSS).
+    Fails closed when the date is missing or unparseable — the previous fail-open
+    silently let stale entries through whenever ISO 8601 was used.
+    """
     pub = entry.get("published", "")
     if not pub:
-        return True
+        return False
     try:
-        dt = parsedate_to_datetime(pub)
-        cutoff = datetime.utcnow() - timedelta(days=max_age_days)
-        return dt.replace(tzinfo=None) >= cutoff
+        try:
+            dt = datetime.fromisoformat(pub.replace("Z", "+00:00"))
+        except ValueError:
+            dt = parsedate_to_datetime(pub)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+        return dt >= cutoff
     except Exception:
-        return True
+        return False
 
 
 def _insert_lifestyle_item(
@@ -50,19 +60,35 @@ def _insert_lifestyle_item(
     city: str | None,
     category_hint: str | None,
     week_iso: str,
+    published_at: str | None = None,
 ) -> int:
     """Insert a lifestyle item into raw_items with lane='lifestyle'.
 
     Uses the subreddit column to store city (sydney/melbourne/national).
     Sets lifestyle_category if a category_hint is provided.
-    Returns the row id.
+    Returns the row id, or 0 if the URL was seen in a prior week and skipped.
+
+    Cross-week URL dedup: an evergreen RSS item (e.g. "Best new restaurants
+    in Sydney 2026") sits in concrete-playground's feed for months and would
+    otherwise get re-inserted as a fresh row every week, making the OTC view
+    keep showing the same content. If we've ever seen this URL on the
+    lifestyle lane, skip — let the older row carry. URLs are skipped only
+    when present; None URLs (manual whispers, some Reddit posts) pass through.
     """
     conn = get_connection()
+    if url:
+        existing = conn.execute(
+            "SELECT 1 FROM raw_items WHERE url = ? AND lane = 'lifestyle' LIMIT 1",
+            (url,),
+        ).fetchone()
+        if existing:
+            conn.close()
+            return 0
     cursor = conn.execute(
         """INSERT OR IGNORE INTO raw_items
-        (title, body, source, url, lane, subreddit, pulled_at, week_iso, lifestyle_category)
-        VALUES (?, ?, ?, ?, 'lifestyle', ?, datetime('now'), ?, ?)""",
-        (title, body, source, url, city, week_iso, category_hint),
+        (title, body, source, url, lane, subreddit, pulled_at, week_iso, lifestyle_category, published_at)
+        VALUES (?, ?, ?, ?, 'lifestyle', ?, datetime('now'), ?, ?, ?)""",
+        (title, body, source, url, city, week_iso, category_hint, published_at),
     )
     conn.commit()
     row_id = cursor.lastrowid
@@ -111,6 +137,7 @@ def _fetch_rss_feed(feed: dict, max_items: int, max_age_days: int, week_iso: str
                 city=city,
                 category_hint=category_hint,
                 week_iso=week_iso,
+                published_at=entry.get("published") or None,
             )
             count += 1
         return {"name": name, "count": count, "error": None}
@@ -149,6 +176,7 @@ def _fetch_single_google_query(category: str, query: str, max_items: int, max_ag
                 city=None,
                 category_hint=category,
                 week_iso=week_iso,
+                published_at=entry.get("published") or None,
             )
             count += 1
         return {"query": query, "count": count, "error": None}
@@ -203,6 +231,7 @@ def _fetch_single_reddit_sub(sub: dict, keyword_filters: dict, max_items: int, m
                 city=city,
                 category_hint=category,
                 week_iso=week_iso,
+                published_at=entry.get("published") or None,
             )
             count += 1
         return {"name": sub["name"], "count": count, "error": None}
@@ -244,7 +273,7 @@ def pull_off_the_clock() -> int:
 
     week_iso = get_current_week_iso()
     max_items = config.get("max_items_per_source", 10)
-    max_age_days = config.get("max_age_days", 30)
+    max_age_days = config.get("max_age_days", 14)
     total_inserted = 0
 
     rss_feeds = config.get("rss_feeds", [])

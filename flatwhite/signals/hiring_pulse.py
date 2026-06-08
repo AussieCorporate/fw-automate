@@ -603,19 +603,24 @@ def pull_hiring_pulse(week_iso: str | None = None) -> dict:
     else:
         source_weight = 0.1
 
-    # Write signals to DB
+    # Stress convention: scores are computed in health convention (high = healthy
+    # hiring). Flip to stress before storing so high score = high labour-market stress.
+    breadth_stress = round(100.0 - breadth_score, 2)
+    freshness_stress = round(100.0 - freshness_score, 2)
+    net_delta_stress = round(100.0 - net_delta_score, 2)
+
     insert_signal(
         "employer_hiring_breadth", "pulse", "labour_market",
-        float(adding_count), breadth_score, source_weight, week_iso,
+        float(adding_count), breadth_stress, source_weight, week_iso,
     )
     insert_signal(
         "employer_req_freshness", "pulse", "labour_market",
-        float(total_new_roles), freshness_score,
+        float(total_new_roles), freshness_stress,
         0.0 if freshness_in_warmup else source_weight, week_iso,
     )
     insert_signal(
         "employer_net_delta", "pulse", "labour_market",
-        float(total_roles_this_week), net_delta_score, source_weight, week_iso,
+        float(total_roles_this_week), net_delta_stress, source_weight, week_iso,
     )
 
     conn.close()

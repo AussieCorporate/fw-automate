@@ -114,8 +114,8 @@ input, textarea, select { font-family: var(--font-sans); font-size: 14px; }
 .gauge-num { font-family: var(--font-sans); font-size: 60px; font-weight: 700; letter-spacing: -3px; margin-top: 4px; line-height: 1; }
 .gauge-lbl { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1.5px; margin-top: 2px; }
 .dir-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; }
-.dir-up { background: var(--red-bg); color: var(--red); border: 1px solid #FFCDD2; }
-.dir-down { background: var(--green-bg); color: var(--green); border: 1px solid #C8E6C9; }
+.dir-up { background: var(--green-bg); color: var(--green); border: 1px solid #C8E6C9; }
+.dir-down { background: var(--red-bg); color: var(--red); border: 1px solid #FFCDD2; }
 .dir-stable { background: var(--amber-light); color: var(--amber-dark); border: 1px solid var(--border-gold); }
 
 /* ── Table ── */
@@ -307,6 +307,9 @@ var S = {
   proceedModal: { open: false, section: null, prompt: "", lean: "", items: [], loading: false, contextBreakdown: null, excludedItems: {}, _tab: "prompt" },
   proceedModel: {},    // { section: model_id } — persisted to localStorage
   proceedData: {},
+  topPicks: null,            // Beehiiv click data from Pick & Scroll
+  topPicksChecked: {},       // { index: true }
+  topicHeat: null,           // Reddit anomalies + Google rising queries
   signalIntelligence: {},   // { signal_name: {delta, articles, commentary} }
   signalIntelExpanded: {},  // { signal_name: bool }
 };
@@ -400,6 +403,7 @@ var NAV_ITEMS = [
   { id: "amp_finest",  icon: "\uD83D\uDCC8", label: "AMP's Finest" },
   { id: "off_the_clock", icon: "\uD83C\uDF77", label: "Off the Clock" },
   { id: "events",      icon: "\uD83D\uDCC5", label: "Events" },
+  { id: "top_picks",   icon: "\uD83C\uDFC6", label: "Top Picks" },
   { id: "salary_vault", icon: "\uD83D\uDCB0", label: "Salary Vault", greyed: true },
   { id: "assemble",    icon: "\u2709", label: "Composer" },
 ];
@@ -427,7 +431,20 @@ function loadPageData(page) {
         S.trends = r[1] || null;
       });
     case "big_conversation":
-      return Promise.resolve(); // Don't auto-load — user must click RUN
+      // Load topic heat in background (no scrape needed — reads from DB)
+      if (!S.topicHeat) {
+        api("/api/topic-heat").then(function(d) { S.topicHeat = d; render(); }).catch(function() {});
+      }
+      // Load candidates if they exist (e.g. after Scrape All)
+      if (!S.bigConvCandidates) {
+        return api("/api/big-conversation-candidates").then(function(d) {
+          if (d.candidates && d.candidates.length) {
+            S.bigConvCandidates = d.candidates;
+            S.lastScraped.big_conversation = d.last_scraped_at || null;
+          }
+        }).catch(function() {});
+      }
+      return Promise.resolve();
     case "whispers":
       return api("/api/items").then(function(d) { S.whispers = (d.items && d.items.whisper) || []; S.weekIso = d.week_iso; });
     case "lobby":
@@ -448,6 +465,9 @@ function loadPageData(page) {
     case "events":
       if (S.events) return Promise.resolve();
       return api("/api/events").then(function(d) { S.events = d.events || []; S.weekIso = d.week_iso; });
+    case "top_picks":
+      if (S.topPicks) return Promise.resolve();
+      return api("/api/top-picks").then(function(d) { S.topPicks = d; S.weekIso = d.week_iso; S.lastScraped.top_picks = d.scraped_at || null; });
     case "assemble":
       return api("/api/section-outputs").then(function(d) { S.sectionOutputs = d.outputs || {}; S.weekIso = d.week_iso; });
     case "editorial":
@@ -565,6 +585,7 @@ function render() {
     case "amp_finest": renderAmpFinest(m); break;
     case "off_the_clock": renderOTC(m); break;
     case "events": renderEvents(m); break;
+    case "top_picks": renderTopPicks(m); break;
     case "assemble": renderAssemble(m); break;
     case "editorial": renderEditorial(m); break;
     default: m.innerHTML = '<p>Unknown page</p>';
@@ -711,10 +732,10 @@ function renderPulseBody() {
     var arrow = dir === "up" ? "\u2191" : (dir === "down" ? "\u2193" : "\u2192");
 
     h += '<div class="card mb20" style="text-align:center;padding:32px;">';
-    h += '<div class="gauge-lbl">DISRUPTION SCORE</div>';
+    h += '<div class="gauge-lbl">MARKET PULSE</div>';
     h += '<div class="gauge-num">' + esc(typeof score === "number" ? score.toFixed(1) : score) + '</div>';
     h += '<div style="margin-top:10px;"><span class="dir-pill ' + dirClass + '">' + arrow + ' ' + esc(dir) + (delta ? ' (' + (delta > 0 ? "+" : "") + delta.toFixed(1) + ')' : '') + '</span></div>';
-    h += '<div style="margin-top:8px;font-size:11px;color:var(--text-3);">Lower score = healthier market</div>';
+    h += '<div style="margin-top:8px;font-size:11px;color:var(--text-3);">Higher = more stress · Lower = calm market</div>';
     h += '</div>';
 
     h += renderCategoryTrends();
@@ -869,8 +890,86 @@ function proceedPulse() {
 /* ═══════════════════════════════════════════════════════════════════════
    SECTION: BIG CONVERSATION
    ═══════════════════════════════════════════════════════════════════════ */
+function renderTopicHeatPanel() {
+  var heat = S.topicHeat || {};
+  var reddit = heat.reddit_heat || [];
+  var rising = heat.rising_queries || [];
+  var h = '';
+  h += '<div class="card mb20" style="border-left:3px solid var(--amber);">';
+  h += '<div class="fb mb8"><span style="font-weight:600;font-size:13px;">Topic Heat</span>';
+  h += '<div style="display:flex;gap:6px;align-items:center;">';
+  if (heat.rising_queries_fetched_at) {
+    h += '<span style="font-size:11px;color:var(--text-3);">Trends: ' + esc(heat.rising_queries_fetched_at).substring(0, 10) + '</span>';
+  }
+  h += '<button class="btn btn-sm btn-secondary" onclick="fetchRisingTrends()" ' + (S.loading.rising_trends ? 'disabled' : '') + '>';
+  h += S.loading.rising_trends ? 'Fetching...' : 'Fetch Google Trends';
+  h += '</button>';
+  h += '</div></div>';
+  if (!reddit.length && !rising.length) {
+    h += '<p style="font-size:12px;color:var(--text-3);margin:0;">No heat data yet. Run the Pulse scrape first for Reddit data, or click Fetch Google Trends.</p>';
+  }
+  if (reddit.length) {
+    h += '<div style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">Reddit Volume Spikes</div>';
+    reddit.forEach(function(r) {
+      var color = r.is_anomaly ? 'var(--red, #e53935)' : 'var(--amber)';
+      h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:12px;">';
+      h += '<span style="width:8px;height:8px;border-radius:50%;background:' + color + ';flex-shrink:0;"></span>';
+      h += '<span style="color:var(--text-1);">' + esc(r.topic) + '</span>';
+      h += '<span style="color:var(--text-3);">' + r.post_count + ' posts, vel ' + r.velocity + '</span>';
+      if (r.is_anomaly) h += '<span class="chip" style="font-size:10px;background:rgba(229,57,53,0.12);color:var(--red, #e53935);">anomaly</span>';
+      h += '</div>';
+    });
+  }
+  if (rising.length) {
+    var breakout = rising.filter(function(q) { return q.type === "rising"; });
+    var top = rising.filter(function(q) { return q.type === "top"; });
+    if (breakout.length) {
+      h += '<div style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;margin:8px 0 6px 0;">Breakout Searches (AU)</div>';
+      breakout.forEach(function(q) {
+        var pct = typeof q.rise_pct === 'number' ? '+' + q.rise_pct + '%' : q.rise_pct;
+        h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:12px;">';
+        h += '<span style="color:var(--green, #43a047);font-weight:600;min-width:60px;">' + esc(String(pct)) + '</span>';
+        h += '<span style="color:var(--text-1);">' + esc(q.query) + '</span>';
+        h += '<span style="color:var(--text-3);font-size:11px;">' + esc(q.seed_theme) + '</span>';
+        h += '</div>';
+      });
+    }
+    if (top.length) {
+      h += '<div style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;margin:8px 0 6px 0;">Top Searches (AU)</div>';
+      top.forEach(function(q) {
+        h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:12px;">';
+        h += '<span style="color:var(--amber);font-weight:600;min-width:60px;">' + esc(String(q.rise_pct)) + '</span>';
+        h += '<span style="color:var(--text-1);">' + esc(q.query) + '</span>';
+        h += '<span style="color:var(--text-3);font-size:11px;">' + esc(q.seed_theme) + '</span>';
+        h += '</div>';
+      });
+    }
+  }
+  h += '</div>';
+  return h;
+}
+
+function fetchRisingTrends() {
+  S.loading.rising_trends = true; render();
+  api("/api/topic-heat/fetch-trends", { method: "POST" })
+    .then(function(d) {
+      if (!S.topicHeat) S.topicHeat = {};
+      S.topicHeat.rising_queries = d.rising_queries || [];
+      S.topicHeat.rising_queries_fetched_at = d.fetched_at;
+      S.loading.rising_trends = false;
+      render();
+      showToast("Google Trends rising queries fetched (" + (d.rising_queries || []).length + ")");
+    })
+    .catch(function(e) {
+      S.loading.rising_trends = false; render();
+      showToast("Trends fetch failed: " + e.message, "error");
+    });
+}
+
 function renderBigConvBody() {
   var h = '';
+  // Topic Heat panel
+  h += renderTopicHeatPanel();
   // Candidates
   h += '<div class="cand-list mb20">';
   if (S.bigConvCandidates && S.bigConvCandidates.length) {
@@ -955,16 +1054,20 @@ function useCustomBigConv() {
 }
 
 function runBigConv() {
-  S.loading.big_conversation = true; render();
-  // Start finds run in background
+  S.loading.big_conversation = true;
+  S.bigConvCandidates = null; // Clear old candidates so we don't show stale data
+  render();
   api("/api/run-section", { method: "POST", body: { section: "big_conversation" } })
     .then(function(d) {
       if (!d.started) { S.loading.big_conversation = false; render(); showToast(d.message || "Already running"); return; }
       showToast("Pulling Big Conversation sources (incl. top AU news)...");
-      // Poll for finds completion, then load candidates
+      // Wait a moment for the backend to set running=true, then poll
+      var seenRunning = false;
       var poll = setInterval(function() {
         fetch("/api/section-status/big_conversation").then(function(r) { return r.json(); }).then(function(st) {
-          if (!st.running && st.done) {
+          if (st.running) seenRunning = true;
+          // Only treat as done if we saw it running first (avoids stale done=true race)
+          if (seenRunning && !st.running && st.done) {
             clearInterval(poll);
             if (st.error) {
               S.loading.big_conversation = false; render();
@@ -997,7 +1100,19 @@ function proceedBigConv() {
     data = { headline: S.customBigConv.headline, pitch: S.customBigConv.pitch, supporting_data: S.customBigConv.data };
   } else if (S.selectedBigConv) {
     var c = (S.bigConvCandidates || []).find(function(x) { return x.id === S.selectedBigConv; });
-    if (c) data = { headline: c.title, pitch: c.summary, source: c.source };
+    if (c) {
+      // Pass the selected candidate as the anchor item, plus all other candidates as supporting evidence
+      var others = (S.bigConvCandidates || []).filter(function(x) { return x.id !== S.selectedBigConv; });
+      var supporting = others.map(function(o) {
+        return o.title + " (" + (o.source || "") + "): " + (o.summary || "");
+      });
+      data = {
+        headline: c.title,
+        pitch: c.summary,
+        supporting_summaries: supporting,
+        supporting_item_ids: others.map(function(o) { return o.id; }),
+      };
+    }
   } else {
     showToast("Select a candidate or add a custom topic", "error"); return;
   }
@@ -1253,9 +1368,17 @@ function renderThreadBody() {
     h += '<div class="cand-card" onclick="selectThread(' + t.id + ')">';
     h += '<div class="radio' + (sel ? " on" : "") + '">' + (sel ? "\u2713" : "") + '</div>';
     h += '<div class="cand-body">';
-    h += '<div class="cand-title">' + esc(t.title || t.summary) + '</div>';
-    h += '<div class="cand-meta">' + esc(t.source || "reddit") + ' &middot; Score: ' + esc(t.weighted_composite != null ? t.weighted_composite.toFixed(1) : "—") + '</div>';
-    if (t.summary) h += '<div class="cand-summary">' + esc(t.summary) + '</div>';
+    h += '<div class="cand-title">';
+    if (t.url) h += '<a href="' + esc(t.url) + '" target="_blank" rel="noopener" style="color:var(--text-1);text-decoration:none;" onclick="event.stopPropagation()">';
+    h += esc(t.title || t.summary);
+    if (t.url) h += ' ↗</a>';
+    h += '</div>';
+    var engScore = (t.post_score || 0);
+    var engComments = (t.comment_engagement || 0);
+    var engStr = engScore ? ' · ' + engScore + ' upvotes' + (engComments ? ', ' + engComments + ' comment karma' : '') : '';
+    h += '<div class="cand-meta">' + esc(t.source || "reddit") + engStr + ' &middot; Classifier: ' + esc(t.weighted_composite != null ? t.weighted_composite.toFixed(1) : "—") + '</div>';
+    if (t.body && t.body.length > 10) h += '<div class="cand-summary" style="margin-bottom:4px;">' + esc(t.body.substring(0, 300)) + (t.body.length > 300 ? '...' : '') + '</div>';
+    if (t.summary && t.summary !== t.body) h += '<div style="font-size:12px;color:var(--text-3);font-style:italic;">' + esc(t.summary) + '</div>';
     h += '</div></div>';
     // Show comments — use fetched comments if available, otherwise pre-loaded from scrape
     var displayComments = comments || (t.top_comments && t.top_comments.length ? t.top_comments : null);
@@ -2217,6 +2340,138 @@ function renderProceedModal() {
   h += '<button class="btn btn-success" onclick="confirmAndGenerate()" ' + (modal.loading ? 'disabled' : '') + '>Confirm & Generate</button>';
   h += '</div></div></div>';
   return h;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SECTION: TOP PICKS (Beehiiv Pick & Scroll)
+   ═══════════════════════════════════════════════════════════════════════ */
+function renderTopPicksBody() {
+  var picks = (S.topPicks && S.topPicks.picks) || [];
+  if (!picks.length) return '<div class="card mb20"><p style="color:var(--text-3);font-size:13px;">No data yet. Click SCRAPE to fetch click data from Pick &amp; Scroll.</p></div>';
+
+  var checkedCount = Object.keys(S.topPicksChecked || {}).filter(function(k) { return S.topPicksChecked[k]; }).length;
+  var h = '';
+  h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">';
+  h += '<span style="font-size:13px;color:var(--text-2);">' + checkedCount + ' selected of ' + picks.length + ' links</span>';
+  if (checkedCount > 0) {
+    h += '<button class="btn btn-sm btn-success" onclick="copyTopPicks()">Copy Selected</button>';
+  }
+  h += '</div>';
+
+  picks.forEach(function(p, i) {
+    var domain = esc(p.source_domain || "");
+    var summary = esc(p.summary || "No summary extracted");
+    var url = esc(p.url || "#");
+    var clicks = p.clicks || 0;
+    var campaign = esc(p.campaign_title || "");
+    var campaignUrl = esc(p.campaign_url || "#");
+    var checked = S.topPicksChecked && S.topPicksChecked[i];
+
+    h += '<div class="card mb12 hov' + (checked ? " sel" : "") + '" style="padding:14px 16px;">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">';
+    h += '<div style="display:flex;align-items:flex-start;gap:10px;flex:1;min-width:0;">';
+    h += '<input type="checkbox"' + (checked ? " checked" : "") + ' onchange="toggleTopPick(' + i + ',this.checked)" style="width:18px;height:18px;accent-color:var(--amber);margin-top:2px;flex-shrink:0;">';
+    h += '<div style="flex:1;min-width:0;">';
+    h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">';
+    h += '<span style="font-size:18px;font-weight:700;color:var(--text-3);min-width:24px;">#' + (i + 1) + '</span>';
+    h += '<span class="chip" style="font-size:11px;">' + domain + '</span>';
+    h += '</div>';
+    h += '<p style="font-size:13px;line-height:1.5;margin:0 0 6px 0;color:var(--text-1);">' + summary + '</p>';
+    h += '<div style="font-size:12px;color:var(--text-3);">';
+    h += '<a href="' + url + '" target="_blank" rel="noopener" style="color:var(--blue);text-decoration:none;word-break:break-all;">' + url + '</a>';
+    h += '</div>';
+    h += '<div style="font-size:11px;color:var(--text-3);margin-top:4px;">Campaign: <a href="' + campaignUrl + '" target="_blank" rel="noopener" style="color:var(--text-2);text-decoration:underline;">' + campaign + '</a></div>';
+    h += '</div></div>';
+    h += '<div style="text-align:center;flex-shrink:0;min-width:60px;">';
+    h += '<div style="font-size:24px;font-weight:700;color:var(--amber);">' + clicks + '</div>';
+    h += '<div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;">clicks</div>';
+    h += '</div>';
+    h += '</div></div>';
+  });
+  return h;
+}
+
+function toggleTopPick(idx, val) {
+  if (!S.topPicksChecked) S.topPicksChecked = {};
+  S.topPicksChecked[idx] = val;
+  render();
+}
+
+function copyTopPicks() {
+  var picks = (S.topPicks && S.topPicks.picks) || [];
+  var selected = [];
+  for (var i = 0; i < picks.length; i++) {
+    if (S.topPicksChecked && S.topPicksChecked[i]) selected.push(picks[i]);
+  }
+  if (!selected.length) { showToast("No picks selected", "error"); return; }
+
+  // Build rich HTML: "Story sentence. link" where "link" is hyperlinked
+  var htmlParts = [];
+  var plainParts = [];
+  selected.forEach(function(p) {
+    var summary = (p.summary || "").replace(/\s+/g, " ").trim();
+    // Strip "Editor's Pick:" or similar prefixes
+    summary = summary.replace(/^editor'?s?\s*pick\s*[:–—-]\s*/i, "");
+    var url = p.url || "";
+    // Ensure summary ends with punctuation before appending link
+    if (summary && !/[.!?]$/.test(summary)) summary += ".";
+    htmlParts.push("<p>" + summary + " <a href=\"" + url + "\">link</a></p>");
+    plainParts.push(summary + " " + url);
+  });
+  var html = htmlParts.join("\n");
+  var plain = plainParts.join("\n\n");
+
+  // Copy as rich text so Beehiiv gets clickable links
+  var blob = new Blob([html], { type: "text/html" });
+  var plainBlob = new Blob([plain], { type: "text/plain" });
+  navigator.clipboard.write([
+    new ClipboardItem({ "text/html": blob, "text/plain": plainBlob })
+  ]).then(function() {
+    showToast("Copied " + selected.length + " picks with links");
+  }).catch(function() {
+    // Fallback: plain text
+    navigator.clipboard.writeText(plain).then(function() {
+      showToast("Copied " + selected.length + " picks (plain text)");
+    });
+  });
+}
+
+function scrapeTopPicks() {
+  S.loading.top_picks = true; render();
+  api("/api/top-picks/scrape", { method: "POST", body: { days: 7 } })
+    .then(function(d) {
+      S.topPicks = d;
+      S.lastScraped.top_picks = d.scraped_at || null;
+      S.loading.top_picks = false;
+      S.topPicksChecked = {};
+      render();
+      showToast("Top Picks scraped — " + (d.picks || []).length + " links ranked");
+    })
+    .catch(function(e) {
+      S.loading.top_picks = false; render();
+      showToast("Scrape failed: " + e.message, "error");
+    });
+}
+
+function renderTopPicks(el) {
+  var hasPicks = !!(S.topPicks && S.topPicks.picks && S.topPicks.picks.length);
+  if (!S.sectionPhase.top_picks) S.sectionPhase.top_picks = hasPicks ? 2 : 1;
+
+  var p1 = '';
+  p1 += '<div class="card mb20">';
+  p1 += '<p style="font-size:13px;color:var(--text-2);margin:0 0 12px 0;">Fetches the last 7 days of Pick &amp; Scroll editions from Beehiiv and ranks all links by total click count.</p>';
+  p1 += '<button class="btn btn-primary" onclick="scrapeTopPicks()">SCRAPE BEEHIIV</button>';
+  if (S.loading.top_picks) p1 += ' <span class="ingest-spinner"></span>';
+  if (S.lastScraped.top_picks) p1 += '<span style="font-size:11px;color:var(--text-3);margin-left:10px;">Last scraped: ' + esc(S.lastScraped.top_picks) + '</span>';
+  p1 += '</div>';
+
+  var p2 = renderTopPicksBody();
+
+  var h = '';
+  h += phasePanel('top_picks', 1, 'Scrape', true, hasPicks, p1);
+  h += phasePanel('top_picks', 2, 'Select & Copy', hasPicks, false, p2);
+
+  el.innerHTML = h;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

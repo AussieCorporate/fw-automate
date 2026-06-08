@@ -14,9 +14,35 @@ import yaml
 from pathlib import Path
 
 import httpx
+from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 
 from flatwhite.utils.http import fetch_rss
 from flatwhite.db import insert_raw_item, get_current_week_iso
+
+MAX_AGE_DAYS = 7
+
+
+def _is_recent(entry: dict, max_age_days: int = MAX_AGE_DAYS) -> bool:
+    """Return True if the entry was published within max_age_days.
+
+    Tries ISO 8601 first, then RFC 2822. Fails closed when the date is
+    missing or unparseable to prevent stale items leaking through.
+    """
+    pub = entry.get("published", "")
+    if not pub:
+        return False
+    try:
+        try:
+            dt = datetime.fromisoformat(pub.replace("Z", "+00:00"))
+        except ValueError:
+            dt = parsedate_to_datetime(pub)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+        return dt >= cutoff
+    except Exception:
+        return False
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "config.yaml"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent  # FW Automate/
@@ -114,6 +140,8 @@ def pull_linkedin_newsletters() -> int:
                 entries = fetch_rss(url, delay_seconds=delay)
                 count = 0
                 for entry in entries[:max_items]:
+                    if not _is_recent(entry):
+                        continue
                     insert_raw_item(
                         title=entry["title"][:200],
                         body=entry["body"][:2000] if entry["body"] else None,
@@ -122,6 +150,7 @@ def pull_linkedin_newsletters() -> int:
                         lane="editorial",
                         subreddit=None,
                         week_iso=week_iso,
+                        published_at=entry.get("published") or None,
                     )
                     count += 1
                 total_inserted += count

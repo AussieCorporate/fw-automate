@@ -3,6 +3,12 @@
 Cold start (0-4 weeks):   100% absolute scoring from config floor/ceiling.
 Transition (5-9 weeks):   Blend of absolute and self-calibrating (weighted by week count).
 Warm (10+ weeks):         100% median+MAD self-calibrating from signal's own history.
+
+OUTPUT CONVENTION: STRESS SCORE (0 = calm, 100 = max stress).
+- For a raw signal where high raw = bad/stressful (e.g. layoff news count), set
+  inverted=True and the higher raw maps to higher stress score directly.
+- For a raw signal where high raw = good/healthy (e.g. consumer confidence), set
+  inverted=False and we flip the absolute mapping so high raw → low stress score.
 """
 from __future__ import annotations
 
@@ -17,21 +23,26 @@ def get_min_weeks_warm(config: dict | None, default: int = 10) -> int:
 
 
 def _absolute_score(raw: float, floor: float, ceiling: float, inverted: bool) -> float:
-    """Map raw value to 0-100 using fixed reference range."""
+    """Map raw value to a 0-100 stress score using fixed reference range.
+
+    inverted=True  → high raw = high stress (no flip needed)
+    inverted=False → high raw = low stress (flip)
+    """
     if ceiling == floor:
         return 50.0
     score = ((raw - floor) / (ceiling - floor)) * 100.0
     score = max(0.0, min(100.0, score))
-    if inverted:
+    if not inverted:
         score = 100.0 - score
     return round(score, 2)
 
 
 def _mad_score(raw: float, history: list[float], inverted: bool) -> float:
-    """Map raw value to 0-100 using median + MAD from history.
+    """Map raw value to a 0-100 stress score using median + MAD from history.
 
     Score of 50 = at median. Each MAD of deviation moves the score by 10 points.
-    Naturally adapts to inflation, market growth, etc.
+    inverted=True  → high raw = high stress (raw above median raises score)
+    inverted=False → high raw = low stress (raw above median lowers score)
     """
     med = _median(history)
     deviations = [abs(v - med) for v in history]
@@ -41,7 +52,7 @@ def _mad_score(raw: float, history: list[float], inverted: bool) -> float:
     mad = max(mad, abs(med) * 0.01, 0.01)
     score = 50.0 + ((raw - med) / mad) * 10.0
     score = max(0.0, min(100.0, score))
-    if inverted:
+    if not inverted:
         score = 100.0 - score
     return round(score, 2)
 

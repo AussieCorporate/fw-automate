@@ -76,9 +76,24 @@ def generate_angles(
             "Prioritise items and themes that align with this direction.\n\n"
         )
 
+    # Inject real-world engagement data (Reddit anomalies + Google rising queries if cached)
+    try:
+        from flatwhite.signals.topic_heat import build_full_topic_heat_block
+        # Check if rising queries have been fetched this session (cached in dashboard API)
+        rising = None
+        try:
+            from flatwhite.dashboard.api import _rising_queries_cache
+            rising = _rising_queries_cache.get("data")
+        except Exception:
+            pass
+        topic_heat = build_full_topic_heat_block(week_iso, rising_queries=rising)
+    except Exception:
+        topic_heat = ""
+
     prompt = BIG_CONVERSATION_ANGLES_PROMPT.format(
         items_json=json.dumps(items_data, indent=2),
         editorial_direction=direction_block,
+        topic_heat=topic_heat,
     )
 
     try:

@@ -40,11 +40,12 @@ def pull_resume_anxiety() -> float:
             invalidate_cookies()
             time.sleep(wait)
 
-    # Trip wire scoring: silent at baseline, fires when spiking
+    # Trip wire scoring: silent at baseline, fires when spiking.
+    # Stress convention: higher search volume → higher stress.
     if raw_avg <= 5.0:
         normalised = 50.0  # Below detection threshold — neutral
     else:
-        normalised = max(0.0, 50.0 - (raw_avg / 2.0))  # Higher searches = lower score
+        normalised = min(100.0, 50.0 + (raw_avg / 2.0))
 
     week_iso = get_current_week_iso()
     insert_signal(

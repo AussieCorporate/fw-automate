@@ -6,6 +6,12 @@ import time
 BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 RSS_UA = "flatwhite/0.1 (by TAC)"
 
+# Reddit's unauthenticated .json API has been 403-blocked from non-residential
+# IPs since 2023, and the script-app password grant on oauth.reddit.com is
+# effectively broken too — so we only use the public /top/.rss feed, which
+# still serves engagement-ordered post titles without auth.
+REDDIT_PUBLIC_HOST = "https://www.reddit.com"
+
 DEFAULT_HEADERS = {
     "User-Agent": BROWSER_UA,
 }
@@ -74,16 +80,70 @@ def fetch_rss(url: str, delay_seconds: float = 1.0) -> list[dict]:
     return entries
 
 
+def fetch_reddit_top_posts(subreddit: str, time_filter: str = "week", limit: int = 25, delay_seconds: float = 2.0) -> list[dict]:
+    """Top posts in a subreddit, engagement-ranked, via the public RSS feed.
+
+    Reddit's .json API is 403-blocked unauthenticated and the script-app
+    OAuth grant is broken — /top/.rss?t=<filter> is the only path that
+    still works. RSS doesn't carry score or num_comments, so we synthesise
+    a position-based score (#1 -> limit, #2 -> limit-1, ...) which keeps
+    downstream `ORDER BY post_score` consistent with engagement order.
+    num_comments stays 0.
+
+    Returns list of dicts: {title, body, url, published, score, num_comments, created_utc}.
+    """
+    import feedparser
+    from datetime import datetime, timezone
+
+    time.sleep(delay_seconds)
+    url = f"{REDDIT_PUBLIC_HOST}/r/{subreddit}/top/.rss?t={time_filter}"
+    response = httpx.get(
+        url,
+        headers={"User-Agent": RSS_UA},
+        timeout=30.0,
+        follow_redirects=True,
+    )
+    response.raise_for_status()
+    feed = feedparser.parse(response.text)
+
+    entries = list(feed.entries)[:limit]
+    n = len(entries)
+    posts: list[dict] = []
+    for i, entry in enumerate(entries):
+        synthetic_score = n - i  # #1 gets n, last gets 1; preserves engagement order
+
+        created_utc = 0.0
+        pub = entry.get("published", "")
+        if pub:
+            try:
+                dt = datetime.fromisoformat(pub.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                created_utc = dt.timestamp()
+            except Exception:
+                created_utc = 0.0
+
+        posts.append({
+            "title": entry.get("title", ""),
+            "body": entry.get("summary", ""),
+            "url": entry.get("link", ""),
+            "published": pub,
+            "score": synthetic_score,
+            "num_comments": 0,
+            "created_utc": created_utc,
+        })
+    return posts
+
+
 def fetch_reddit_comments(post_url: str, top_n: int = 3) -> dict:
-    """Fetch top N comments and post score from a Reddit post using the public JSON API.
+    """Fetch top N comments and post score from a Reddit post via the public .json.
 
-    No authentication required. Returns dict with 'post_score' and 'comments'
-    (list of dicts with 'text' and 'score'), sorted by score descending.
-    Skips deleted/removed comments.
+    Currently 403-blocked (Reddit lockdown), so this almost always returns the
+    empty failure sentinel {"post_score": 0, "comments": []}. Callers should
+    treat that as "no data available" rather than "zero engagement" — see
+    editorial/reddit_rss.py::_enrich_one for the guard pattern.
 
-    Input: post_url — full Reddit post URL (e.g. https://www.reddit.com/r/auscorp/comments/...)
-    Output: {"post_score": int, "comments": [{"text": str, "score": int}, ...]}.
-    Consumed by: classify/thread_ranker.py rank_thread_candidates(), dashboard API.
+    Consumed by: editorial/reddit_rss.py _enrich_one, dashboard /api/fetch-thread-comments.
     """
     json_url = post_url.rstrip("/") + ".json"
     time.sleep(2.0)

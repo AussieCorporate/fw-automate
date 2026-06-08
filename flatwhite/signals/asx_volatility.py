@@ -24,7 +24,8 @@ def pull_asx_volatility() -> float:
         else:
             percentile = 50.0
 
-        normalised = 100.0 - percentile
+        # Stress convention: higher volatility percentile → higher stress score.
+        normalised = percentile
 
     normalised = max(0.0, min(100.0, normalised))
     week_iso = get_current_week_iso()

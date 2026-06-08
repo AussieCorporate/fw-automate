@@ -482,6 +482,10 @@ def classify_single_otc_item(raw_item: dict) -> dict | None:
             task_type="classification",
             prompt=prompt,
             system=OTC_CLASSIFICATION_SYSTEM,
+            # Route OTC classification to Claude Haiku — Gemini quota is
+            # depleted and OTC classification stalls indefinitely retrying 429s.
+            # Editorial classification still uses Gemini (different call site).
+            model_override="claude-haiku-4-5",
         )
     except Exception:
         return None
@@ -534,10 +538,109 @@ def classify_single_otc_item(raw_item: dict) -> dict | None:
     return result
 
 
+def _classify_otc_batch(items: list[dict], batch_size: int = 8) -> list[dict | None]:
+    """Classify OTC items in batches via LLM, with per-item fallback."""
+    from flatwhite.classify.prompts import (
+        OTC_BATCH_CLASSIFICATION_SYSTEM, OTC_BATCH_CLASSIFICATION_PROMPT,
+    )
+
+    all_results: list[dict | None] = []
+
+    for batch_start in range(0, len(items), batch_size):
+        batch = items[batch_start:batch_start + batch_size]
+
+        items_block_lines = []
+        for idx, item in enumerate(batch):
+            items_block_lines.append(
+                f"[{idx}] Title: {item['title']}\n"
+                f"Body: {(item['body'] or '')[:500]}\n"
+                f"Source: {item['source']}\n"
+                f"City hint: {item.get('subreddit') or 'unknown'}\n"
+                f"Category hint: {item.get('lifestyle_category') or 'none'}"
+            )
+        items_block = "\n\n".join(items_block_lines)
+        prompt = OTC_BATCH_CLASSIFICATION_PROMPT.format(items_block=items_block)
+
+        batch_results: list[dict | None] | None = None
+        try:
+            response = route(
+                task_type="classification",
+                prompt=prompt,
+                system=OTC_BATCH_CLASSIFICATION_SYSTEM,
+                # Match the per-item OTC path: Claude Haiku, not Gemini.
+                model_override="claude-haiku-4-5",
+            )
+            parsed = _parse_llm_json(response)
+
+            if isinstance(parsed, list) and len(parsed) == len(batch):
+                batch_results = []
+                for idx, result in enumerate(parsed):
+                    if isinstance(result, dict):
+                        # Apply OTC-specific validation
+                        validated = _validate_otc_result(result, batch[idx])
+                        batch_results.append(validated)
+                    else:
+                        batch_results.append(None)
+            else:
+                batch_results = None
+        except Exception:
+            batch_results = None
+
+        # Fallback: if batch parsing failed, classify individually
+        if batch_results is None:
+            print(f"  OTC batch parse failed — falling back to per-item classification")
+            batch_results = []
+            for item in batch:
+                result = classify_single_otc_item(item)
+                batch_results.append(result)
+
+        all_results.extend(batch_results)
+
+    return all_results
+
+
+def _validate_otc_result(result: dict, raw_item: dict) -> dict:
+    """Validate and normalize a single OTC classification result from batch."""
+    category = result.get("category", "discard")
+    section = _OTC_CATEGORY_TO_SECTION.get(category, "discard")
+    result["section"] = section
+
+    for dim in ("trendiness", "shareability"):
+        val = result.get(dim, 3)
+        if not isinstance(val, (int, float)):
+            val = 3
+        result[dim] = max(1, min(5, int(val)))
+
+    result["weighted_composite"] = _otc_weighted_composite(result["trendiness"], result["shareability"])
+
+    if result["trendiness"] < 2 and result["shareability"] < 2:
+        result["section"] = "discard"
+
+    city = result.get("city", "national")
+    if city not in ("sydney", "melbourne", "brisbane", "perth", "national"):
+        city = "national"
+    result["city"] = city
+
+    summary = result.get("summary")
+    if not isinstance(summary, str) or len(summary) < 5:
+        summary = raw_item["title"]
+    result["summary"] = summary
+
+    result["relevance"] = result["trendiness"]
+    result["novelty"] = result["trendiness"]
+    result["reliability"] = 3
+    result["tension"] = result["shareability"]
+    result["usefulness"] = result["shareability"]
+    result["tags"] = []
+    result["confidence_tag"] = None
+
+    return result
+
+
 def classify_all_otc_unclassified() -> dict:
     """Classify all unclassified lifestyle raw_items for the current week.
 
-    Same flow as classify_all_unclassified() but for lane='lifestyle' using OTC prompts.
+    Uses batch classification for efficiency (same as editorial classifier).
     Returns: dict with keys: total, curated, discarded, failed, skipped.
     """
     conn = get_connection()
@@ -557,11 +660,12 @@ def classify_all_otc_unclassified() -> dict:
         "skipped": 0,
     }
 
+    # First pass: filter out already-curated items
+    items_to_classify: list[dict] = []
     for item in unclassified:
         item_dict = dict(item)
         stats["total"] += 1
 
-        # Guard: skip if already curated
         conn = get_connection()
         existing = conn.execute(
             "SELECT id FROM curated_items WHERE raw_item_id = ?",
@@ -576,8 +680,16 @@ def classify_all_otc_unclassified() -> dict:
             stats["skipped"] += 1
             continue
 
-        result = classify_single_otc_item(item_dict)
+        items_to_classify.append(item_dict)
 
+    if not items_to_classify:
+        return stats
+
+    # Batch classify
+    print(f"  Classifying {len(items_to_classify)} OTC items in batches of 8...")
+    batch_results = _classify_otc_batch(items_to_classify, batch_size=8)
+
+    for item_dict, result in zip(items_to_classify, batch_results):
         conn = get_connection()
 
         if result is None:
@@ -618,7 +730,5 @@ def classify_all_otc_unclassified() -> dict:
         conn.commit()
         conn.close()
         stats["curated"] += 1
-
-        time.sleep(1)
 
     return stats

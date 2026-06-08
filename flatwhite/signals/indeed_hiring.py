@@ -64,7 +64,8 @@ def pull_indeed_hiring() -> dict:
             if not value_col:
                 raise ValueError("No value column found in job postings CSV")
             index_value = float(last_row[value_col[0]])
-        normalised = max(0.0, min(100.0, index_value / 2.0))
+        # Stress convention: higher Indeed posting index → lower stress.
+        normalised = max(0.0, min(100.0, 100.0 - (index_value / 2.0)))
 
         insert_signal(
             signal_name="indeed_job_postings",

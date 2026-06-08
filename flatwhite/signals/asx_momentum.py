@@ -17,7 +17,8 @@ def pull_asx_momentum() -> float:
         price_4wk_ago = float(hist["Close"].iloc[-MOMENTUM_WINDOW_DAYS])
         raw_value = ((current_price - price_4wk_ago) / price_4wk_ago) * 100.0
 
-        normalised = max(0.0, min(100.0, 50.0 + (raw_value * 5.0)))
+        # Stress convention: higher momentum (raw_value) → lower stress.
+        normalised = max(0.0, min(100.0, 50.0 - (raw_value * 5.0)))
 
     week_iso = get_current_week_iso()
 

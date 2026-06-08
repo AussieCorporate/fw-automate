@@ -13,7 +13,7 @@ Usage: python -m flatwhite.cli <command>
 import sys
 import json
 import sqlite3
-from flatwhite.db import init_db, get_current_week_iso, get_connection, insert_interaction
+from flatwhite.db import init_db, get_current_week_iso, get_connection, insert_interaction, purge_old_data
 from flatwhite.pulse.interactions import evaluate_patterns
 
 
@@ -46,6 +46,13 @@ def cmd_ingest() -> None:
     from concurrent.futures import ThreadPoolExecutor
 
     init_db()
+
+    # Purge stale data before ingesting — editorial: 2 weeks, OTC: 3 weeks
+    purged = purge_old_data(keep_weeks=2, keep_weeks_otc=3)
+    if purged["raw_items"] > 0:
+        print(f"Purged stale data: {purged['raw_items']} raw items, "
+              f"{purged['curated_items']} curated items, "
+              f"{purged['editor_decisions']} decisions\n")
 
     # Auto-backfill on first run — populates 12 weeks of historical data
     # so anomaly detection and EMA smoothing work from day 1.
@@ -228,6 +235,14 @@ def cmd_ingest() -> None:
 
     g4_elapsed = time.time() - g4_start
     print(f"  [Group 4 done in {g4_elapsed:.0f}s]")
+
+    # ── Prune: drop raw_items older than the editorial freshness window ─────
+    print("\n=== PRUNE: dropping items outside the 7-day window ===")
+    from flatwhite.db import prune_stale_raw_items
+    pruned = prune_stale_raw_items(max_age_days=7)
+    print(f"  Removed {pruned['raw_items']} raw_items, "
+          f"{pruned['curated_items']} curated_items, "
+          f"{pruned['editor_decisions']} editor_decisions")
 
     # ── Group 5: Pulse + Classification (depend on all prior groups) ─────────
     g5_start = time.time()
@@ -813,6 +828,21 @@ def cmd_feedback() -> None:
     print(f"  Editor decisions updated: {result['decisions_updated']}")
 
 
+def cmd_cleanup() -> None:
+    """Purge old raw_items, curated_items, and editor_decisions.
+
+    Editorial items older than 2 weeks and OTC items older than 3 weeks are deleted.
+    Signals and pulse_history are kept (needed for EMA/trend calculations).
+    """
+    init_db()
+    purged = purge_old_data(keep_weeks=2, keep_weeks_otc=3)
+    print(f"Purged: {purged['raw_items']} raw items, "
+          f"{purged['curated_items']} curated items, "
+          f"{purged['editor_decisions']} editor decisions")
+    if purged["raw_items"] == 0:
+        print("Nothing to purge — data is already fresh.")
+
+
 def cmd_backfill() -> None:
     """Backfill historical pulse signals and pulse_history."""
     weeks = 12  # default
@@ -848,11 +878,14 @@ def main() -> None:
         print("  run           Run pipeline (steps 1-5 by default, --assemble for full)")
         print("  status        Show pipeline status for current week")
         print("  schedule      Show schedule config and cron entry")
+        print("  cleanup       Purge stale editorial/OTC data (auto-runs on ingest)")
         print("  backfill      Backfill historical pulse data (--weeks N, default 12)")
         print("  notify        Send pipeline-ready email to editor")
         print("  audit         Review classifier accuracy (--week W --section S)")
         print("  ats-check     Test ATS extraction for one employer (--employer 'Name')")
         print("  feedback      Record newsletter performance (--open-rate N --click-rate N)")
+        print("  linkedin-login  Open browser to log into LinkedIn (saves session)")
+        print("  linkedin-scrape Scrape LinkedIn company insights for watchlist")
         sys.exit(1)
 
     command = sys.argv[1]
@@ -893,6 +926,8 @@ def main() -> None:
         cmd_status()
     elif command == "schedule":
         cmd_schedule()
+    elif command == "cleanup":
+        cmd_cleanup()
     elif command == "backfill":
         cmd_backfill()
     elif command == "notify":
@@ -903,6 +938,17 @@ def main() -> None:
         cmd_ats_check()
     elif command == "feedback":
         cmd_feedback()
+    elif command == "linkedin-login":
+        from flatwhite.signals.linkedin_insights import linkedin_login_interactive
+        linkedin_login_interactive()
+    elif command == "linkedin-scrape":
+        from flatwhite.signals.linkedin_insights import scrape_all_company_insights
+        results = scrape_all_company_insights()
+        print(f"\nScraped {len(results)} companies")
+        for r in results:
+            emp = r.get("employee_count", "?")
+            growth = r.get("headcount_growth_pct", "?")
+            print(f"  {r['employer_name']}: {emp} employees, growth {growth}%")
     else:
         print(f"Unknown command: {command}")
         print("Run 'flatwhite' with no arguments to see available commands.")

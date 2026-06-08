@@ -178,7 +178,7 @@ def load_reddit_comparison(week_iso: str | None = None) -> dict[str, Any]:
         WHERE ri.week_iso = ?
           AND ri.source = 'reddit_rss'
           AND ri.subreddit = 'auscorp'
-        ORDER BY ci.weighted_composite DESC
+        ORDER BY (COALESCE(ri.post_score, 0) * 0.6 + COALESCE(ri.comment_engagement, 0) * 0.4 + ci.weighted_composite * 20) DESC
         """,
         (w,),
     ).fetchall()
@@ -330,13 +330,14 @@ def load_curated_items_by_section() -> dict[str, list[dict[str, Any]]]:
             ci.weighted_composite, ci.tags, ci.confidence_tag, ci.created_at,
             ci.au_relevance,
             ri.title, ri.body, ri.source, ri.url, ri.subreddit,
+            ri.post_score, ri.comment_engagement,
             ed.decision, ed.id AS decision_id
         FROM curated_items ci
         JOIN raw_items ri ON ci.raw_item_id = ri.id
         LEFT JOIN editor_decisions ed
             ON ed.curated_item_id = ci.id AND ed.issue_week_iso = ?
         WHERE ri.week_iso = ? AND ci.section != 'discard'
-        ORDER BY ci.weighted_composite DESC
+        ORDER BY (COALESCE(ri.post_score, 0) * 0.6 + COALESCE(ri.comment_engagement, 0) * 0.4 + ci.weighted_composite * 20) DESC
         """,
         (week_iso, week_iso),
     ).fetchall()
@@ -349,10 +350,16 @@ def load_curated_items_by_section() -> dict[str, list[dict[str, Any]]]:
         "thread_candidate": [],
         "finds": [],
     }
+    seen_titles: dict[str, set[str]] = {s: set() for s in sections}
     for row in rows:
         d = dict(row)
         section = d["section"]
         if section in sections:
+            # Deduplicate by normalised title within each section
+            title_key = (d.get("title") or "").strip().lower()
+            if title_key and title_key in seen_titles[section]:
+                continue
+            seen_titles[section].add(title_key)
             sections[section].append(d)
     return sections
 
@@ -370,34 +377,47 @@ def load_top_thread() -> dict[str, Any] | None:
 
 
 def load_top_threads(limit: int = 10, weeks: int = 1) -> list[dict[str, Any]]:
-    """Return the top r/auscorp thread_candidates, up to limit.
+    """Return the top auscorp/auslaw discussion threads, up to limit.
 
-    Joins curated_items with raw_items and surfaces existing editor decisions.
-    Includes top_comments (parsed from JSON) and our_take.
+    Surfaces high-engagement community posts regardless of whether the LLM
+    classifier bucketed them as thread_candidate or big_conversation_seed —
+    if a long-form opinion post racks up huge upvotes and comments, it
+    belongs in the Thread panel even if the classifier called it something else.
+
+    Ranking formula:
+        0.5 × upvotes + 1.5 × num_comments + 0.4 × comment_karma + 20 × weighted_composite
+
+    The three Reddit signals balance:
+      - upvotes (post_score)         — broad agreement that the post is interesting
+      - num_comments                 — depth of discussion (rarer, weighted heavier)
+      - comment_engagement           — sum of top-N comment karma (quality of discussion)
 
     Args:
         limit: maximum number of threads to return.
         weeks: 1 = current week only, 2 = current + previous week (fortnight).
-
-    Output: list of dicts with curated_items + raw_items + decision columns.
-    Consumed by: api.py -> /api/threads endpoint, load_top_thread() fallback.
     """
     conn = get_connection()
     week_iso = get_current_week_iso()
 
+    rank_expr = (
+        "(COALESCE(ri.post_score, 0) * 0.5 "
+        " + COALESCE(ri.num_comments, 0) * 1.5 "
+        " + COALESCE(ri.comment_engagement, 0) * 0.4 "
+        " + ci.weighted_composite * 20)"
+    )
+    section_filter = "ci.section IN ('thread_candidate', 'big_conversation_seed')"
+    sub_filter = "ri.subreddit IN ('auscorp', 'auslaw')"
+
     if weeks >= 2:
-        # Build list of week ISOs to include (current + previous weeks)
         import datetime
         year, week_num = int(week_iso[:4]), int(week_iso[6:])
-        # Parse ISO week correctly using %G (ISO year) and %V (ISO week)
         dt = datetime.datetime.strptime(f"{year}-W{week_num:02d}-1", "%G-W%V-%u")
         week_isos = [week_iso]
         for i in range(1, weeks):
             prev = dt - datetime.timedelta(weeks=i)
             week_isos.append(prev.strftime("%G-W%V"))
         placeholders = ",".join("?" for _ in week_isos)
-        current_week_iso = week_iso
-        params = [current_week_iso] + week_isos + [limit]
+        params = [week_iso] + week_isos + [limit]
         rows = conn.execute(
             f"""
             SELECT
@@ -405,6 +425,7 @@ def load_top_threads(limit: int = 10, weeks: int = 1) -> list[dict[str, Any]]:
                 ci.score_reliability, ci.score_tension, ci.score_usefulness,
                 ci.weighted_composite, ci.tags, ci.confidence_tag, ci.our_take,
                 ri.title, ri.body, ri.source, ri.url, ri.subreddit, ri.top_comments,
+                ri.post_score, ri.comment_engagement, ri.num_comments,
                 ri.week_iso AS thread_week_iso, ri.pulled_at,
                 ed.decision, ed.id AS decision_id
             FROM curated_items ci
@@ -412,21 +433,22 @@ def load_top_threads(limit: int = 10, weeks: int = 1) -> list[dict[str, Any]]:
             LEFT JOIN editor_decisions ed
                 ON ed.curated_item_id = ci.id AND ed.issue_week_iso = ?
             WHERE ri.week_iso IN ({placeholders})
-              AND ci.section = 'thread_candidate'
-              AND ri.subreddit = 'auscorp'
-            ORDER BY ci.weighted_composite DESC
+              AND {section_filter}
+              AND {sub_filter}
+            ORDER BY {rank_expr} DESC
             LIMIT ?
             """,
             params,
         ).fetchall()
     else:
         rows = conn.execute(
-            """
+            f"""
             SELECT
                 ci.id, ci.section, ci.summary, ci.score_relevance, ci.score_novelty,
                 ci.score_reliability, ci.score_tension, ci.score_usefulness,
                 ci.weighted_composite, ci.tags, ci.confidence_tag, ci.our_take,
                 ri.title, ri.body, ri.source, ri.url, ri.subreddit, ri.top_comments,
+                ri.post_score, ri.comment_engagement, ri.num_comments,
                 ri.week_iso AS thread_week_iso, ri.pulled_at,
                 ed.decision, ed.id AS decision_id
             FROM curated_items ci
@@ -434,9 +456,9 @@ def load_top_threads(limit: int = 10, weeks: int = 1) -> list[dict[str, Any]]:
             LEFT JOIN editor_decisions ed
                 ON ed.curated_item_id = ci.id AND ed.issue_week_iso = ?
             WHERE ri.week_iso = ?
-              AND ci.section = 'thread_candidate'
-              AND ri.subreddit = 'auscorp'
-            ORDER BY ci.weighted_composite DESC
+              AND {section_filter}
+              AND {sub_filter}
+            ORDER BY {rank_expr} DESC
             LIMIT ?
             """,
             (week_iso, week_iso, limit),
@@ -474,11 +496,11 @@ def load_seed_items() -> list[dict[str, Any]]:
     rows = conn.execute(
         """
         SELECT ci.id, ci.summary, ci.tags, ci.weighted_composite,
-               ri.title, ri.source, ri.url
+               ri.title, ri.source, ri.url, ri.post_score, ri.comment_engagement
         FROM curated_items ci
         JOIN raw_items ri ON ci.raw_item_id = ri.id
         WHERE ri.week_iso = ? AND ci.section = 'big_conversation_seed'
-        ORDER BY ci.weighted_composite DESC
+        ORDER BY (COALESCE(ri.post_score, 0) * 0.6 + COALESCE(ri.comment_engagement, 0) * 0.4 + ci.weighted_composite * 20) DESC
         LIMIT 10
         """,
         (week_iso,),
@@ -638,11 +660,17 @@ def load_otc_candidates(week_iso: str | None = None) -> dict[str, list[dict[str,
     conn.close()
 
     grouped: dict[str, list[dict[str, Any]]] = {s: [] for s in OTC_SECTIONS}
+    seen_titles: dict[str, set[str]] = {s: set() for s in OTC_SECTIONS}
     for row in rows:
         d = dict(row)
         section = d["section"]
         if section in grouped:
-            grouped[section].append(d)  # no cap
+            # Deduplicate by normalised title within each category
+            title_key = (d.get("title") or "").strip().lower()
+            if title_key and title_key in seen_titles[section]:
+                continue
+            seen_titles[section].add(title_key)
+            grouped[section].append(d)
 
     return grouped
 
