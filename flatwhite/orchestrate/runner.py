@@ -67,6 +67,27 @@ def run_step(step_name: str, step_fn: Callable[..., str | None], **kwargs) -> di
         }
 
 
+def pull_trends_without_aborting() -> dict:
+    """Pull Google Trends, returning {} rather than raising if the source is unavailable.
+
+    Google Trends 429s hard from datacenter IPs, and _call_with_retry raises once its
+    retries are exhausted. Trends was the first call in the ingest step, so that abort
+    took every signal below it down too — which is why the Trends and Reddit signals
+    stopped writing in April 2026 while the market signals, pulled elsewhere, kept
+    updating. Trends is one input, not a precondition: let it degrade to absent.
+
+    Returns the same shape as pull_all_google_trends (a dict of signal -> score), so
+    callers can keep doing len(gt).
+    """
+    from flatwhite.signals.google_trends import pull_all_google_trends
+
+    try:
+        return pull_all_google_trends()
+    except Exception as e:
+        print(f"  FAILED: Google Trends ({type(e).__name__}: {e}) — continuing without it")
+        return {}
+
+
 def run_full_pipeline(skip_assemble: bool = True) -> dict:
     """Execute the complete Flat White pipeline end-to-end.
 
@@ -106,8 +127,7 @@ def run_full_pipeline(skip_assemble: bool = True) -> dict:
         from flatwhite.db import init_db
         init_db()
 
-        from flatwhite.signals.google_trends import pull_all_google_trends
-        gt = pull_all_google_trends()
+        gt = pull_trends_without_aborting()
 
         from flatwhite.signals.market_hiring import pull_market_hiring
         pull_market_hiring()
