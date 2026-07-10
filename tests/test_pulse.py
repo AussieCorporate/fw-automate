@@ -59,12 +59,12 @@ def test_load_signal_trends_returns_all_signal_deltas(populated_db):
             ("career_mobility", "pulse", "labour_market", 55.0, 40.0, 1.0),
             ("market_hiring", "pulse", "labour_market", 20000.0, 30.0, 1.0),
             ("employer_hiring_breadth", "pulse", "labour_market", 9000.0, 55.0, 1.0),
-            ("salary_pressure", "pulse", "labour_market", 115000.0, 60.0, 1.0),
             ("layoff_news_velocity", "pulse", "corporate_stress", 64.0, 50.0, 1.0),
             ("contractor_proxy", "pulse", "corporate_stress", 10.0, 45.0, 1.0),
             ("consumer_confidence", "pulse", "economic", 82.0, 75.0, 1.0),
             ("asx_volatility", "pulse", "economic", 1.2, 50.0, 1.0),
             ("asx_momentum", "pulse", "economic", 2.5, 55.0, 1.0),
+            ("indeed_job_postings", "pulse", "labour_market", 118.0, 60.0, 1.0),
         ]
         for name, lane, area, raw, norm, sw in test_signals:
             insert_signal(name, lane, area, raw, norm, sw, week_iso)

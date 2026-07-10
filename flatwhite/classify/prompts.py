@@ -419,7 +419,7 @@ DRIVER_BULLETS_PROMPT = (
     "Identify the top 3 signals that are most noteworthy this week — prioritise signals with "
     "large absolute deltas (|delta| > 10 is significant), and signals far from the neutral "
     "baseline of 50. A signal that barely moved this week is less interesting than one that "
-    "dropped 18 points. If consumer_confidence, salary_pressure, or job_anxiety have large "
+    "dropped 18 points. If consumer_confidence or job_anxiety have large "
     "deltas, they MUST be included.\n"
     "For each, write a short bullet point (max 15 words) describing the movement and what it means.\n"
     "If signal interactions were detected, use them to add context.\n"

@@ -44,8 +44,11 @@ def pull_market_hiring() -> float:
         for category in config["seek"]["categories"]:
             try:
                 time.sleep(1.0)
-                page.goto(category["url"], wait_until="networkidle", timeout=30000)
-                page.wait_for_timeout(3000)
+                # domcontentloaded, not networkidle: SEEK is JS-heavy and often
+                # never goes fully idle, so networkidle would burn the entire
+                # timeout on every category. The job count is in the initial DOM.
+                page.goto(category["url"], wait_until="domcontentloaded", timeout=15000)
+                page.wait_for_timeout(2000)
                 html = page.content()
                 count = _extract_listing_count(html)
                 total_count += count

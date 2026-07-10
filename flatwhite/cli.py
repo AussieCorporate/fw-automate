@@ -102,11 +102,6 @@ def cmd_ingest() -> None:
             for m in hp["biggest_movers_down"]:
                 print(f"    {m['name']}: {m['delta']} roles ({m['delta_pct']:+.1f}%)")
 
-        from flatwhite.signals.salary_pressure import pull_salary_pressure
-        print("Pulling salary pressure (Adzuna avg salaries)...")
-        sp = pull_salary_pressure()
-        print(f"  salary_pressure: {sp:.1f}")
-
         from flatwhite.signals.news_velocity import pull_layoff_news_velocity
         print("Pulling layoff news velocity...")
         news = pull_layoff_news_velocity()

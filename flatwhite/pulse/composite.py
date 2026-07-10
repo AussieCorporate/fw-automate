@@ -23,7 +23,6 @@ SIGNAL_TO_WEIGHT_KEY = {
     "asx_volatility": "asx_volatility",
     "asx_momentum": "asx_momentum",
     "reddit_topic_velocity": "reddit_topic_velocity",
-    "salary_pressure": "salary_pressure",
     "resume_anxiety": "resume_anxiety",
     "auslaw_velocity": "auslaw_velocity",
     "indeed_job_postings": "indeed_job_postings",

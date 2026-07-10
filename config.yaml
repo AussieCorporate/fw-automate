@@ -9,7 +9,6 @@ two_lane_architecture:
     - "employer_hiring_breadth"
     - "employer_req_freshness"
     - "employer_net_delta"
-    - "salary_pressure"
     - "resume_anxiety"
     - "news_velocity_count"
     - "contractor_proxy"
@@ -25,24 +24,23 @@ two_lane_architecture:
     - "manual_whispers"
 
 pulse_weights:
-  consumer_confidence: 0.08
-  salary_pressure: 0.08
-  job_anxiety: 0.07
-  layoff_news_velocity: 0.07
-  market_hiring: 0.07
-  indeed_job_postings: 0.08
-  reddit_topic_velocity: 0.07
-  career_mobility: 0.06
-  contractor_proxy: 0.06
-  asx_volatility: 0.06
-  employer_hiring_breadth: 0.05
-  asx_momentum: 0.05
-  indeed_remote_pct: 0.04
-  employer_req_freshness: 0.04
-  asic_insolvency: 0.04
-  employer_net_delta: 0.03
-  resume_anxiety: 0.03
-  auslaw_velocity: 0.02
+  consumer_confidence: 0.089
+  job_anxiety: 0.076
+  layoff_news_velocity: 0.076
+  market_hiring: 0.076
+  indeed_job_postings: 0.087
+  reddit_topic_velocity: 0.076
+  career_mobility: 0.065
+  contractor_proxy: 0.065
+  asx_volatility: 0.065
+  employer_hiring_breadth: 0.054
+  asx_momentum: 0.054
+  indeed_remote_pct: 0.043
+  employer_req_freshness: 0.043
+  asic_insolvency: 0.043
+  employer_net_delta: 0.033
+  resume_anxiety: 0.033
+  auslaw_velocity: 0.022
 
 pulse_smoothing:
   method: "ema"
@@ -61,10 +59,6 @@ signal_reference_ranges:
     market_hiring:
       floor: 8000
       ceiling: 32000
-      inverted: false
-    salary_pressure:
-      floor: 90000
-      ceiling: 135000
       inverted: false
     indeed_remote_pct:
       floor: 4.0
@@ -175,15 +169,6 @@ signal_interactions:
         news_below: 40
       narrative: "Employer hiring remains strong despite escalating layoff headlines — the job market is absorbing the shock, at least for now."
 
-    - name: "Salary squeeze"
-      description: "Lots of jobs but wages compressing"
-      signals:
-        salary: "salary_pressure"
-        hiring: "market_hiring"
-      thresholds:
-        salary_below: 40
-        hiring_above: 60
-      narrative: "Job listings are plentiful but salary pressure is weakening — employers are hiring on their terms, not yours."
 
 google_trends:
   geo: "AU"
@@ -360,18 +345,6 @@ adzuna:
     - name: "REA Group"
       query: "REA+Group"
 
-adzuna_salary:
-  sectors:
-    - name: "Accounting"
-      query: "accounting"
-    - name: "Consulting"
-      query: "consulting"
-    - name: "Banking"
-      query: "banking"
-    - name: "Legal"
-      query: "legal"
-    - name: "IT"
-      query: "IT+jobs"
 
 model_routing:
   classification_model: "gemini-2.5-flash"

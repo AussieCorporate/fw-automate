@@ -42,7 +42,6 @@ _NEUTRAL_SIGNALS = [
     ("employer_hiring_breadth", "labour_market"),
     ("employer_req_freshness", "labour_market"),
     ("employer_net_delta", "labour_market"),
-    ("salary_pressure", "labour_market"),
     ("reddit_topic_velocity", "corporate_stress"),
     ("auslaw_velocity", "corporate_stress"),
 ]

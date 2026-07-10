@@ -94,7 +94,7 @@ def detect_anomalies(signal_name: str) -> dict:
 def detect_all_anomalies() -> list[dict]:
     signal_names = [
         "job_anxiety", "career_mobility", "market_hiring",
-        "employer_hiring_breadth", "salary_pressure", "layoff_news_velocity",
+        "employer_hiring_breadth", "layoff_news_velocity",
         "contractor_proxy", "consumer_confidence", "asx_volatility",
         "asx_momentum", "reddit_topic_velocity", "resume_anxiety",
         "auslaw_velocity",

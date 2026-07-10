@@ -12,7 +12,6 @@ def _make_scores(**overrides: float) -> dict[str, float]:
         "asx_momentum": 50.0,
         "asic_insolvency": 50.0,
         "employer_hiring_breadth": 50.0,
-        "salary_pressure": 50.0,
         "market_hiring": 50.0,
     }
     defaults.update(overrides)

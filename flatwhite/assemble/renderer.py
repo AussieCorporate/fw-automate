@@ -91,7 +91,6 @@ SIGNAL_DISPLAY_NAMES: dict[str, str] = {
     "employer_hiring_seek_validator": "Employer Hiring (SEEK)",
     "employer_req_freshness": "Employer Req Freshness",
     "employer_net_delta": "Employer Net Delta",
-    "salary_pressure": "Salary Pressure",
     "layoff_news_velocity": "Layoff News",
     "consumer_confidence": "Consumer Confidence",
     "asx_volatility": "ASX Volatility",

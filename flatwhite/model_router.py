@@ -13,6 +13,32 @@ from dotenv import load_dotenv
 
 load_dotenv(override=True)
 
+class LLMRateLimitError(Exception):
+    """Raised when an LLM provider returns a rate-limit / quota-exhaustion error (429).
+
+    Callers (e.g. the batch classifier) MUST treat this as "stop now and carry
+    forward", NOT as a transient failure to retry or fan out into per-item calls.
+    Retrying or fanning out under a 429 is exactly what turns a 2-minute classify
+    run into a multi-hour 429 retry-storm.
+    """
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """Best-effort, provider-agnostic detection of a 429 / quota-exhaustion error.
+
+    Covers Anthropic (RateLimitError / OverloadedError), Gemini
+    (ResourceExhausted / ClientError 429) and raw httpx 429s by inspecting the
+    exception class name and message rather than importing every SDK's types.
+    """
+    name = type(exc).__name__.lower()
+    msg = str(exc).lower()
+    if "ratelimit" in name or "resourceexhausted" in name or "overloaded" in name:
+        return True
+    needles = ("429", "rate limit", "rate_limit", "too many requests",
+               "resource_exhausted", "resourceexhausted", "quota", "529", "overloaded")
+    return any(n in msg for n in needles)
+
+
 TEMPERATURE_BY_TASK: dict[str, float] = {
     "classification": 0.1,
     "scoring": 0.1,
@@ -147,7 +173,9 @@ def _call_model(model_id: str, prompt: str, system: str, temperature: float) -> 
 def route(task_type: str, prompt: str, system: str = "", model_override: str | None = None) -> str:
     """Route an LLM task. Uses model_override if provided, otherwise default for task_type.
 
-    Retries once on failure with 2s backoff.
+    Retries once on a *transient* failure with 2s backoff. A rate-limit / quota
+    error (429) is NOT transient — retrying immediately just hits the same wall —
+    so it is re-raised at once as LLMRateLimitError for callers to abort on.
     """
     if task_type not in TEMPERATURE_BY_TASK:
         raise ValueError(
@@ -163,6 +191,8 @@ def route(task_type: str, prompt: str, system: str = "", model_override: str | N
         try:
             return _call_model(model_id, prompt, system, temperature)
         except Exception as e:
+            if _is_rate_limit_error(e):
+                raise LLMRateLimitError(f"{model_id}: {e}") from e
             last_error = e
             if attempt == 0:
                 print(f"LLM call failed ({model_id}: {e}), retrying in 2s...")

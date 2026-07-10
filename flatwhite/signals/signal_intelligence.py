@@ -13,7 +13,7 @@ from email.utils import parsedate_to_datetime
 from urllib.parse import quote
 
 from flatwhite.db import get_connection, get_current_week_iso
-from flatwhite.model_router import route
+from flatwhite.model_router import route, LLMRateLimitError
 from flatwhite.utils.http import fetch_rss
 
 DELTA_THRESHOLD = 5.0
@@ -24,7 +24,6 @@ _QUERY_TEMPLATES: dict[str, str] = {
     "market_hiring":        "Australian job market hiring white collar {month} {year}",
     "asx_volatility":       "ASX market volatility week {month} {year}",
     "asx_momentum":         "ASX market rally correction {month} {year}",
-    "salary_pressure":      "Australian salary wages pressure {month} {year}",
     "consumer_confidence":  "Australian consumer confidence {month} {year}",
     "layoff_news_velocity": "Australian corporate layoffs redundancies {month} {year}",
     "news_velocity":        "Australian corporate layoffs redundancies {month} {year}",
@@ -109,7 +108,6 @@ _SIGNAL_DESCRIPTIONS: dict[str, str] = {
     "employer_hiring_breadth": "Percentage of tracked employers actively adding roles. Higher raw = more firms hiring. Stress INVERTS: fewer firms hiring → higher stress. Score rising = hiring breadth contracting.",
     "asx_volatility":          "ASX 200 realised volatility. Higher raw = more turbulent market = worse. Score rising = volatility climbing = stress increasing.",
     "asx_momentum":            "ASX 200 weekly momentum (% change). Higher raw = stronger market. Stress INVERTS: weaker/negative momentum → higher stress. Score rising = momentum weakening or turning negative.",
-    "salary_pressure":         "Average salary in tracked job ads. Higher raw = stronger wage growth. Stress INVERTS: flat or falling salaries → higher stress.",
     "job_anxiety":             "Google search volume for job-anxiety / redundancy terms. Higher raw searches = more anxiety = worse. Score rising = anxiety searches climbing.",
     "career_mobility":         "Google search volume for career-change terms. Higher raw = more people actively exploring moves. Stress INVERTS: low mobility → higher stress (people stuck/scared to move).",
     "asic_insolvency":         "ASIC corporate insolvency filings. Higher raw = more failures = worse. Score rising = insolvencies climbing = stress increasing.",
@@ -203,7 +201,14 @@ def run_signal_intelligence() -> None:
     for signal_name, delta in movers:
         # fetch_rss already sleeps delay_seconds between requests; no extra sleep needed here
         articles = _fetch_articles(signal_name, month, str(year))
-        commentary = _synthesise(signal_name, delta, articles)
+        try:
+            commentary = _synthesise(signal_name, delta, articles)
+        except LLMRateLimitError as e:
+            # Quota exhausted — stop generating commentary rather than crashing
+            # the whole Pulse run. Movers already processed keep their commentary.
+            print(f"  ⚠ signal_intelligence stopped — LLM rate-limited ({e}). "
+                  f"Remaining movers skipped this run.")
+            return
 
         conn = get_connection()
         conn.execute(

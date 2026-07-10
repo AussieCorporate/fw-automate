@@ -135,9 +135,6 @@ def run_full_pipeline(skip_assemble: bool = True) -> dict:
         from flatwhite.signals.hiring_pulse import pull_hiring_pulse
         pull_hiring_pulse()
 
-        from flatwhite.signals.salary_pressure import pull_salary_pressure
-        pull_salary_pressure()
-
         from flatwhite.signals.news_velocity import pull_layoff_news_velocity
         pull_layoff_news_velocity()
 

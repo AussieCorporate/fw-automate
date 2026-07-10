@@ -892,7 +892,6 @@ def _run_ingest_background() -> None:
         """Group 1: Fast Lane A signals."""
         _step("market_hiring", lambda: __import__("flatwhite.signals.market_hiring", fromlist=["pull_market_hiring"]).pull_market_hiring())
         _step("hiring_pulse", lambda: __import__("flatwhite.signals.hiring_pulse", fromlist=["pull_hiring_pulse"]).pull_hiring_pulse())
-        _step("salary_pressure", lambda: __import__("flatwhite.signals.salary_pressure", fromlist=["pull_salary_pressure"]).pull_salary_pressure())
         _step("layoff_news", lambda: __import__("flatwhite.signals.news_velocity", fromlist=["pull_layoff_news_velocity"]).pull_layoff_news_velocity())
         _step("consumer_confidence", lambda: __import__("flatwhite.signals.consumer_confidence", fromlist=["pull_consumer_confidence"]).pull_consumer_confidence())
         _step("asx_volatility", lambda: __import__("flatwhite.signals.asx_volatility", fromlist=["pull_asx_volatility"]).pull_asx_volatility())
@@ -995,7 +994,6 @@ _section_lock = threading.Lock()
 _SECTION_RUNNERS: dict[str, list[tuple[str, "Callable"]]] = {
     "pulse": [
         ("Market hiring",       lambda: __import__("flatwhite.signals.market_hiring",   fromlist=["pull_market_hiring"]).pull_market_hiring()),
-        ("Salary pressure",     lambda: __import__("flatwhite.signals.salary_pressure", fromlist=["pull_salary_pressure"]).pull_salary_pressure()),
         ("News velocity",       lambda: __import__("flatwhite.signals.news_velocity",   fromlist=["pull_layoff_news_velocity"]).pull_layoff_news_velocity()),
         ("Consumer confidence", lambda: __import__("flatwhite.signals.consumer_confidence", fromlist=["pull_consumer_confidence"]).pull_consumer_confidence()),
         ("ASX volatility",      lambda: __import__("flatwhite.signals.asx_volatility",  fromlist=["pull_asx_volatility"]).pull_asx_volatility()),
@@ -1120,12 +1118,15 @@ def _run_section_background(section: str) -> None:
     On completion, step == total (sentinel for "all done"). Frontend should render step/total as
     "N of M" by treating step as "currently on step N+1" while running, and "all done" when step==total.
     """
+    from flatwhite.utils.timing import timed_step
+
     steps = _SECTION_RUNNERS[section]
     total = len(steps)
     try:
         for i, (label, fn) in enumerate(steps):
             _section_state[section].update({"step": i, "total": total, "step_name": label})
-            fn()
+            with timed_step(section, label):
+                fn()
         _section_state[section] = {
             "running": False, "done": True, "error": None,
             "step": total, "total": total, "step_name": "",

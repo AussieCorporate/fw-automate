@@ -16,7 +16,7 @@ def test_get_backfill_weeks_skips_existing():
     first_week = weeks[0]
     test_signals = [
         "job_anxiety", "career_mobility", "market_hiring", "employer_hiring_breadth",
-        "salary_pressure", "layoff_news_velocity", "contractor_proxy",
+        "indeed_job_postings", "layoff_news_velocity", "contractor_proxy",
         "consumer_confidence", "asx_volatility", "asx_momentum",
     ]
     for sig in test_signals:
@@ -57,7 +57,7 @@ def test_pulse_history_chain():
         ("career_mobility", "labour_market", 55.0),
         ("market_hiring", "labour_market", 52.0),
         ("employer_hiring_breadth", "labour_market", 48.0),
-        ("salary_pressure", "labour_market", 55.0),
+        ("indeed_job_postings", "labour_market", 55.0),
         ("layoff_news_velocity", "corporate_stress", 45.0),
         ("contractor_proxy", "corporate_stress", 55.0),
         ("consumer_confidence", "economic", 57.0),

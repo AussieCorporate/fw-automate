@@ -35,7 +35,6 @@ SIGNAL_DISPLAY_NAMES: dict[str, str] = {
     "employer_hiring_breadth": "employer hiring breadth (% of tracked firms adding roles)",
     "employer_req_freshness": "new role freshness",
     "employer_net_delta": "employer net headcount change",
-    "salary_pressure": "salary pressure",
     "layoff_news_velocity": "layoff news volume",
     "consumer_confidence": "consumer confidence",
     "asx_volatility": "ASX volatility",

@@ -48,12 +48,12 @@ def populated_db(tmp_path: Path) -> Path:
             ("career_mobility", "pulse", "labour_market", 55.0, 55.0, 1.0),
             ("market_hiring", "pulse", "labour_market", 20000.0, 52.0, 1.0),
             ("employer_hiring_breadth", "pulse", "labour_market", 9000.0, 48.0, 1.0),
-            ("salary_pressure", "pulse", "labour_market", 115000.0, 55.0, 1.0),
             ("layoff_news_velocity", "pulse", "corporate_stress", 64.0, 45.0, 1.0),
             ("contractor_proxy", "pulse", "corporate_stress", 10.0, 55.0, 1.0),
             ("consumer_confidence", "pulse", "economic", 82.0, 57.0, 1.0),
             ("asx_volatility", "pulse", "economic", 1.2, 60.0, 1.0),
             ("asx_momentum", "pulse", "economic", 2.5, 75.0, 1.0),
+            ("indeed_job_postings", "pulse", "labour_market", 118.0, 60.0, 1.0),
         ]
         for name, lane, area, raw, norm, sw in test_signals:
             db_module.insert_signal(name, lane, area, raw, norm, sw, week_iso)

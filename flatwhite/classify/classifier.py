@@ -19,7 +19,7 @@ but are NOT inserted into curated_items.
 
 import json
 import time
-from flatwhite.model_router import route
+from flatwhite.model_router import route, LLMRateLimitError
 from flatwhite.classify.prompts import CLASSIFICATION_SYSTEM, CLASSIFICATION_PROMPT
 from flatwhite.classify.utils import _parse_llm_json, _calculate_weighted_composite
 from flatwhite.db import get_connection, get_current_week_iso
@@ -62,6 +62,10 @@ def classify_single_item(raw_item: dict) -> dict | None:
             prompt=prompt,
             system=CLASSIFICATION_SYSTEM,
         )
+    except LLMRateLimitError:
+        # Don't swallow a 429 into a "failed item" — propagate so the caller
+        # aborts the run instead of grinding through every remaining item.
+        raise
     except Exception:
         return None
 
@@ -293,10 +297,15 @@ def classify_batch(items: list[dict], batch_size: int = 8) -> list[dict | None]:
                         batch_results.append(None)
             else:
                 batch_results = None
+        except LLMRateLimitError:
+            # Provider is rate-limiting. Do NOT fall back to per-item — that
+            # fans one throttled call into batch_size more, which is the bug
+            # that turns a 2-min run into hours. Abort up to the caller.
+            raise
         except Exception:
             batch_results = None
 
-        # Fallback: if batch parsing failed, classify individually
+        # Fallback: only for *parse* failures (not API failures), classify individually
         if batch_results is None:
             print(f"  Batch parse failed — falling back to per-item classification")
             batch_results = []
@@ -375,7 +384,16 @@ def classify_all_unclassified() -> dict:
 
     # Classify in batches
     print(f"  Classifying {len(items_to_classify)} items in batches of 8...")
-    batch_results = classify_batch(items_to_classify, batch_size=8)
+    try:
+        batch_results = classify_batch(items_to_classify, batch_size=8)
+    except LLMRateLimitError as e:
+        # Provider quota exhausted. Stop now rather than spending hours retrying
+        # 429s; unclassified items stay classified=0 and carry forward to the
+        # next run, when the quota has reset.
+        print(f"  ⚠ Classification stopped — LLM rate-limited ({e}). "
+              f"{len(items_to_classify)} items left unclassified, will retry next run.")
+        stats["rate_limited"] = True
+        return stats
 
     # Process results
     for item_dict, result in zip(items_to_classify, batch_results):
@@ -487,6 +505,8 @@ def classify_single_otc_item(raw_item: dict) -> dict | None:
             # Editorial classification still uses Gemini (different call site).
             model_override="claude-haiku-4-5",
         )
+    except LLMRateLimitError:
+        raise
     except Exception:
         return None
 
@@ -583,10 +603,13 @@ def _classify_otc_batch(items: list[dict], batch_size: int = 8) -> list[dict | N
                         batch_results.append(None)
             else:
                 batch_results = None
+        except LLMRateLimitError:
+            # See classify_batch: never fan a 429 out into per-item retries.
+            raise
         except Exception:
             batch_results = None
 
-        # Fallback: if batch parsing failed, classify individually
+        # Fallback: only for *parse* failures (not API failures), classify individually
         if batch_results is None:
             print(f"  OTC batch parse failed — falling back to per-item classification")
             batch_results = []
@@ -687,7 +710,13 @@ def classify_all_otc_unclassified() -> dict:
 
     # Batch classify
     print(f"  Classifying {len(items_to_classify)} OTC items in batches of 8...")
-    batch_results = _classify_otc_batch(items_to_classify, batch_size=8)
+    try:
+        batch_results = _classify_otc_batch(items_to_classify, batch_size=8)
+    except LLMRateLimitError as e:
+        print(f"  ⚠ OTC classification stopped — LLM rate-limited ({e}). "
+              f"{len(items_to_classify)} items left unclassified, will retry next run.")
+        stats["rate_limited"] = True
+        return stats
 
     for item_dict, result in zip(items_to_classify, batch_results):
         conn = get_connection()
