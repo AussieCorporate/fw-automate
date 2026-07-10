@@ -70,9 +70,13 @@ signal_reference_ranges:
       floor: 4.0
       ceiling: 20.0
       inverted: false
+    # Monthly companies entering external administration. The old 100/350 range was
+    # calibrated to a fabricated 234 the parser scraped from the workbook's Contents
+    # sheet. Real monthly counts across FY24-FY26 run 555-1480 (median 1104), so the
+    # true figure would have pegged this signal at maximum stress every week.
     asic_insolvency:
-      floor: 100
-      ceiling: 350
+      floor: 550
+      ceiling: 1500
       inverted: true
     reddit_topic_velocity:
       floor: 30.0
