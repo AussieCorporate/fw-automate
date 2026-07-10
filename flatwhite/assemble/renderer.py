@@ -182,7 +182,7 @@ def _render_big_conversation(sections: dict[str, list[dict]]) -> str:
     for para in draft_paragraphs:
         para = para.strip()
         if para:
-            draft_html += f'<p style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:15px;line-height:1.6;margin:0 0 12px 0;">{para}</p>\n'
+            draft_html += f'''<p style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:15px;line-height:1.6;margin:0 0 12px 0;">{para}</p>\n'''
 
     return BIG_CONVERSATION_TEMPLATE.format(
         headline=headline,

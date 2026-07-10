@@ -11,7 +11,7 @@ Font: System font stack (San Francisco, Segoe UI, Roboto, Helvetica Neue).
 # ─── SECTION: TOP LINE HOOK ──────────────────────────────────────────────────
 
 HOOK_TEMPLATE = (
-    '<p style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:16px;'
+    '''<p style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:16px;'''
     'line-height:1.6;margin:0 0 20px 0;">'
     "<b>Good morning AusCorp.</b> {hook_text}</p>\n"
     '<hr style="border:none;border-top:1px solid #e5e5e5;margin:20px 0;">\n'
@@ -21,9 +21,9 @@ HOOK_TEMPLATE = (
 
 PULSE_TEMPLATE = (
     '<div style="background-color:#fff2d5;border-radius:8px;padding:20px;margin:20px 0;">\n'
-    '<h2 style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:20px;'
+    '''<h2 style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:20px;'''
     'margin:0 0 12px 0;">AusCorp Live Pulse: {smoothed_score} {direction_arrow}</h2>\n'
-    '<p style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:15px;'
+    '''<p style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:15px;'''
     'line-height:1.5;margin:0 0 12px 0;">{summary_text}</p>\n'
     '{driver_bullets_html}\n'
     '</div>\n'
@@ -31,18 +31,18 @@ PULSE_TEMPLATE = (
 )
 
 DRIVER_BULLET_TEMPLATE = (
-    '<p style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:14px;'
+    '''<p style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:14px;'''
     'line-height:1.5;margin:0 0 4px 0;">{arrow} <b>{signal}</b>: {bullet}</p>\n'
 )
 
 # ─── SECTION: BIG CONVERSATION ───────────────────────────────────────────────
 
 BIG_CONVERSATION_TEMPLATE = (
-    '<h2 style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:20px;'
+    '''<h2 style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:20px;'''
     'margin:0 0 12px 0;">The Big Conversation</h2>\n'
-    '<h3 style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:17px;'
+    '''<h3 style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:17px;'''
     'font-style:italic;margin:0 0 12px 0;">{headline}</h3>\n'
-    '<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:15px;'
+    '''<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:15px;'''
     'line-height:1.6;margin:0 0 20px 0;">{draft_html}</div>\n'
     '<hr style="border:none;border-top:1px solid #e5e5e5;margin:20px 0;">\n'
 )
@@ -50,12 +50,12 @@ BIG_CONVERSATION_TEMPLATE = (
 # ─── SECTION: WHISPERS ───────────────────────────────────────────────────────
 
 WHISPERS_HEADER_TEMPLATE = (
-    '<h2 style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:20px;'
+    '''<h2 style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:20px;'''
     'margin:0 0 12px 0;">Whispers</h2>\n'
 )
 
 WHISPER_ITEM_TEMPLATE = (
-    '<p style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:15px;'
+    '''<p style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:15px;'''
     'line-height:1.5;margin:0 0 12px 0;">'
     '{confidence_emoji} {summary}{link_html}'
     '</p>\n'
@@ -81,11 +81,11 @@ WATCHING_ITEM_TEMPLATE = """
 # ─── SECTION: THREAD OF THE WEEK ─────────────────────────────────────────────
 
 THREAD_TEMPLATE = (
-    '<h2 style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:20px;'
+    '''<h2 style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:20px;'''
     'margin:0 0 12px 0;">Thread of the Week</h2>\n'
-    '<p style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:15px;'
+    '''<p style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:15px;'''
     'line-height:1.5;margin:0 0 8px 0;font-style:italic;">{editorial_frame}</p>\n'
-    '<p style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:15px;'
+    '''<p style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:15px;'''
     'line-height:1.5;margin:0 0 8px 0;">'
     '<b><a href="{url}" style="color:#2c81e5;text-decoration:underline;">'
     '{title}</a></b> — r/{subreddit}</p>\n'
@@ -95,12 +95,12 @@ THREAD_TEMPLATE = (
 # ─── SECTION: FINDS ──────────────────────────────────────────────────────────
 
 FINDS_HEADER_TEMPLATE = (
-    '<h2 style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:20px;'
+    '''<h2 style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:20px;'''
     'margin:0 0 12px 0;">Finds</h2>\n'
 )
 
 FINDS_ITEM_TEMPLATE = (
-    '<p style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:15px;'
+    '''<p style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:15px;'''
     'line-height:1.5;margin:0 0 12px 0;">'
     '{summary}'
     '{link_html}'
@@ -115,16 +115,16 @@ FINDS_FOOTER_TEMPLATE = (
 
 POLL_TEMPLATE = (
     '<div style="background-color:#fff2d5;border-radius:8px;padding:20px;margin:20px 0;">\n'
-    '<h2 style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:20px;'
+    '''<h2 style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:20px;'''
     'margin:0 0 12px 0;">Poll</h2>\n'
-    '<p style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:15px;'
+    '''<p style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:15px;'''
     'line-height:1.5;margin:0 0 12px 0;font-weight:bold;">{question}</p>\n'
     '{options_html}\n'
     '</div>\n'
 )
 
 POLL_OPTION_TEMPLATE = (
-    '<p style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:15px;'
+    '''<p style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:15px;'''
     'line-height:1.5;margin:0 0 6px 0;">• {option}</p>\n'
 )
 
@@ -132,7 +132,7 @@ POLL_OPTION_TEMPLATE = (
 
 FOOTER_TEMPLATE = (
     '<hr style="border:none;border-top:1px solid #e5e5e5;margin:20px 0;">\n'
-    '<p style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:14px;'
+    '''<p style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif;color:#2D2D2D;font-size:14px;'''
     'line-height:1.5;text-align:center;margin:20px 0;">'
     '<i>Was this email forwarded to you? '
     '<a href="https://theaussiecorporate.beehiiv.com/subscribe" '
