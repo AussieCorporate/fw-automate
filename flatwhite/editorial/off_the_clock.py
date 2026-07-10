@@ -12,6 +12,7 @@ handling, returns total inserted count.
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from flatwhite.utils.http import fetch_rss
+from flatwhite.utils.dates import to_iso_utc
 from flatwhite.db import get_connection, get_current_week_iso
 import yaml
 from pathlib import Path
@@ -52,6 +53,11 @@ def _is_recent(entry: dict, max_age_days: int) -> bool:
         return False
 
 
+def _normalise_title(title: str) -> str:
+    """Match SQLite's `lower(trim(title))` exactly, so the lookup below can hit."""
+    return (title or "").strip().lower()
+
+
 def _insert_lifestyle_item(
     title: str,
     body: str | None,
@@ -84,11 +90,26 @@ def _insert_lifestyle_item(
         if existing:
             conn.close()
             return 0
+
+    # Cross-source dedup: the same Concrete Playground article syndicates through the
+    # Sydney feed, the Melbourne feed and the category sub-feeds under different URLs,
+    # so URL-exact dedup alone let one story ("MIFF's 2026 Program Is Here") into the
+    # pool several times, each scored separately.
+    normalised = _normalise_title(title)
+    if normalised:
+        duplicate = conn.execute(
+            """SELECT 1 FROM raw_items WHERE lane = 'lifestyle'
+            AND lower(trim(title)) = ? LIMIT 1""",
+            (normalised,),
+        ).fetchone()
+        if duplicate:
+            conn.close()
+            return 0
     cursor = conn.execute(
         """INSERT OR IGNORE INTO raw_items
         (title, body, source, url, lane, subreddit, pulled_at, week_iso, lifestyle_category, published_at)
         VALUES (?, ?, ?, ?, 'lifestyle', ?, datetime('now'), ?, ?, ?)""",
-        (title, body, source, url, city, week_iso, category_hint, published_at),
+        (title, body, source, url, city, week_iso, category_hint, to_iso_utc(published_at)),
     )
     conn.commit()
     row_id = cursor.lastrowid
@@ -123,13 +144,21 @@ def _fetch_rss_feed(feed: dict, max_items: int, max_age_days: int, week_iso: str
     city = feed.get("city")
     source_tag = f"otc_rss_{name.lower().replace(' ', '_')}"
 
+    # A feed with no category_hint used to insert lifestyle_category=NULL and let the
+    # classifier guess, which is how career essays and Byron Bay retreats landed in
+    # "Going". Skip the feed rather than guess.
+    if not category_hint:
+        return {"name": name, "count": 0, "error": "no category_hint — feed skipped"}
+
     try:
         entries = fetch_rss(url, delay_seconds=0)
         count = 0
         for entry in entries[:max_items]:
             if not _is_recent(entry, max_age_days):
                 continue
-            _insert_lifestyle_item(
+            # _insert_lifestyle_item returns 0 when the URL was already seen; counting
+            # unconditionally overstated how much fresh content a run actually added.
+            if _insert_lifestyle_item(
                 title=entry["title"],
                 body=entry["body"][:2000] if entry["body"] else None,
                 source=source_tag,
@@ -138,8 +167,8 @@ def _fetch_rss_feed(feed: dict, max_items: int, max_age_days: int, week_iso: str
                 category_hint=category_hint,
                 week_iso=week_iso,
                 published_at=entry.get("published") or None,
-            )
-            count += 1
+            ):
+                count += 1
         return {"name": name, "count": count, "error": None}
     except Exception as e:
         return {"name": name, "count": 0, "error": str(e)}
@@ -168,7 +197,7 @@ def _fetch_single_google_query(category: str, query: str, max_items: int, max_ag
         for entry in entries[:max_items]:
             if not _is_recent(entry, max_age_days):
                 continue
-            _insert_lifestyle_item(
+            if _insert_lifestyle_item(
                 title=entry["title"],
                 body=entry["body"][:2000] if entry["body"] else None,
                 source="otc_google_news",
@@ -177,8 +206,8 @@ def _fetch_single_google_query(category: str, query: str, max_items: int, max_ag
                 category_hint=category,
                 week_iso=week_iso,
                 published_at=entry.get("published") or None,
-            )
-            count += 1
+            ):
+                count += 1
         return {"query": query, "count": count, "error": None}
     except Exception as e:
         return {"query": query, "count": 0, "error": str(e)}
@@ -223,7 +252,7 @@ def _fetch_single_reddit_sub(sub: dict, keyword_filters: dict, max_items: int, m
             if category is None:
                 continue
 
-            _insert_lifestyle_item(
+            if _insert_lifestyle_item(
                 title=entry["title"],
                 body=entry["body"][:2000] if entry["body"] else None,
                 source=f"otc_reddit_r/{sub['name']}",
@@ -232,8 +261,8 @@ def _fetch_single_reddit_sub(sub: dict, keyword_filters: dict, max_items: int, m
                 category_hint=category,
                 week_iso=week_iso,
                 published_at=entry.get("published") or None,
-            )
-            count += 1
+            ):
+                count += 1
         return {"name": sub["name"], "count": count, "error": None}
     except Exception as e:
         return {"name": sub["name"], "count": 0, "error": str(e)}

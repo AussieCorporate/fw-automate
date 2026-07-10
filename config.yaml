@@ -549,16 +549,14 @@ off_the_clock:
       - "best show streaming australia"
       - "netflix australia must watch"
       - "best new movie australia"
-      # Trending-angle queries — Google News ranking favours high search interest
-      - "trending tv show australia"
-      - "viral movie australia 2026"
-    reading:
-      - "best article this week australia"
-      - "must read book australia 2026"
-      - "longform article australia"
-      # Trending-angle queries — surfaces what's searched, not just what's published
-      - "viral essay australia"
-      - "trending longread australia 2026"
+      # "trending tv show australia" / "viral movie australia 2026" removed:
+      # abstract trend words match evergreen listicles and US copy, not new releases.
+    # No google_news_queries for "reading". Every query we tried ("best article this
+    # week australia", "longform article australia", "viral essay australia",
+    # "trending longread australia 2026") returned ereader reviews, trading-app
+    # roundups, LitRPG lists and Oprah's Book Club. Google News ranks pages that
+    # match the words, and no phrasing of "an article people are passing around"
+    # matches the article itself. Reading now comes from curated feeds only.
     wearing:
       - "fashion drop australia"
       - "new collection australia"
@@ -607,24 +605,37 @@ off_the_clock:
       url: "https://www.pedestrian.tv/style/feed"
       category_hint: "wearing"
       city: "national"
-    # General (multi-category, no hint — rely on keyword matching downstream)
-    - name: "Concrete Playground Sydney"
-      url: "https://concreteplayground.com/sydney/feed"
-      category_hint: null
+    # The two general Concrete Playground feeds were removed. They carried no
+    # category_hint, and the keyword matcher meant to sort them only ever ran on the
+    # (now disabled) Reddit branch, so 349 items landed with no category and the
+    # classifier guessed. Their content is already covered by the food-drink and
+    # arts-entertainment sub-feeds above.
+    #
+    # Reading — section feeds, not whole-publication firehoses.
+    # "The Conversation AU" (all articles) and "Crikey" were removed: both are
+    # whole-site feeds, so tagging them "reading" flooded the category with politics
+    # and sport ("Albanese faces rank-and-file revolt", "Socceroos knocked out").
+    - name: "The Conversation AU Books"
+      url: "https://theconversation.com/au/books/articles.atom"
+      category_hint: "reading"
+      city: "national"
+    - name: "The Conversation AU Arts"
+      url: "https://theconversation.com/au/arts/articles.atom"
+      category_hint: "reading"
+      city: "national"
+    - name: "Guardian AU Life and Style"
+      url: "https://www.theguardian.com/au/lifeandstyle/rss"
+      category_hint: "reading"
+      city: "national"
+    # Going — what's actually on this week
+    - name: "Time Out Sydney"
+      url: "https://www.timeout.com/sydney/feed.rss"
+      category_hint: "going"
       city: "sydney"
-    - name: "Concrete Playground Melbourne"
-      url: "https://concreteplayground.com/melbourne/feed"
-      category_hint: null
+    - name: "Time Out Melbourne"
+      url: "https://www.timeout.com/melbourne/feed.rss"
+      category_hint: "going"
       city: "melbourne"
-    # Reading — long-form + trending-topic editorial
-    - name: "The Conversation AU"
-      url: "https://theconversation.com/au/articles.atom"
-      category_hint: "reading"
-      city: "national"
-    - name: "Crikey"
-      url: "https://www.crikey.com.au/feed/"
-      category_hint: "reading"
-      city: "national"
     # Watching — TV/film, AU-focused
     - name: "Guardian AU TV & Radio"
       url: "https://www.theguardian.com/au/tv-and-radio/rss"

@@ -4,6 +4,8 @@ import os
 import sqlite3
 from pathlib import Path
 
+from flatwhite.utils.dates import to_iso_utc
+
 _default_db_dir = Path(__file__).parent.parent / "data"
 DB_PATH = Path(os.environ.get("FLATWHITE_DB_DIR", str(_default_db_dir))) / "flatwhite.db"
 
@@ -502,7 +504,7 @@ def insert_raw_item(
         """INSERT OR IGNORE INTO raw_items
         (title, body, source, url, lane, subreddit, pulled_at, week_iso, published_at)
         VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, ?)""",
-        (title, body, source, url, lane, subreddit, week_iso, published_at),
+        (title, body, source, url, lane, subreddit, week_iso, to_iso_utc(published_at)),
     )
     conn.commit()
     row_id = cursor.lastrowid
