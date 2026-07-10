@@ -2405,20 +2405,35 @@ function copyTopPicks() {
   }
   if (!selected.length) { showToast("No picks selected", "error"); return; }
 
-  // Build rich HTML: "Story sentence. link" where "link" is hyperlinked
+  // Build rich HTML matching the Flat White template's Top Picks house format:
+  // <li><p><strong>lead clause</strong> rest. <a ...>LINK</a></p></li>
   var htmlParts = [];
   var plainParts = [];
   selected.forEach(function(p) {
     var summary = (p.summary || "").replace(/\s+/g, " ").trim();
-    // Strip "Editor's Pick:" or similar prefixes
-    summary = summary.replace(/^editor'?s?\s*pick\s*[:–—-]\s*/i, "");
+    // Strip section prefixes ("Editor's Pick:", "Doctor's Pick:", "Draft Pick:" —
+    // straight or curly apostrophe) and the daily newsletter's greeting.
+    summary = summary.replace(/^[A-Za-z]+(?:['’]s)?\s*pick\s*[:–—-]\s*/i, "");
+    summary = summary.replace(/^good morning[.!]\s*/i, "");
+    if (!summary) return;
     var url = p.url || "";
-    // Ensure summary ends with punctuation before appending link
-    if (summary && !/[.!?]$/.test(summary)) summary += ".";
-    htmlParts.push("<p>" + summary + " <a href=\"" + url + "\">link</a></p>");
+    if (!/[.!?]$/.test(summary)) summary += ".";
+    // Bold the opening clause: cut at an early comma, else the first 10 words.
+    var words = summary.split(" ");
+    var cut = Math.min(10, words.length);
+    for (var w = 4; w < Math.min(words.length, 14); w++) {
+      if (words[w].slice(-1) === ",") { cut = w + 1; break; }
+    }
+    var lead = words.slice(0, cut).join(" ");
+    var trailing = lead.slice(-1) === "," ? "," : "";
+    if (trailing) lead = lead.slice(0, -1);
+    var rest = words.slice(cut).join(" ");
+    var anchor = "<a target=\"_blank\" rel=\"noopener noreferrer nofollow\" class=\"link\" href=\"" + esc(url) + "\">LINK</a>";
+    htmlParts.push("<li><p><strong>" + esc(lead) + "</strong>" + trailing + (rest ? " " + esc(rest) : "") + " " + anchor + "</p></li>");
     plainParts.push(summary + " " + url);
   });
-  var html = htmlParts.join("\n");
+  if (!htmlParts.length) { showToast("Selected picks have no summary text", "error"); return; }
+  var html = "<ul>" + htmlParts.join("") + "</ul>";
   var plain = plainParts.join("\n\n");
 
   // Copy as rich text so Beehiiv gets clickable links
