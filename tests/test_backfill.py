@@ -1,9 +1,19 @@
-"""Test backfill module — unit tests that don't hit external APIs."""
+"""Test backfill module — unit tests that don't hit external APIs.
+
+Every test takes the temp_db fixture. Without it these called init_db() and
+insert_signal() against the real data/flatwhite.db, so running the suite wrote
+sentinel weeks (9998-W01, 9999-W01) and fake signal rows into production data.
+"""
 from flatwhite.db import init_db, get_connection, insert_signal
-from flatwhite.pulse.backfill import _get_backfill_weeks, _backfill_neutral_placeholders, _backfill_pulse_history
+from flatwhite.pulse.backfill import (
+    _NEUTRAL_SIGNALS,
+    _backfill_neutral_placeholders,
+    _backfill_pulse_history,
+    _get_backfill_weeks,
+)
 
 
-def test_get_backfill_weeks_skips_existing():
+def test_get_backfill_weeks_skips_existing(temp_db):
     """Weeks with >= 10 signals should be excluded from the backfill list."""
     init_db()
 
@@ -28,7 +38,7 @@ def test_get_backfill_weeks_skips_existing():
     print("PASS: _get_backfill_weeks skips existing weeks")
 
 
-def test_neutral_placeholders():
+def test_neutral_placeholders(temp_db):
     """Neutral placeholders should insert 5 signals per week at 50.0 / 0.3."""
     init_db()
     test_weeks = ["9999-W01", "9999-W02"]
@@ -40,13 +50,14 @@ def test_neutral_placeholders():
     ).fetchall()
     conn.close()
 
-    # 7 neutral signals x 2 weeks = 14
-    assert len(rows) == 14
+    # One row per neutral signal per week. Derived, not hardcoded, so removing a
+    # signal (salary_pressure) doesn't silently fail an unrelated assertion.
+    assert len(rows) == len(_NEUTRAL_SIGNALS) * len(test_weeks)
     assert all(r["normalised_score"] == 50.0 for r in rows)
     print("PASS: neutral placeholders insert correctly")
 
 
-def test_pulse_history_chain():
+def test_pulse_history_chain(temp_db):
     """Backfill pulse history should produce valid scores for each week."""
     init_db()
     test_weeks = ["9998-W01", "9998-W02", "9998-W03"]
