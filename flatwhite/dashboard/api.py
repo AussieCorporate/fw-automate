@@ -26,6 +26,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 
 from flatwhite.db import init_db, get_connection, get_current_week_iso
+from flatwhite.model_router import route, list_available_models
 from flatwhite.pulse.anomaly import detect_all_anomalies
 from flatwhite.dashboard.state import (
     load_pulse_state,
@@ -44,6 +45,15 @@ from flatwhite.dashboard.state import (
     save_otc_pick,
     load_otc_picks,
 )
+
+def _safe_override(model: str | None) -> str | None:
+    """The picker's value, but only if it names a model with a configured API
+    key. Blank/unknown/keyless -> None, so route() uses the task default instead
+    of raising on an unusable model_id."""
+    if not model:
+        return None
+    return model if model in {m["id"] for m in list_available_models()} else None
+
 
 _STATIC_DIR = Path(__file__).parent / "static"
 _AUTH_PASSWORD = os.environ.get("FLATWHITE_PASSWORD", "")
@@ -1703,15 +1713,16 @@ def api_big_conv_candidates() -> JSONResponse:
 # ── Section proceed helpers ──────────────────────────────────────────────────
 
 def _proceed_pulse(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
-    from flatwhite.model_router import route
     from flatwhite.classify.prompts import PULSE_SUMMARY_SYSTEM, PULSE_SUMMARY_PROMPT
     from flatwhite.dashboard.state import load_pulse_state, load_signals_this_week
     from flatwhite.db import get_interactions
     from flatwhite.signals.macro_context import fetch_macro_headlines
     from flatwhite.pulse.summary import _fetch_editorial_evidence
 
+    override = _safe_override(model)
+
     if custom_prompt:
-        return route(task_type="summary", prompt=custom_prompt, system=PULSE_SUMMARY_SYSTEM)
+        return route(task_type="summary", prompt=custom_prompt, system=PULSE_SUMMARY_SYSTEM, model_override=override)
 
     pulse = load_pulse_state()
     signals = load_signals_this_week()
@@ -1789,7 +1800,7 @@ def _proceed_pulse(data: dict, model: str | None, custom_prompt: str | None = No
         macro_context=macro_context,
         editorial_evidence=editorial_evidence,
     )
-    return route(task_type="summary", prompt=prompt, system=PULSE_SUMMARY_SYSTEM)
+    return route(task_type="summary", prompt=prompt, system=PULSE_SUMMARY_SYSTEM, model_override=override)
 
 
 def _load_big_conv_evidence(
@@ -1889,11 +1900,12 @@ def _load_big_conv_evidence(
 
 
 def _proceed_big_conversation(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
-    from flatwhite.model_router import route
     from flatwhite.classify.prompts import EDITORIAL_VOICE, BIG_CONVERSATION_DRAFT_SYSTEM, BIG_CONVERSATION_DRAFT_PROMPT
 
+    override = _safe_override(model)
+
     if custom_prompt:
-        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE)
+        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE, model_override=override)
 
     # Accept both field name variants (frontend sends title/summary, custom form sends headline/pitch)
     headline = data.get("headline") or data.get("title", "")
@@ -1908,15 +1920,16 @@ def _proceed_big_conversation(data: dict, model: str | None, custom_prompt: str 
         pitch=pitch,
         supporting_items=items_block,
     )
-    return route(task_type="editorial", prompt=prompt, system=BIG_CONVERSATION_DRAFT_SYSTEM)
+    return route(task_type="editorial", prompt=prompt, system=BIG_CONVERSATION_DRAFT_SYSTEM, model_override=override)
 
 
 def _proceed_finds(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
-    from flatwhite.model_router import route
     from flatwhite.classify.prompts import EDITORIAL_VOICE
 
+    override = _safe_override(model)
+
     if custom_prompt:
-        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE)
+        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE, model_override=override)
 
     items = data.get("selected_items", [])
     items_block = "\n\n".join(
@@ -1932,15 +1945,16 @@ def _proceed_finds(data: dict, model: str | None, custom_prompt: str | None = No
         "to someone in corporate Australia. End each with 'Read more' on its own line.\n\n"
         "Output each find as: HEADLINE\\nBLURB\\nRead more\\n\\n"
     )
-    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE)
+    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE, model_override=override)
 
 
 def _proceed_thread(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
-    from flatwhite.model_router import route
     from flatwhite.classify.prompts import THREAD_OUR_TAKE_SYSTEM, THREAD_OUR_TAKE_PROMPT
 
+    override = _safe_override(model)
+
     if custom_prompt:
-        return route(task_type="editorial", prompt=custom_prompt, system=THREAD_OUR_TAKE_SYSTEM)
+        return route(task_type="editorial", prompt=custom_prompt, system=THREAD_OUR_TAKE_SYSTEM, model_override=override)
 
     title = data.get("title", "")
     body = data.get("body", data.get("summary", ""))
@@ -1956,15 +1970,16 @@ def _proceed_thread(data: dict, model: str | None, custom_prompt: str | None = N
         top_comments=comments_block,
         editorial_frame=editorial_frame,
     )
-    return route(task_type="editorial", prompt=prompt, system=THREAD_OUR_TAKE_SYSTEM)
+    return route(task_type="editorial", prompt=prompt, system=THREAD_OUR_TAKE_SYSTEM, model_override=override)
 
 
 def _proceed_amp_finest(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
-    from flatwhite.model_router import route
     from flatwhite.classify.prompts import EDITORIAL_VOICE
 
+    override = _safe_override(model)
+
     if custom_prompt:
-        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE)
+        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE, model_override=override)
 
     items = data.get("selected_items", [])
     items_block = "\n\n".join(
@@ -1978,15 +1993,16 @@ def _proceed_amp_finest(data: dict, model: str | None, custom_prompt: str | None
         "Curate these into a short, pointed section. Voice: dry Australian corporate sardony. "
         "Each item gets one punchy sentence. Output ONLY the commentary. No title. No sign-off."
     )
-    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE)
+    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE, model_override=override)
 
 
 def _proceed_off_the_clock(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
-    from flatwhite.model_router import route
     from flatwhite.classify.prompts import EDITORIAL_VOICE
 
+    override = _safe_override(model)
+
     if custom_prompt:
-        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE)
+        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE, model_override=override)
 
     picks = data.get("picks", [])
     picks_block = "\n\n".join(
@@ -2026,15 +2042,16 @@ def _proceed_off_the_clock(data: dict, model: str | None, custom_prompt: str | N
         "One entry per item. Blank line between category header and blurb. "
         "Blank line between entries."
     )
-    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE)
+    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE, model_override=override)
 
 
 def _proceed_editorial(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
-    from flatwhite.model_router import route
     from flatwhite.classify.prompts import EDITORIAL_VOICE
 
+    override = _safe_override(model)
+
     if custom_prompt:
-        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE)
+        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE, model_override=override)
 
     items = data.get("selected_items", [])
     items_block = "\n\n".join(
@@ -2048,15 +2065,16 @@ def _proceed_editorial(data: dict, model: str | None, custom_prompt: str | None 
         "Voice: dry, specific, opinionated. Australian corporate commentary. "
         "Output ONLY the editorial text. No title. No sign-off."
     )
-    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE)
+    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE, model_override=override)
 
 
 def _proceed_lobby(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
-    from flatwhite.model_router import route
     from flatwhite.classify.prompts import EDITORIAL_VOICE
 
+    override = _safe_override(model)
+
     if custom_prompt:
-        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE)
+        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE, model_override=override)
 
     selected = data.get("selected_employers", [])
     employer_lines = []
@@ -2117,7 +2135,7 @@ def _proceed_lobby(data: dict, model: str | None, custom_prompt: str | None = No
         "Voice: dry, observant, Australian corporate commentary. 3-4 paragraphs.\n"
         "Output ONLY the commentary text. No title. No sign-off."
     )
-    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE)
+    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE, model_override=override)
 
 
 # ── Proceed section endpoint ──────────────────────────────────────────────────
