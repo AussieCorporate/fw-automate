@@ -64,7 +64,8 @@ CREATE TABLE IF NOT EXISTS curated_items (
     raw_item_id INTEGER NOT NULL UNIQUE REFERENCES raw_items(id),
     section TEXT NOT NULL CHECK (section IN (
         'whisper', 'big_conversation_seed', 'what_we_watching',
-        'thread_candidate', 'finds', 'discard'
+        'thread_candidate', 'finds', 'discard',
+        'otc_eating', 'otc_watching', 'otc_reading', 'otc_wearing', 'otc_going'
     )),
     summary TEXT NOT NULL,
     score_relevance INTEGER NOT NULL CHECK (score_relevance BETWEEN 1 AND 5),

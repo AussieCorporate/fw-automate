@@ -633,9 +633,14 @@ OTC_CATEGORY_LABELS = {
 def load_otc_candidates(week_iso: str | None = None) -> dict[str, list[dict[str, Any]]]:
     """Return Off the Clock candidates grouped by category for the editor pick UI.
 
-    Returns all candidates (no cap) sorted by weighted_composite DESC.
+    Capped per category to config.yaml's off_the_clock.candidates_per_category
+    (default 3), keeping the top-scoring items since rows are sorted by
+    weighted_composite DESC before truncation.
     Output: dict with keys 'otc_eating', 'otc_watching', etc.
     """
+    from flatwhite.editorial.off_the_clock import _load_config
+    cap = int(_load_config().get("candidates_per_category", 3))
+
     conn = get_connection()
     w = week_iso or get_current_week_iso()
 
@@ -672,7 +677,7 @@ def load_otc_candidates(week_iso: str | None = None) -> dict[str, list[dict[str,
             seen_titles[section].add(title_key)
             grouped[section].append(d)
 
-    return grouped
+    return {section: items[:cap] for section, items in grouped.items()}
 
 
 def save_otc_pick(
