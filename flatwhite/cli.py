@@ -948,3 +948,7 @@ def main() -> None:
         print(f"Unknown command: {command}")
         print("Run 'flatwhite' with no arguments to see available commands.")
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
