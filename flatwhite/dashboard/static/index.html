@@ -396,7 +396,15 @@ var NAV_ITEMS = [
   { id: "editorial",   icon: "GM",  label: "Editorial" },
   { id: "pulse",       icon: "\u25C9", label: "Pulse" },
   { id: "big_conversation", icon: "\u00B6", label: "Big Conversation" },
-  { id: "whispers",    icon: "\uD83D\uDC41", label: "Whispers" },
+  // "whispers" (the `whisper` classifier section) has NO tab here: the tab is
+  // removed, but classify/classifier.py's VALID_SECTIONS and
+  // classify_all_unclassified() still classify raw items into "whisper" as
+  // one branch of a single shared function that ALSO produces the
+  // "finds"/"big_conversation_seed"/"what_we_watching" sections Big
+  // Conversation's candidate query depends on. Editing that shared function
+  // to drop "whisper" risks breaking classification for the sections Big
+  // Conversation reads. So the classifier is intentionally left untouched;
+  // do not "finish the job" by trimming it later.
   { id: "finds",       icon: "\uD83D\uDD25", label: "Finds" },
   { id: "thread",      icon: "\u00A7", label: "Thread" },
   { id: "off_the_clock", icon: "\uD83C\uDF77", label: "Off the Clock" },
@@ -442,8 +450,6 @@ function loadPageData(page) {
         }).catch(function() {});
       }
       return Promise.resolve();
-    case "whispers":
-      return api("/api/items").then(function(d) { S.whispers = (d.items && d.items.whisper) || []; S.weekIso = d.week_iso; });
     case "finds":
       if (S.items) return Promise.resolve();
       return api("/api/items").then(function(d) { S.items = d.items || {}; S.weekIso = d.week_iso; S.lastScraped.finds = d.last_scraped_at || null; S.lastScraped.editorial = d.last_scraped_at || null; });
@@ -565,7 +571,6 @@ function render() {
   switch (S.page) {
     case "pulse": renderPulse(m); break;
     case "big_conversation": renderBigConv(m); break;
-    case "whispers": renderWhispers(m); break;
     case "finds": renderFinds(m); break;
     case "thread": renderThread(m); break;
     case "off_the_clock": renderOTC(m); break;
@@ -1102,50 +1107,6 @@ function proceedBigConv() {
   }
   S.proceedData.big_conversation = { section: "big_conversation", model: model, data: data };
   openProceedModal("big_conversation");
-}
-
-/* ═══════════════════════════════════════════════════════════════════════
-   SECTION: WHISPERS
-   ═══════════════════════════════════════════════════════════════════════ */
-function renderWhispers(el) {
-  var h = '<div class="sh"><div><h2>Whispers</h2><div class="sub">Manual entry only. Insider intel and unverified tips.</div></div></div>';
-
-  // Add form
-  h += '<div class="card mb20">';
-  h += '<div style="font-weight:600;margin-bottom:12px;">Add Whisper</div>';
-  h += '<div class="form-group"><label>Whisper Text</label><textarea class="form-input" id="whisper-text" placeholder="What did you hear..."></textarea></div>';
-  h += '<div class="form-group"><label>Confidence</label><select class="form-input" id="whisper-conf" style="max-width:200px;"><option value="green">Green (High)</option><option value="yellow" selected>Yellow (Medium)</option><option value="red">Red (Low)</option></select></div>';
-  h += '<button class="btn btn-primary" onclick="addWhisper()">Add Whisper</button>';
-  h += '</div>';
-
-  // List
-  h += '<div class="fc">';
-  if (S.whispers && S.whispers.length) {
-    S.whispers.forEach(function(w) {
-      var conf = w.confidence_tag || "yellow";
-      var chipClass = conf === "green" ? "chip-green" : (conf === "red" ? "chip-red" : "chip-amber");
-      h += '<div class="card hov">';
-      h += '<div class="fb"><span style="font-size:14px;">' + esc(w.summary || w.title || w.text) + '</span>';
-      h += '<span class="chip ' + chipClass + '">' + esc(conf) + '</span></div>';
-      h += '</div>';
-    });
-  } else {
-    h += '<div class="card"><p style="color:var(--text-3);font-size:13px;">No whispers yet. Add one above.</p></div>';
-  }
-  h += '</div>';
-  el.innerHTML = h;
-}
-
-function addWhisper() {
-  var text = ($("whisper-text") || {}).value || "";
-  var conf = ($("whisper-conf") || {}).value || "yellow";
-  if (!text.trim()) { showToast("Enter whisper text", "error"); return; }
-  api("/api/add-whisper", { method: "POST", body: { text: text, confidence: conf } })
-    .then(function() {
-      showToast("Whisper added");
-      return api("/api/items").then(function(d) { S.whispers = (d.items && d.items.whisper) || []; render(); });
-    })
-    .catch(function(e) { showToast("Error: " + e.message, "error"); });
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
