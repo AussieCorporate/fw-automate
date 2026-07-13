@@ -9,3 +9,7 @@ __pycache__/
 .DS_Store
 .venv/
 .worktrees/
+
+# Benchmark ground truth is corpus, not transient state - keep it tracked
+!data/beehiiv_fw_ground_truth.json
+!data/beehiiv_fw_ground_truth_ANALYSIS.md
