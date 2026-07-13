@@ -992,7 +992,12 @@ _SECTION_RUNNERS: dict[str, list[tuple[str, "Callable"]]] = {
 }
 
 _SCRAPE_ALL_SECTIONS = [
-    "pulse", "editorial", "big_conversation", "finds", "thread", "off_the_clock",
+    # "thread" intentionally excluded: its tab is hidden (Victor's decision) and
+    # its scraper steps (Reddit RSS + Classify) largely duplicate what "finds"
+    # and "editorial" already do here, so thread_candidate items still get
+    # classified via those. thread_candidate stays in classify/classifier.py's
+    # VALID_SECTIONS untouched.
+    "pulse", "editorial", "big_conversation", "finds", "off_the_clock",
 ]
 
 _scrape_all_state: dict = {
@@ -1823,7 +1828,10 @@ async def api_proceed_section(request: Request) -> JSONResponse:
         "pulse": _proceed_pulse,
         "big_conversation": _proceed_big_conversation,
         "finds": _proceed_finds,
-        "thread": _proceed_thread,
+        # "thread" intentionally excluded: its tab is hidden (Victor's
+        # decision), so there is no UI path left to call it. _proceed_thread
+        # is left defined (unreferenced) rather than deleted, to keep this
+        # change minimal.
         "off_the_clock": _proceed_off_the_clock,
         "editorial": _proceed_editorial,
     }

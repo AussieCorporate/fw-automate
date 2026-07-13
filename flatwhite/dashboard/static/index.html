@@ -412,7 +412,14 @@ var NAV_ITEMS = [
   // being scraped and classified. _SECTION_RUNNERS["finds"] and its entry in
   // _SCRAPE_ALL_SECTIONS / proceed_fns are therefore left intact on purpose;
   // only the tab (nav item + render function) is removed here.
-  { id: "thread",      icon: "\u00A7", label: "Thread" },
+  // "thread" (the `thread_candidate` classifier section) has NO tab here:
+  // hidden per Victor's decision. Its scraper step is removed from
+  // _SCRAPE_ALL_SECTIONS and its entry from proceed_fns (nothing can
+  // generate a Thread write-up without the tab), but `thread_candidate`
+  // stays in classify/classifier.py's VALID_SECTIONS and keeps being
+  // produced by classify_all_unclassified() - that shared function ALSO
+  // classifies the sections Big Conversation depends on, so it is
+  // intentionally left untouched.
   { id: "off_the_clock", icon: "\uD83C\uDF77", label: "Off the Clock" },
   { id: "top_picks",   icon: "\uD83C\uDFC6", label: "Top Picks" },
   { id: "salary_vault", icon: "\uD83D\uDCB0", label: "Salary Vault", greyed: true },
@@ -459,9 +466,6 @@ function loadPageData(page) {
     case "finds":
       if (S.items) return Promise.resolve();
       return api("/api/items").then(function(d) { S.items = d.items || {}; S.weekIso = d.week_iso; S.lastScraped.finds = d.last_scraped_at || null; S.lastScraped.editorial = d.last_scraped_at || null; });
-    case "thread":
-      if (S.threads) return Promise.resolve();
-      return api("/api/threads?limit=5").then(function(d) { S.threads = d.threads || []; S.weekIso = d.week_iso; S.lastScraped.threads = d.last_scraped_at || null; });
     case "off_the_clock":
       if (S.otcData) return Promise.resolve();
       return api("/api/off-the-clock").then(function(d) { S.otcData = d; S.weekIso = d.week_iso; S.lastScraped.off_the_clock = d.last_scraped_at || null; });
@@ -519,7 +523,6 @@ var _CMD_PILL_SECTIONS = [
   { id: "pulse",            label: "Pulse" },
   { id: "big_conversation", label: "Big Conv" },
   { id: "finds",            label: "Finds" },
-  { id: "thread",           label: "Thread" },
   { id: "off_the_clock",    label: "Off Clock" },
 ];
 
@@ -593,7 +596,6 @@ function render() {
   switch (S.page) {
     case "pulse": renderPulse(m); break;
     case "big_conversation": renderBigConv(m); break;
-    case "thread": renderThread(m); break;
     case "off_the_clock": renderOTC(m); break;
     case "top_picks": renderTopPicks(m); break;
     case "assemble": renderAssemble(m); break;
@@ -612,7 +614,7 @@ function renderEditorialBody() {
   var h = '';
   // Show which sections are ready
   h += '<div class="card mb20"><div style="font-size:13px;color:var(--text-2);margin-bottom:10px;font-weight:600;">Section Readiness</div>';
-  var deps = ["pulse","big_conversation","finds","thread","off_the_clock"];
+  var deps = ["pulse","big_conversation","finds","off_the_clock"];
   deps.forEach(function(d) {
     var ready = S.sectionOutputs[d] && S.sectionOutputs[d].output_text;
     h += '<div class="fr mb8"><span style="width:10px;height:10px;border-radius:50%;background:' + (ready ? "var(--green)" : "var(--border)") + ';"></span> <span style="font-size:13px;">' + esc(d.replace(/_/g, " ")) + '</span></div>';
@@ -1128,115 +1130,6 @@ function proceedBigConv() {
   }
   S.proceedData.big_conversation = { section: "big_conversation", model: model, data: data };
   openProceedModal("big_conversation");
-}
-
-/* ═══════════════════════════════════════════════════════════════════════
-   SECTION: THREAD
-   ═══════════════════════════════════════════════════════════════════════ */
-function renderThreadBody() {
-  if (!S.threads || !S.threads.length) {
-    return '<div class="card"><p class="loading">No threads yet. Click RUN to pull Reddit data.</p></div>';
-  }
-  var h = '<div class="cand-list mb20">';
-  S.threads.forEach(function(t) {
-    var sel = S.selectedThread === t.id;
-    var comments = S.threadComments[t.id];
-    var loadingComments = S.threadCommentsLoading[t.id];
-    h += '<div class="card hov' + (sel ? " sel" : "") + '">';
-    h += '<div class="cand-card" onclick="selectThread(' + t.id + ')">';
-    h += '<div class="radio' + (sel ? " on" : "") + '">' + (sel ? "\u2713" : "") + '</div>';
-    h += '<div class="cand-body">';
-    h += '<div class="cand-title">';
-    if (t.url) h += '<a href="' + esc(t.url) + '" target="_blank" rel="noopener" style="color:var(--text-1);text-decoration:none;" onclick="event.stopPropagation()">';
-    h += esc(t.title || t.summary);
-    if (t.url) h += ' ↗</a>';
-    h += '</div>';
-    var engScore = (t.post_score || 0);
-    var engComments = (t.comment_engagement || 0);
-    var engStr = engScore ? ' · ' + engScore + ' upvotes' + (engComments ? ', ' + engComments + ' comment karma' : '') : '';
-    h += '<div class="cand-meta">' + esc(t.source || "reddit") + engStr + ' &middot; Classifier: ' + esc(t.weighted_composite != null ? t.weighted_composite.toFixed(1) : "—") + '</div>';
-    if (t.body && t.body.length > 10) h += '<div class="cand-summary" style="margin-bottom:4px;">' + esc(t.body.substring(0, 300)) + (t.body.length > 300 ? '...' : '') + '</div>';
-    if (t.summary && t.summary !== t.body) h += '<div style="font-size:12px;color:var(--text-3);font-style:italic;">' + esc(t.summary) + '</div>';
-    h += '</div></div>';
-    // Show comments — use fetched comments if available, otherwise pre-loaded from scrape
-    var displayComments = comments || (t.top_comments && t.top_comments.length ? t.top_comments : null);
-    h += '<div class="mt8">';
-    if (loadingComments) {
-      h += '<span class="ingest-spinner"></span> Loading comments...';
-    } else if (displayComments) {
-      h += '<div style="font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:6px;">Top Comments:</div>';
-      displayComments.forEach(function(c) {
-        h += '<div style="background:var(--surface-warm);border-radius:8px;padding:10px 14px;margin-bottom:6px;font-size:13px;line-height:1.5;">' + esc(typeof c === "string" ? c : c.body || c.text || JSON.stringify(c)) + '</div>';
-      });
-      h += '<button class="btn btn-sm btn-secondary" style="margin-top:4px;" onclick="event.stopPropagation();fetchThreadComments(' + t.id + ')">Refresh Comments</button>';
-    } else {
-      h += '<button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();fetchThreadComments(' + t.id + ')">Fetch Comments</button>';
-    }
-    h += '</div></div>';
-  });
-  h += '</div>';
-  return h;
-}
-
-function renderThread(el) {
-  var hasScrapeData = !!(S.threads && S.threads.length);
-  var hasOutput = !!(S.sectionOutputs.thread && S.sectionOutputs.thread.output_text);
-  if (!S.sectionPhase.thread) S.sectionPhase.thread = hasOutput ? 3 : (hasScrapeData ? 2 : 1);
-
-  var p1 = '';
-  p1 += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">';
-  p1 += '<button class="btn btn-primary" onclick="runSection(\'thread\')">SCRAPE</button>';
-  if (S.loading.thread) p1 += renderSectionProgress('thread');
-  var _ps = formatScrapedDate(S.lastScraped.threads);
-  if (_ps) p1 += '<span class="scraped-badge">Scraped ' + _ps + '</span>';
-  p1 += '</div>';
-
-  var p2 = hasScrapeData ? renderThreadBody() : '';
-
-  var p3 = '';
-  p3 += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
-  p3 += modelSelect('model-thread');
-  p3 += '<button class="btn btn-success" onclick="proceedThread()">PROCEED</button>';
-  p3 += '</div>';
-  p3 += outputBox('thread');
-
-  var h = '<div class="sh"><div><h2>Thread</h2><div class="sub">Reddit thread pick for the week</div></div></div>';
-  h += phasePanel('thread', 1, 'Scrape', true, hasScrapeData, p1);
-  h += phasePanel('thread', 2, 'Review & Pick', hasScrapeData, false, p2);
-  h += phasePanel('thread', 3, 'Generate', hasScrapeData, hasOutput, p3);
-
-  el.innerHTML = h;
-  fillOutput('thread');
-}
-
-function selectThread(id) { S.selectedThread = id; render(); }
-
-function fetchThreadComments(id) {
-  S.threadCommentsLoading[id] = true; render();
-  api("/api/fetch-thread-comments", { method: "POST", body: { curated_item_id: id } })
-    .then(function(d) {
-      S.threadComments[id] = d.comments || [];
-      S.threadCommentsLoading[id] = false;
-      render();
-    })
-    .catch(function(e) { S.threadCommentsLoading[id] = false; render(); showToast("Error: " + e.message, "error"); });
-}
-
-function proceedThread() {
-  if (!S.selectedThread) { showToast("Select a thread first", "error"); return; }
-  var model = getModel("model-thread");
-  var t = S.threads.find(function(x) { return x.id === S.selectedThread; });
-  var resolvedComments = S.threadComments[t.id] || t.top_comments || [];
-  var data = { thread_id: t.id, title: t.title || t.summary, body: t.body || t.summary || '', summary: t.summary || '', top_comments: resolvedComments, editorial_frame: t.editorial_frame || '', url: t.url || '' };
-  S.loading.thread = true; render();
-  api("/api/proceed-section", { method: "POST", body: { section: "thread", model: model, data: data } })
-    .then(function(d) {
-      var output = d.output || '';
-      if (t.url) output += '\n\n[Read the thread →](' + t.url + ')';
-      S.sectionOutputs.thread = { output_text: output, model_used: d.model };
-      S.loading.thread = false; render(); showToast("Thread write-up generated");
-    })
-    .catch(function(e) { S.loading.thread = false; render(); showToast("Error: " + e.message, "error"); });
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
