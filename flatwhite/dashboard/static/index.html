@@ -405,7 +405,13 @@ var NAV_ITEMS = [
   // to drop "whisper" risks breaking classification for the sections Big
   // Conversation reads. So the classifier is intentionally left untouched;
   // do not "finish the job" by trimming it later.
-  { id: "finds",       icon: "\uD83D\uDD25", label: "Finds" },
+  // "finds" (the `finds` classifier section) has NO tab here: hidden per
+  // Victor's decision, but /api/big-conversation-candidates filters on
+  // ci.section IN ('big_conversation_seed', 'what_we_watching', 'finds'), so
+  // Big Conversation's own candidate pool depends on "finds" items still
+  // being scraped and classified. _SECTION_RUNNERS["finds"] and its entry in
+  // _SCRAPE_ALL_SECTIONS / proceed_fns are therefore left intact on purpose;
+  // only the tab (nav item + render function) is removed here.
   { id: "thread",      icon: "\u00A7", label: "Thread" },
   { id: "off_the_clock", icon: "\uD83C\uDF77", label: "Off the Clock" },
   { id: "top_picks",   icon: "\uD83C\uDFC6", label: "Top Picks" },
@@ -465,7 +471,23 @@ function loadPageData(page) {
     case "assemble":
       return api("/api/section-outputs").then(function(d) { S.sectionOutputs = d.outputs || {}; S.weekIso = d.week_iso; });
     case "editorial":
-      return api("/api/section-outputs").then(function(d) { S.sectionOutputs = d.outputs || {}; S.weekIso = d.week_iso; });
+      // Also loads /api/items (same call the now-hidden "finds" case makes) so
+      // S.lastScraped.editorial gets set independently of visiting Finds.
+      // Before this fix, Editorial's "Scraped X ago" badge and its Phase 2
+      // unlock (hasScrapeData) were ONLY ever populated by the Finds tab's
+      // loadPageData case; hiding that tab would have silently locked
+      // Editorial's Phase 2 forever. Editorial is a KEPT segment, so this is
+      // fixed here rather than left as a regression.
+      return Promise.all([
+        api("/api/section-outputs"),
+        api("/api/items"),
+      ]).then(function(r) {
+        S.sectionOutputs = r[0].outputs || {};
+        S.weekIso = r[0].week_iso || r[1].week_iso;
+        S.items = r[1].items || {};
+        S.lastScraped.finds = r[1].last_scraped_at || null;
+        S.lastScraped.editorial = r[1].last_scraped_at || null;
+      });
     default: return Promise.resolve();
   }
 }
@@ -571,7 +593,6 @@ function render() {
   switch (S.page) {
     case "pulse": renderPulse(m); break;
     case "big_conversation": renderBigConv(m); break;
-    case "finds": renderFinds(m); break;
     case "thread": renderThread(m); break;
     case "off_the_clock": renderOTC(m); break;
     case "top_picks": renderTopPicks(m); break;
@@ -1107,94 +1128,6 @@ function proceedBigConv() {
   }
   S.proceedData.big_conversation = { section: "big_conversation", model: model, data: data };
   openProceedModal("big_conversation");
-}
-
-/* ═══════════════════════════════════════════════════════════════════════
-   SECTION: FINDS
-   ═══════════════════════════════════════════════════════════════════════ */
-function renderFindsBody() {
-  var items = (S.items && S.items.finds) || [];
-  // Re-rank: AU relevance counts for 30% of display score
-  items = items.slice().sort(function(a, b) {
-    var da = (a.weighted_composite || 0) * 0.7 + ((a.au_relevance != null ? a.au_relevance : 5) / 10.0) * 3.0;
-    var db = (b.weighted_composite || 0) * 0.7 + ((b.au_relevance != null ? b.au_relevance : 5) / 10.0) * 3.0;
-    return db - da;
-  });
-  if (!items.length) {
-    return '<div class="card"><p class="loading">No finds yet. Click RUN to pull editorial sources.</p></div>';
-  }
-  var h = '';
-  var checkedCount = Object.keys(S.findsChecked).filter(function(k) { return S.findsChecked[k]; }).length;
-  h += '<div style="font-size:13px;color:var(--text-2);margin-bottom:12px;">' + checkedCount + ' selected of ' + items.length + ' items</div>';
-  h += '<div class="fc">';
-  items.forEach(function(item) {
-    var checked = S.findsChecked[item.id];
-    h += '<div class="card hov' + (checked ? " sel" : "") + '">';
-    h += '<div class="fr mb8">';
-    h += '<input type="checkbox"' + (checked ? " checked" : "") + ' onchange="toggleFindsCheck(' + item.id + ',this.checked)" style="width:18px;height:18px;accent-color:var(--amber);">';
-    h += '<strong style="font-size:14px;">' + esc(item.title || item.summary) + '</strong>';
-    h += '</div>';
-    // AU relevance badge
-    var auRel = item.au_relevance != null ? item.au_relevance : null;
-    if (auRel != null) {
-      if (auRel >= 7) {
-        h += '<span class="chip chip-au" style="font-size:10px;">AU</span> ';
-      } else if (auRel < 4) {
-        h += '<span class="chip chip-low-au" style="font-size:10px;">low AU</span> ';
-      }
-    }
-    h += '<div style="font-size:12px;color:var(--text-3);margin-bottom:4px;">' + esc(item.source || "") + ' &middot; Score: ' + esc(item.weighted_composite != null ? item.weighted_composite.toFixed(1) : "—") + '</div>';
-    if (item.summary) h += '<div style="font-size:13px;color:var(--text-2);margin-bottom:8px;line-height:1.5;">' + esc(item.summary) + '</div>';
-    if (checked) {
-      h += '<div class="form-group mt8"><label>Blurb</label><textarea class="form-input" id="finds-blurb-' + item.id + '" rows="2" placeholder="Write a short blurb..." onchange="updateFindsBlurb(' + item.id + ',this.value)">' + esc(S.findsBlurbs[item.id] || "") + '</textarea></div>';
-    }
-    h += '</div>';
-  });
-  h += '</div>';
-  return h;
-}
-
-function renderFinds(el) {
-  var hasScrapeData = !!(S.items && S.items.finds && S.items.finds.length);
-  var hasOutput = !!(S.sectionOutputs.finds && S.sectionOutputs.finds.output_text);
-  if (!S.sectionPhase.finds) S.sectionPhase.finds = hasOutput ? 3 : (hasScrapeData ? 2 : 1);
-
-  var p1 = '';
-  p1 += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">';
-  p1 += '<button class="btn btn-primary" onclick="runSection(\'finds\')">SCRAPE</button>';
-  if (S.loading.finds) p1 += renderSectionProgress('finds');
-  var _ps = formatScrapedDate(S.lastScraped.finds);
-  if (_ps) p1 += '<span class="scraped-badge">Scraped ' + _ps + '</span>';
-  p1 += '</div>';
-
-  var p2 = hasScrapeData ? renderFindsBody() : '';
-
-  var p3 = '';
-  p3 += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
-  p3 += modelSelect('model-finds');
-  p3 += '<button class="btn btn-success" onclick="proceedFinds()">PROCEED</button>';
-  p3 += '</div>';
-  p3 += outputBox('finds');
-
-  var h = '<div class="sh"><div><h2>Finds</h2><div class="sub">Curated news items. Pick 3-5 for the newsletter.</div></div></div>';
-  h += phasePanel('finds', 1, 'Scrape', true, hasScrapeData, p1);
-  h += phasePanel('finds', 2, 'Review & Pick', hasScrapeData, false, p2);
-  h += phasePanel('finds', 3, 'Generate', hasScrapeData, hasOutput, p3);
-
-  el.innerHTML = h;
-  fillOutput('finds');
-}
-
-function toggleFindsCheck(id, val) { S.findsChecked[id] = val; render(); }
-function updateFindsBlurb(id, val) { S.findsBlurbs[id] = val; }
-
-function proceedFinds() {
-  var model = getModel("model-finds");
-  var checked = Object.keys(S.findsChecked).filter(function(k) { return S.findsChecked[k]; });
-  var items = (S.items && S.items.finds) || [];
-  var selected = items.filter(function(i) { return checked.indexOf(String(i.id)) >= 0; });
-  S.proceedData.finds = { section: "finds", model: model, data: { selected_items: selected } };
-  openProceedModal("finds");
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
