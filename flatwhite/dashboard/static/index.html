@@ -400,7 +400,6 @@ var NAV_ITEMS = [
   { id: "finds",       icon: "\uD83D\uDD25", label: "Finds" },
   { id: "thread",      icon: "\u00A7", label: "Thread" },
   { id: "off_the_clock", icon: "\uD83C\uDF77", label: "Off the Clock" },
-  { id: "events",      icon: "\uD83D\uDCC5", label: "Events" },
   { id: "top_picks",   icon: "\uD83C\uDFC6", label: "Top Picks" },
   { id: "salary_vault", icon: "\uD83D\uDCB0", label: "Salary Vault", greyed: true },
   { id: "assemble",    icon: "\u2709", label: "Composer" },
@@ -454,9 +453,6 @@ function loadPageData(page) {
     case "off_the_clock":
       if (S.otcData) return Promise.resolve();
       return api("/api/off-the-clock").then(function(d) { S.otcData = d; S.weekIso = d.week_iso; S.lastScraped.off_the_clock = d.last_scraped_at || null; });
-    case "events":
-      if (S.events) return Promise.resolve();
-      return api("/api/events").then(function(d) { S.events = d.events || []; S.weekIso = d.week_iso; });
     case "top_picks":
       if (S.topPicks) return Promise.resolve();
       return api("/api/top-picks").then(function(d) { S.topPicks = d; S.weekIso = d.week_iso; S.lastScraped.top_picks = d.scraped_at || null; });
@@ -573,7 +569,6 @@ function render() {
     case "finds": renderFinds(m); break;
     case "thread": renderThread(m); break;
     case "off_the_clock": renderOTC(m); break;
-    case "events": renderEvents(m); break;
     case "top_picks": renderTopPicks(m); break;
     case "assemble": renderAssemble(m); break;
     case "editorial": renderEditorial(m); break;
@@ -1577,75 +1572,6 @@ function proceedOTC() {
     custom_prompt: S.otcPrompt || null,
   };
   openProceedModal("off_the_clock");
-}
-
-/* ═══════════════════════════════════════════════════════════════════════
-   SECTION: EVENTS
-   ═══════════════════════════════════════════════════════════════════════ */
-function renderEvents(el) {
-  var h = '<div class="sh"><div><h2>Events</h2><div class="sub">Upcoming events for the newsletter</div></div></div>';
-
-  // Add form
-  h += '<div class="card mb20">';
-  h += '<div style="font-weight:600;margin-bottom:12px;">Add Event</div>';
-  h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">';
-  h += '<div class="form-group"><label>Date</label><input class="form-input" type="date" id="evt-date"></div>';
-  h += '<div class="form-group"><label>Time</label><input class="form-input" id="evt-time" placeholder="e.g. 6-8pm"></div>';
-  h += '<div class="form-group"><label>Title</label><input class="form-input" id="evt-title" placeholder="Event name"></div>';
-  h += '<div class="form-group"><label>Location</label><input class="form-input" id="evt-location" placeholder="Venue / City"></div>';
-  h += '<div class="form-group"><label>Price</label><input class="form-input" id="evt-price" placeholder="Free / $50"></div>';
-  h += '<div class="form-group"><label>Description</label><input class="form-input" id="evt-desc" placeholder="Short description"></div>';
-  h += '</div>';
-  h += '<button class="btn btn-primary mt8" onclick="addEvent()">Add Event</button>';
-  h += '</div>';
-
-  // List
-  h += '<div class="fc">';
-  if (S.events && S.events.length) {
-    S.events.forEach(function(e) {
-      h += '<div class="card hov">';
-      h += '<div class="fb">';
-      h += '<div><strong>' + esc(e.title) + '</strong>';
-      h += '<div style="font-size:12px;color:var(--text-3);margin-top:2px;">' + esc(e.event_date || "") + (e.time_range ? " &middot; " + esc(e.time_range) : "") + (e.location ? " &middot; " + esc(e.location) : "") + '</div>';
-      if (e.price) h += '<div style="font-size:12px;color:var(--text-2);margin-top:2px;">' + esc(e.price) + '</div>';
-      if (e.description) h += '<div style="font-size:13px;color:var(--text-2);margin-top:4px;">' + esc(e.description) + '</div>';
-      h += '</div>';
-      h += '<button class="btn btn-sm btn-danger" onclick="deleteEvent(' + e.id + ')">Delete</button>';
-      h += '</div></div>';
-    });
-  } else {
-    h += '<div class="card"><p style="color:var(--text-3);font-size:13px;">No events yet.</p></div>';
-  }
-  h += '</div>';
-  el.innerHTML = h;
-}
-
-function addEvent() {
-  var body = {
-    event_date: ($("evt-date") || {}).value || "",
-    title: ($("evt-title") || {}).value || "",
-    location: ($("evt-location") || {}).value || "",
-    time_range: ($("evt-time") || {}).value || "",
-    price: ($("evt-price") || {}).value || "",
-    description: ($("evt-desc") || {}).value || "",
-  };
-  if (!body.title.trim()) { showToast("Title is required", "error"); return; }
-  api("/api/events", { method: "POST", body: body })
-    .then(function() {
-      showToast("Event added");
-      return api("/api/events").then(function(d) { S.events = d.events || []; render(); });
-    })
-    .catch(function(e) { showToast("Error: " + e.message, "error"); });
-}
-
-function deleteEvent(id) {
-  api("/api/events/" + id, { method: "DELETE" })
-    .then(function() {
-      showToast("Event deleted");
-      S.events = S.events.filter(function(e) { return e.id !== id; });
-      render();
-    })
-    .catch(function(e) { showToast("Error: " + e.message, "error"); });
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

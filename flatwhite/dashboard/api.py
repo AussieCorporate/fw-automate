@@ -765,47 +765,6 @@ def api_models() -> JSONResponse:
     return JSONResponse({"models": list_available_models()})
 
 
-@app.get("/api/events")
-def api_events() -> JSONResponse:
-    """Return events for current week."""
-    conn = get_connection()
-    week_iso = get_current_week_iso()
-    rows = conn.execute(
-        "SELECT * FROM events WHERE week_iso = ? ORDER BY sort_order, event_date",
-        (week_iso,),
-    ).fetchall()
-    conn.close()
-    return JSONResponse({"events": [dict(r) for r in rows], "week_iso": week_iso})
-
-
-@app.post("/api/events")
-async def api_add_event(request: Request) -> JSONResponse:
-    """Add an event."""
-    body = await request.json()
-    week_iso = get_current_week_iso()
-    conn = get_connection()
-    cursor = conn.execute(
-        """INSERT INTO events (week_iso, event_date, title, location, time_range, price, description)
-        VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (week_iso, body.get("event_date", ""), body.get("title", ""), body.get("location"),
-         body.get("time_range"), body.get("price"), body.get("description")),
-    )
-    conn.commit()
-    row_id = cursor.lastrowid
-    conn.close()
-    return JSONResponse({"id": row_id})
-
-
-@app.delete("/api/events/{event_id}")
-async def api_delete_event(event_id: int) -> JSONResponse:
-    """Delete an event."""
-    conn = get_connection()
-    conn.execute("DELETE FROM events WHERE id = ?", (event_id,))
-    conn.commit()
-    conn.close()
-    return JSONResponse({"deleted": True})
-
-
 
 @app.get("/api/big-conversation-candidates")
 def api_big_conv_candidates() -> JSONResponse:
@@ -1473,49 +1432,6 @@ async def api_save_section_output(section: str, request: Request) -> JSONRespons
     week_iso = get_current_week_iso()
     save_section_output(week_iso, section, body.get("output_text", ""), body.get("model_used"))
     return JSONResponse({"saved": True, "section": section})
-
-
-# ── Events ────────────────────────────────────────────────────────────────────
-
-@app.get("/api/events")
-def api_events() -> JSONResponse:
-    """Return events for current week."""
-    conn = get_connection()
-    week_iso = get_current_week_iso()
-    rows = conn.execute(
-        "SELECT * FROM events WHERE week_iso = ? ORDER BY sort_order, event_date",
-        (week_iso,),
-    ).fetchall()
-    conn.close()
-    return JSONResponse({"events": [dict(r) for r in rows], "week_iso": week_iso})
-
-
-@app.post("/api/events")
-async def api_add_event(request: Request) -> JSONResponse:
-    """Add an event."""
-    body = await request.json()
-    week_iso = get_current_week_iso()
-    conn = get_connection()
-    cursor = conn.execute(
-        """INSERT INTO events (week_iso, event_date, title, location, time_range, price, description)
-        VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (week_iso, body.get("event_date", ""), body.get("title", ""), body.get("location"),
-         body.get("time_range"), body.get("price"), body.get("description")),
-    )
-    conn.commit()
-    row_id = cursor.lastrowid
-    conn.close()
-    return JSONResponse({"id": row_id})
-
-
-@app.delete("/api/events/{event_id}")
-async def api_delete_event(event_id: int) -> JSONResponse:
-    """Delete an event."""
-    conn = get_connection()
-    conn.execute("DELETE FROM events WHERE id = ?", (event_id,))
-    conn.commit()
-    conn.close()
-    return JSONResponse({"deleted": True})
 
 
 # ── Big Conversation candidates ───────────────────────────────────────────────
