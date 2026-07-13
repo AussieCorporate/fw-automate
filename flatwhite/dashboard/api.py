@@ -1032,9 +1032,6 @@ _SECTION_RUNNERS: dict[str, list[tuple[str, "Callable"]]] = {
         ("Prune stale",   lambda: __import__("flatwhite.db", fromlist=["prune_stale_raw_items"]).prune_stale_raw_items(max_age_days=7)),
         ("Classify",      lambda: __import__("flatwhite.classify.classifier",             fromlist=["classify_all_unclassified"]).classify_all_unclassified()),
     ],
-    "lobby": [
-        ("Employer snapshots", lambda: __import__("flatwhite.signals.hiring_pulse", fromlist=["pull_hiring_pulse"]).pull_hiring_pulse()),
-    ],
     "thread": [
         ("Reddit RSS",  lambda: __import__("flatwhite.editorial.reddit_rss", fromlist=["pull_reddit_editorial"]).pull_reddit_editorial()),
         ("Prune stale", lambda: __import__("flatwhite.db", fromlist=["prune_stale_raw_items"]).prune_stale_raw_items(max_age_days=7)),
@@ -1061,7 +1058,7 @@ _SECTION_RUNNERS: dict[str, list[tuple[str, "Callable"]]] = {
 }
 
 _SCRAPE_ALL_SECTIONS = [
-    "pulse", "editorial", "big_conversation", "finds", "lobby", "thread", "off_the_clock",
+    "pulse", "editorial", "big_conversation", "finds", "thread", "off_the_clock",
 ]
 
 _scrape_all_state: dict = {
@@ -1416,112 +1413,6 @@ async def save_manual_feedback(request: Request) -> JSONResponse:
 
     return JSONResponse(result)
 
-
-# ── Lobby (employer hiring trends) ──────────────────────────────────────────
-
-@app.get("/api/lobby")
-def api_lobby() -> JSONResponse:
-    """Return employer hiring data with full available trend history."""
-    conn = get_connection()
-    week_iso = get_current_week_iso()
-
-    # Build last 26 ISO weeks (6 months) for trend data
-    year, week_num = int(week_iso[:4]), int(week_iso[6:])
-    dt = _dt.datetime.strptime(f"{year}-W{week_num:02d}-1", "%G-W%V-%u")
-    week_isos = [(dt - _dt.timedelta(weeks=i)).strftime("%G-W%V") for i in range(25, -1, -1)]
-    # week_isos[0] = 8 weeks ago, week_isos[-1] = current
-    prev_week = week_isos[-2]
-    month_ago_week = week_isos[-5]  # 4 weeks ago
-
-    placeholders = ",".join("?" for _ in week_isos)
-    all_snaps = conn.execute(
-        f"""SELECT es.employer_id, es.open_roles_count, es.week_iso,
-                   ew.employer_name, ew.sector
-            FROM employer_snapshots es
-            JOIN employer_watchlist ew ON es.employer_id = ew.id
-            WHERE es.week_iso IN ({placeholders})
-            ORDER BY ew.employer_name, es.week_iso""",
-        week_isos,
-    ).fetchall()
-    conn.close()
-
-    # Group by employer
-    from collections import defaultdict
-    snap_by_emp: dict[int, dict] = defaultdict(lambda: {"name": "", "sector": "", "weeks": {}})
-    for r in all_snaps:
-        e = snap_by_emp[r["employer_id"]]
-        e["name"] = r["employer_name"]
-        e["sector"] = r["sector"]
-        e["weeks"][r["week_iso"]] = r["open_roles_count"]
-
-    employers = []
-    for emp_id, emp in snap_by_emp.items():
-        weeks = emp["weeks"]
-        current_count = weeks.get(week_iso)
-        if current_count is None:
-            continue  # No data this week — skip
-
-        prev_count = weeks.get(prev_week)
-        month_ago_count = weeks.get(month_ago_week)
-
-        wow_delta = current_count - prev_count if prev_count is not None else None
-        mom_delta = current_count - month_ago_count if month_ago_count is not None else None
-        wow_pct = round(wow_delta / prev_count * 100, 1) if prev_count and wow_delta is not None else None
-
-        # History: all available weeks of counts (oldest first), None-filled if missing
-        history = [weeks.get(w) for w in week_isos]
-
-        # Compute trend direction over available data (sustained hiring vs cutting)
-        non_null = [h for h in history if h is not None]
-        if len(non_null) >= 3:
-            first_third = sum(non_null[:len(non_null)//3]) / (len(non_null)//3)
-            last_third = sum(non_null[-(len(non_null)//3):]) / (len(non_null)//3)
-            trend_pct = round((last_third - first_third) / first_third * 100, 1) if first_third > 0 else None
-        else:
-            trend_pct = None
-
-        employers.append({
-            "employer_id": emp_id,
-            "employer_name": emp["name"],
-            "sector": emp["sector"],
-            "open_roles_count": current_count,
-            "prev_roles": prev_count,
-            "delta": wow_delta,
-            "delta_pct": wow_pct,
-            "mom_delta": mom_delta,
-            "trend_pct": trend_pct,
-            "history": history,
-        })
-
-    employers.sort(key=lambda e: e["employer_name"])
-
-    movers = sorted(
-        [e for e in employers if e["delta"] is not None],
-        key=lambda x: abs(x["delta"]),
-        reverse=True,
-    )
-
-    _conn = get_connection()
-    _row = _conn.execute(
-        "SELECT max(pulled_at) FROM raw_items WHERE week_iso = ?", (week_iso,)
-    ).fetchone()
-    _conn.close()
-    last_scraped_at = _row[0] if _row else None
-
-    # Load LinkedIn insights if available
-    try:
-        from flatwhite.signals.linkedin_insights import load_linkedin_insights
-        li_insights = load_linkedin_insights(week_iso)
-    except Exception:
-        li_insights = {}
-
-    return JSONResponse({
-        "employers": employers,
-        "top_movers": movers[:10],
-        "linkedin_insights": {k: {kk: vv for kk, vv in v.items() if kk != "raw_text"} for k, v in li_insights.items()},
-        "week_iso": week_iso,
-        "last_scraped_at": last_scraped_at,
-    })
 
 
 # ── Pulse trends ─────────────────────────────────────────────────────────────
@@ -2068,76 +1959,6 @@ def _proceed_editorial(data: dict, model: str | None, custom_prompt: str | None 
     return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE, model_override=override)
 
 
-def _proceed_lobby(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
-    from flatwhite.classify.prompts import EDITORIAL_VOICE
-
-    override = _safe_override(model)
-
-    if custom_prompt:
-        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE, model_override=override)
-
-    selected = data.get("selected_employers", [])
-    employer_lines = []
-    for e in selected:
-        name = e.get("employer_name", str(e)) if isinstance(e, dict) else str(e)
-        if isinstance(e, dict):
-            current = e.get("open_roles_count", "?")
-            wow = e.get("delta")
-            mom = e.get("mom_delta")
-            trend = e.get("trend_pct")
-            sector = e.get("sector", "")
-            wow_str = f"+{wow}" if wow and wow > 0 else str(wow) if wow is not None else "—"
-            mom_str = f"+{mom}" if mom and mom > 0 else str(mom) if mom is not None else "—"
-            trend_str = f", overall trend {trend:+.1f}%" if trend is not None else ""
-            # Include the full history as a sparkline of numbers
-            history = e.get("history", [])
-            history_vals = [str(h) if h is not None else "—" for h in history]
-            history_str = f" | Weekly history: [{', '.join(history_vals[-8:])}]" if any(h is not None for h in history) else ""
-
-            employer_lines.append(
-                f"- {name} [{sector}]: {current} open roles (WoW: {wow_str}, MoM: {mom_str}{trend_str}){history_str}"
-            )
-        else:
-            employer_lines.append(f"- {name}")
-
-    employer_block = "\n".join(employer_lines) if employer_lines else "No employers selected."
-
-    # Add LinkedIn insights if available
-    linkedin_block = ""
-    try:
-        from flatwhite.signals.linkedin_insights import load_linkedin_insights, format_insights_for_prompt
-        li_data = load_linkedin_insights()
-        if li_data:
-            # Filter to selected employers only
-            selected_names = {
-                (e.get("employer_name") if isinstance(e, dict) else str(e))
-                for e in selected
-            }
-            filtered = {k: v for k, v in li_data.items() if k in selected_names}
-            if filtered:
-                linkedin_block = "\n" + format_insights_for_prompt(filtered) + "\n"
-    except Exception:
-        pass
-
-    prompt = (
-        "Write The Lobby section for this week's Flat White newsletter.\n\n"
-        f"Employer hiring movements this week (from ATS scraping of careers pages):\n{employer_block}\n\n"
-        f"{linkedin_block}"
-        "ANALYSIS GUIDANCE:\n"
-        "- Use the weekly history to identify sustained trends vs one-week anomalies. "
-        "A company cutting roles for 4 consecutive weeks tells a different story than a single-week dip.\n"
-        "- Cross-reference WoW (this week's move) with the overall trend. A company adding 10 roles "
-        "this week but down 15% over 6 months is backfilling attrition, not expanding.\n"
-        "- Compare across sectors: are all Big 4 moving the same way, or is one diverging?\n"
-        "- If LinkedIn data is available, use headcount growth and new hires to add context "
-        "that raw job postings alone cannot provide (e.g. net growth vs churn).\n"
-        "- Connect the dots for someone working in Big 4, law, banking, or tech.\n\n"
-        "Voice: dry, observant, Australian corporate commentary. 3-4 paragraphs.\n"
-        "Output ONLY the commentary text. No title. No sign-off."
-    )
-    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE, model_override=override)
-
-
 # ── Proceed section endpoint ──────────────────────────────────────────────────
 
 @app.post("/api/proceed-section")
@@ -2166,7 +1987,6 @@ async def api_proceed_section(request: Request) -> JSONResponse:
         "amp_finest": _proceed_amp_finest,
         "off_the_clock": _proceed_off_the_clock,
         "editorial": _proceed_editorial,
-        "lobby": _proceed_lobby,
     }
 
     if section not in proceed_fns:
@@ -2345,36 +2165,6 @@ async def api_preview_prompt(request: Request) -> JSONResponse:
                 "signals": [], "signal_intelligence": [],
                 "composite": {},
                 "items": [{"name": line[:80]} for line in items_with_bodies.split("\n") if line.strip().startswith("-")],
-            }
-
-        elif section == "lobby":
-            selected = data.get("selected_employers", [])
-            employer_lines = []
-            for e in selected:
-                name = e.get("employer_name", str(e)) if isinstance(e, dict) else str(e)
-                if isinstance(e, dict):
-                    current = e.get("open_roles_count", "?")
-                    wow = e.get("delta")
-                    mom = e.get("mom_delta")
-                    wow_str = f"+{wow}" if wow and wow > 0 else str(wow) if wow is not None else "—"
-                    mom_str = f"+{mom}" if mom and mom > 0 else str(mom) if mom is not None else "—"
-                    employer_lines.append(f"- {name}: {current} roles (WoW: {wow_str}, MoM: {mom_str})")
-                else:
-                    employer_lines.append(f"- {name}")
-            employer_block = "\n".join(employer_lines) if employer_lines else "No employers selected."
-            prompt = (
-                "Write The Lobby section for this week's Flat White newsletter.\n\n"
-                f"Employer hiring movements this week:\n{employer_block}\n\n"
-                "Analyse these hiring movements. What do they signal about the corporate job market? "
-                "Are companies restructuring, expanding, or pulling back? Identify employers with "
-                "sustained trends (same direction for multiple weeks) vs one-week anomalies. "
-                "Connect the dots for someone working in Big 4, law, banking, or tech.\n\n"
-                "Output ONLY the commentary text. No title. No sign-off."
-            )
-            context_breakdown = {
-                "signals": [], "signal_intelligence": [],
-                "composite": {},
-                "items": [{"name": line} for line in employer_lines],
             }
 
         elif section == "off_the_clock":

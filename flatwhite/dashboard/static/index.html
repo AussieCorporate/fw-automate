@@ -397,7 +397,6 @@ var NAV_ITEMS = [
   { id: "pulse",       icon: "\u25C9", label: "Pulse" },
   { id: "big_conversation", icon: "\u00B6", label: "Big Conversation" },
   { id: "whispers",    icon: "\uD83D\uDC41", label: "Whispers" },
-  { id: "lobby",       icon: "\uD83D\uDCCA", label: "The Lobby" },
   { id: "finds",       icon: "\uD83D\uDD25", label: "Finds" },
   { id: "thread",      icon: "\u00A7", label: "Thread" },
   { id: "amp_finest",  icon: "\uD83D\uDCC8", label: "AMP's Finest" },
@@ -447,9 +446,6 @@ function loadPageData(page) {
       return Promise.resolve();
     case "whispers":
       return api("/api/items").then(function(d) { S.whispers = (d.items && d.items.whisper) || []; S.weekIso = d.week_iso; });
-    case "lobby":
-      if (S.lobby) return Promise.resolve();
-      return api("/api/lobby").then(function(d) { S.lobby = d; S.weekIso = d.week_iso; S.lastScraped.lobby = d.last_scraped_at || null; });
     case "finds":
       if (S.items) return Promise.resolve();
       return api("/api/items").then(function(d) { S.items = d.items || {}; S.weekIso = d.week_iso; S.lastScraped.finds = d.last_scraped_at || null; S.lastScraped.editorial = d.last_scraped_at || null; });
@@ -503,7 +499,6 @@ var _CMD_PILL_SECTIONS = [
   { id: "pulse",            label: "Pulse" },
   { id: "big_conversation", label: "Big Conv" },
   { id: "finds",            label: "Finds" },
-  { id: "lobby",            label: "Lobby" },
   { id: "thread",           label: "Thread" },
   { id: "off_the_clock",    label: "Off Clock" },
 ];
@@ -579,7 +574,6 @@ function render() {
     case "pulse": renderPulse(m); break;
     case "big_conversation": renderBigConv(m); break;
     case "whispers": renderWhispers(m); break;
-    case "lobby": renderLobby(m); break;
     case "finds": renderFinds(m); break;
     case "thread": renderThread(m); break;
     case "amp_finest": renderAmpFinest(m); break;
@@ -602,7 +596,7 @@ function renderEditorialBody() {
   var h = '';
   // Show which sections are ready
   h += '<div class="card mb20"><div style="font-size:13px;color:var(--text-2);margin-bottom:10px;font-weight:600;">Section Readiness</div>';
-  var deps = ["pulse","big_conversation","lobby","finds","thread","off_the_clock"];
+  var deps = ["pulse","big_conversation","finds","thread","off_the_clock"];
   deps.forEach(function(d) {
     var ready = S.sectionOutputs[d] && S.sectionOutputs[d].output_text;
     h += '<div class="fr mb8"><span style="width:10px;height:10px;border-radius:50%;background:' + (ready ? "var(--green)" : "var(--border)") + ';"></span> <span style="font-size:13px;">' + esc(d.replace(/_/g, " ")) + '</span></div>';
@@ -1162,106 +1156,6 @@ function addWhisper() {
       return api("/api/items").then(function(d) { S.whispers = (d.items && d.items.whisper) || []; render(); });
     })
     .catch(function(e) { showToast("Error: " + e.message, "error"); });
-}
-
-/* ═══════════════════════════════════════════════════════════════════════
-   SECTION: THE LOBBY
-   ═══════════════════════════════════════════════════════════════════════ */
-function renderLobbyBody() {
-  var h = '';
-  if (!S.lobby || !S.lobby.employers || !S.lobby.employers.length) {
-    h += '<div class="card"><p class="loading">No lobby data yet. Click RUN to pull employer data.</p></div>';
-    return h;
-  }
-  // Top movers cards
-  if (S.lobby.top_movers && S.lobby.top_movers.length) {
-    h += '<div style="font-weight:600;margin-bottom:10px;">Top Movers</div>';
-    h += '<div class="movers-grid">';
-    S.lobby.top_movers.slice(0, 6).forEach(function(m) {
-      var d = m.delta || 0;
-      var sign = d > 0 ? "+" : "";
-      var cls = d > 0 ? "up" : (d < 0 ? "down" : "");
-      h += '<div class="card mover-card">';
-      h += '<div class="mc-name">' + esc(m.employer_name) + '</div>';
-      h += '<div class="mc-sector">' + esc(m.sector || "") + '</div>';
-      h += '<div class="mc-delta ' + cls + '">' + sign + d + ' roles</div>';
-      h += '<div class="mc-detail">' + esc(m.open_roles_count || 0) + ' total' + (m.delta_pct != null ? ' (' + sign + m.delta_pct + '%)' : '') + '</div>';
-      var mom = m.mom_delta != null ? m.mom_delta : null;
-      if (mom != null) {
-        var momSign = mom > 0 ? "+" : "";
-        var momCls = mom > 0 ? "color:var(--green)" : (mom < 0 ? "color:var(--red)" : "color:var(--text-3)");
-        h += '<div style="font-size:11px;' + momCls + '">4-wk: ' + momSign + mom + '</div>';
-      }
-      h += '</div>';
-    });
-    h += '</div>';
-  }
-  // Full employer table
-  h += '<div class="card mb20"><div style="font-weight:600;margin-bottom:12px;">All Employers</div>';
-  h += '<table class="tbl"><thead><tr><th style="width:30px;"></th><th>Employer</th><th>Sector</th><th>Roles</th><th>WoW</th><th>MoM</th><th>Trend</th></tr></thead><tbody>';
-  S.lobby.employers.forEach(function(e) {
-    var name = e.employer_name || "";
-    var checked = S.lobbyChecked[name] ? " checked" : "";
-    var wow = e.delta != null ? e.delta : null;
-    var mom = e.mom_delta != null ? e.mom_delta : null;
-    var wowStyle = wow == null ? 'color:var(--text-3)' : (wow > 0 ? 'color:var(--green);font-weight:600' : (wow < 0 ? 'color:var(--red);font-weight:600' : 'color:var(--text-3)'));
-    var momStyle = mom == null ? 'color:var(--text-3)' : (mom > 0 ? 'color:var(--green);font-weight:600' : (mom < 0 ? 'color:var(--red);font-weight:600' : 'color:var(--text-3)'));
-    var wowText = wow == null ? "—" : (wow > 0 ? "+" : "") + wow;
-    var momText = mom == null ? "—" : (mom > 0 ? "+" : "") + mom;
-    var hist = e.history || [];
-    h += '<tr>';
-    h += '<td><input type="checkbox"' + checked + ' onchange="toggleLobbyCheck(\'' + esc(name).replace(/'/g, "\\'") + '\',this.checked)"></td>';
-    h += '<td><strong>' + esc(name) + '</strong></td>';
-    h += '<td>' + esc(e.sector || "") + '</td>';
-    h += '<td>' + esc(e.open_roles_count || 0) + '</td>';
-    h += '<td style="' + wowStyle + '">' + wowText + '</td>';
-    h += '<td style="' + momStyle + '">' + momText + '</td>';
-    h += '<td>' + barSparkline(hist, 64, 24) + '</td>';
-    h += '</tr>';
-  });
-  h += '</tbody></table></div>';
-  return h;
-}
-
-function renderLobby(el) {
-  var hasScrapeData = !!(S.lobby && S.lobby.employers && S.lobby.employers.length);
-  var hasOutput = !!(S.sectionOutputs.lobby && S.sectionOutputs.lobby.output_text);
-  if (!S.sectionPhase.lobby) S.sectionPhase.lobby = hasOutput ? 3 : (hasScrapeData ? 2 : 1);
-
-  var p1 = '';
-  p1 += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">';
-  p1 += '<button class="btn btn-primary" onclick="runSection(\'lobby\')">SCRAPE</button>';
-  if (S.loading.lobby) p1 += renderSectionProgress('lobby');
-  var _ps = formatScrapedDate(S.lastScraped.lobby);
-  if (_ps) p1 += '<span class="scraped-badge">Scraped ' + _ps + '</span>';
-  p1 += '</div>';
-
-  var p2 = hasScrapeData ? renderLobbyBody() : '';
-
-  var p3 = '';
-  p3 += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
-  p3 += modelSelect('model-lobby');
-  p3 += '<button class="btn btn-success" onclick="proceedLobby()">PROCEED</button>';
-  p3 += '</div>';
-  p3 += outputBox('lobby');
-
-  var h = '<div class="sh"><div><h2>The Lobby</h2><div class="sub">Employer hiring data and top movers</div></div></div>';
-  h += phasePanel('lobby', 1, 'Scrape', true, hasScrapeData, p1);
-  h += phasePanel('lobby', 2, 'Review & Pick', hasScrapeData, false, p2);
-  h += phasePanel('lobby', 3, 'Generate', hasScrapeData, hasOutput, p3);
-
-  el.innerHTML = h;
-  fillOutput('lobby');
-}
-
-function toggleLobbyCheck(name, val) { S.lobbyChecked[name] = val; }
-
-function proceedLobby() {
-  var model = getModel("model-lobby");
-  var checked = Object.keys(S.lobbyChecked).filter(function(k) { return S.lobbyChecked[k]; });
-  var selected = S.lobby && S.lobby.employers ? S.lobby.employers.filter(function(e) { return checked.indexOf(e.employer_name) >= 0; }) : [];
-  S.proceedData.lobby = { section: "lobby", model: model, data: { selected_employers: selected, top_movers: S.lobby ? S.lobby.top_movers : [] } };
-  openProceedModal("lobby");
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -2116,12 +2010,11 @@ function pollSectionStatus(section) {
         switch (section) {
           case "pulse": S.pulse = null; S.trends = null; break;
           case "finds": case "editorial": case "classify": S.items = null; S.bigConvCandidates = null; break;
-          case "lobby": S.lobby = null; break;
           case "thread": S.threads = null; break;
           case "off_the_clock": case "classify_otc": S.otcData = null; break;
           case "big_conversation": S.bigConvCandidates = null; break;
         }
-        var pageForSection = {pulse:"pulse", finds:"finds", editorial:"editorial", classify:"finds", lobby:"lobby", thread:"thread", off_the_clock:"off_the_clock", classify_otc:"off_the_clock", big_conversation:"big_conversation"};
+        var pageForSection = {pulse:"pulse", finds:"finds", editorial:"editorial", classify:"finds", thread:"thread", off_the_clock:"off_the_clock", classify_otc:"off_the_clock", big_conversation:"big_conversation"};
         var relevantPage = pageForSection[section] || section;
         if (S.page === relevantPage) {
           loadPageData(S.page).then(function() { render(); });
