@@ -423,7 +423,11 @@ var NAV_ITEMS = [
   { id: "off_the_clock", icon: "\uD83C\uDF77", label: "Off the Clock" },
   { id: "top_picks",   icon: "\uD83C\uDFC6", label: "Top Picks" },
   { id: "salary_vault", icon: "\uD83D\uDCB0", label: "Salary Vault", greyed: true },
-  { id: "assemble",    icon: "\u2709", label: "Composer" },
+  // "assemble" (Composer) tab hidden per Victor's decision. This is a
+  // separate legacy render path from flatwhite/assemble/renderer.py and
+  // templates.py, which are NOT deleted (flatwhite/cli.py and
+  // orchestrate/runner.py still invoke them directly). Only the dashboard
+  // tab is hidden here.
 ];
 
 function nav(page) {
@@ -472,8 +476,6 @@ function loadPageData(page) {
     case "top_picks":
       if (S.topPicks) return Promise.resolve();
       return api("/api/top-picks").then(function(d) { S.topPicks = d; S.weekIso = d.week_iso; S.lastScraped.top_picks = d.scraped_at || null; });
-    case "assemble":
-      return api("/api/section-outputs").then(function(d) { S.sectionOutputs = d.outputs || {}; S.weekIso = d.week_iso; });
     case "editorial":
       // Also loads /api/items (same call the now-hidden "finds" case makes) so
       // S.lastScraped.editorial gets set independently of visiting Finds.
@@ -598,7 +600,6 @@ function render() {
     case "big_conversation": renderBigConv(m); break;
     case "off_the_clock": renderOTC(m); break;
     case "top_picks": renderTopPicks(m); break;
-    case "assemble": renderAssemble(m); break;
     case "editorial": renderEditorial(m); break;
     default: m.innerHTML = '<p>Unknown page</p>';
   }
@@ -1362,91 +1363,6 @@ function proceedOTC() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   SECTION: ASSEMBLE
-   ═══════════════════════════════════════════════════════════════════════ */
-function renderAssemble(el) {
-  var COMPOSER_ORDER = [
-    { id: "pulse",            label: "PULSE",            icon: "◉" },
-    { id: "big_conversation", label: "BIG CONVERSATION", icon: "¶" },
-    { id: "finds",            label: "FINDS",            icon: "🔥" },
-    { id: "lobby",            label: "THE LOBBY",        icon: "📊" },
-    { id: "thread",           label: "THREAD",           icon: "§" },
-    { id: "off_the_clock",    label: "OFF THE CLOCK",    icon: "🍷" },
-    { id: "amp_finest",       label: "AMP'S FINEST",     icon: "📈" },
-    { id: "events",           label: "EVENTS",           icon: "📅" },
-  ];
-
-  var readyCount = COMPOSER_ORDER.filter(function(s) {
-    if (s.id === "events") {
-      return !!(S.events && S.events.length);
-    }
-    return !!(S.sectionOutputs[s.id] && S.sectionOutputs[s.id].output_text);
-  }).length;
-
-  var h = '<div style="max-width:780px;">';
-  h += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">';
-  h += '<div>';
-  h += '<h2 style="margin:0;font-size:20px;">Composer</h2>';
-  h += '<div style="font-size:12px;color:var(--text-2);margin-top:2px;">' + readyCount + '/' + COMPOSER_ORDER.length + ' sections ready · ' + esc(S.weekIso || '') + '</div>';
-  h += '</div>';
-  h += '<div style="flex:1"></div>';
-  h += '<button class="btn btn-success" onclick="copyComposerAll()">Copy All</button>';
-  h += '</div>';
-
-  COMPOSER_ORDER.forEach(function(s) {
-    var out = s.id === "events" ? null : (S.sectionOutputs[s.id] || null);
-    var hasOutput = !!(out && out.output_text);
-    var eventsText = "";
-    if (s.id === "events" && S.events && S.events.length) {
-      eventsText = S.events.map(function(e) {
-        return (e.event_date || "") + " · " + esc(e.title) + (e.location ? ", " + esc(e.location) : "");
-      }).join("\n");
-      hasOutput = !!eventsText;
-    }
-
-    if (!hasOutput) {
-      h += '<div style="border:1.5px dashed #e0a040;border-radius:8px;margin-bottom:10px;overflow:hidden;">';
-      h += '<div style="background:#fdf5e8;padding:8px 14px;display:flex;align-items:center;gap:10px;">';
-      h += '<span style="font-weight:700;font-size:12px;color:#c07000;">⚠ ' + esc(s.icon + ' ' + s.label) + '</span>';
-      h += '<span style="flex:1;font-size:11px;color:#c07000;">No output yet</span>';
-      if (s.id !== "events") h += '<button class="btn btn-sm" onclick="nav(\'' + s.id + '\')" style="font-size:11px;">Go →</button>';
-      h += '</div></div>';
-      return;
-    }
-
-    var textContent = s.id === "events" ? eventsText : out.output_text;
-    var taId = "composer-ta-" + s.id;
-    var generated = out && out.model_used ? "Generated · " + esc(out.model_used) : "Ready";
-
-    h += '<div style="border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden;">';
-    h += '<div style="background:var(--bg-2);padding:8px 14px;display:flex;align-items:center;gap:8px;">';
-    h += '<span style="font-weight:700;font-size:12px;">' + esc(s.icon + ' ' + s.label) + '</span>';
-    h += '<span style="flex:1;font-size:11px;color:var(--text-2);">' + generated + '</span>';
-    h += '<button class="btn btn-sm" id="copy-btn-composer-' + s.id + '" onclick="copyComposerSection(\'' + s.id + '\',\'' + taId + '\')">Copy</button>';
-    h += '</div>';
-    h += '<textarea id="' + taId + '" style="width:100%;padding:12px 14px;border:none;border-top:1px solid var(--border);font-size:12px;line-height:1.6;resize:vertical;min-height:80px;box-sizing:border-box;background:var(--bg-1,#fff);">';
-    h += esc(textContent);
-    h += '</textarea>';
-    h += '</div>';
-  });
-
-  h += '</div>';
-  el.innerHTML = h;
-}
-
-function copyAssembly() {
-  var ta = $("assembly-preview");
-  if (ta) {
-    navigator.clipboard.writeText(ta.value).then(function() {
-      showToast("Copied to clipboard");
-    }).catch(function() {
-      ta.select(); document.execCommand("copy");
-      showToast("Copied to clipboard");
-    });
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════════════════
    SHARED: Output box + Save + Run
    ═══════════════════════════════════════════════════════════════════════ */
 function openPhase(section, num) {
@@ -1491,48 +1407,6 @@ function copyOutput(section) {
     ta.select();
     document.execCommand("copy");
     var btn = $("copy-btn-" + section);
-    if (btn) { btn.textContent = "Copied!"; setTimeout(function() { btn.textContent = "Copy"; }, 1500); }
-  });
-}
-
-function copyComposerAll() {
-  var COMPOSER_ORDER = [
-    { id: "pulse",            label: "PULSE" },
-    { id: "big_conversation", label: "BIG CONVERSATION" },
-    { id: "finds",            label: "FINDS" },
-    { id: "lobby",            label: "THE LOBBY" },
-    { id: "thread",           label: "THREAD" },
-    { id: "off_the_clock",    label: "OFF THE CLOCK" },
-    { id: "amp_finest",       label: "AMP'S FINEST" },
-  ];
-  var parts = [];
-  COMPOSER_ORDER.forEach(function(s) {
-    var ta = document.getElementById("composer-ta-" + s.id);
-    var text = ta ? ta.value : (S.sectionOutputs[s.id] ? S.sectionOutputs[s.id].output_text : null);
-    if (text && text.trim()) {
-      parts.push("## " + s.label + "\n\n" + text.trim());
-    }
-  });
-  if (!parts.length) { showToast("No outputs to copy yet", "error"); return; }
-  navigator.clipboard.writeText(parts.join("\n\n---\n\n")).then(function() {
-    showToast("All sections copied to clipboard");
-  }).catch(function() {
-    var ta = document.createElement("textarea");
-    ta.value = parts.join("\n\n---\n\n");
-    document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta);
-    showToast("All sections copied to clipboard");
-  });
-}
-
-function copyComposerSection(sectionId, taId) {
-  var ta = document.getElementById(taId);
-  if (!ta || !ta.value) return;
-  navigator.clipboard.writeText(ta.value).then(function() {
-    var btn = document.getElementById("copy-btn-composer-" + sectionId);
-    if (btn) { btn.textContent = "Copied!"; setTimeout(function() { btn.textContent = "Copy"; }, 1500); }
-  }).catch(function() {
-    ta.select(); document.execCommand("copy");
-    var btn = document.getElementById("copy-btn-composer-" + sectionId);
     if (btn) { btn.textContent = "Copied!"; setTimeout(function() { btn.textContent = "Copy"; }, 1500); }
   });
 }
