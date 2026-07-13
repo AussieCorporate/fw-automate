@@ -806,31 +806,6 @@ async def api_delete_event(event_id: int) -> JSONResponse:
     return JSONResponse({"deleted": True})
 
 
-@app.get("/api/amp-finest")
-def api_amp_finest() -> JSONResponse:
-    """Return AMP's Finest data for current week."""
-    conn = get_connection()
-    week_iso = get_current_week_iso()
-    row = conn.execute("SELECT * FROM amp_finest WHERE week_iso = ?", (week_iso,)).fetchone()
-    conn.close()
-    return JSONResponse({"data": dict(row) if row else None, "week_iso": week_iso})
-
-
-@app.post("/api/amp-finest")
-async def api_save_amp_finest(request: Request) -> JSONResponse:
-    """Save AMP's Finest data."""
-    body = await request.json()
-    week_iso = get_current_week_iso()
-    conn = get_connection()
-    conn.execute(
-        """INSERT OR REPLACE INTO amp_finest (week_iso, data_description, notes, chart_image_path)
-        VALUES (?, ?, ?, ?)""",
-        (week_iso, body.get("data_description", ""), body.get("notes", ""), body.get("chart_image_path")),
-    )
-    conn.commit()
-    conn.close()
-    return JSONResponse({"saved": True})
-
 
 @app.get("/api/big-conversation-candidates")
 def api_big_conv_candidates() -> JSONResponse:
@@ -1543,34 +1518,6 @@ async def api_delete_event(event_id: int) -> JSONResponse:
     return JSONResponse({"deleted": True})
 
 
-# ── AMP's Finest ──────────────────────────────────────────────────────────────
-
-@app.get("/api/amp-finest")
-def api_amp_finest() -> JSONResponse:
-    """Return AMP's Finest data for current week."""
-    conn = get_connection()
-    week_iso = get_current_week_iso()
-    row = conn.execute("SELECT * FROM amp_finest WHERE week_iso = ?", (week_iso,)).fetchone()
-    conn.close()
-    return JSONResponse({"data": dict(row) if row else None, "week_iso": week_iso})
-
-
-@app.post("/api/amp-finest")
-async def api_save_amp_finest(request: Request) -> JSONResponse:
-    """Save AMP's Finest data."""
-    body = await request.json()
-    week_iso = get_current_week_iso()
-    conn = get_connection()
-    conn.execute(
-        """INSERT OR REPLACE INTO amp_finest (week_iso, data_description, notes, chart_image_path)
-        VALUES (?, ?, ?, ?)""",
-        (week_iso, body.get("data_description", ""), body.get("notes", ""), body.get("chart_image_path")),
-    )
-    conn.commit()
-    conn.close()
-    return JSONResponse({"saved": True})
-
-
 # ── Big Conversation candidates ───────────────────────────────────────────────
 
 @app.get("/api/big-conversation-candidates")
@@ -1864,29 +1811,6 @@ def _proceed_thread(data: dict, model: str | None, custom_prompt: str | None = N
     return route(task_type="editorial", prompt=prompt, system=THREAD_OUR_TAKE_SYSTEM, model_override=override)
 
 
-def _proceed_amp_finest(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
-    from flatwhite.classify.prompts import EDITORIAL_VOICE
-
-    override = _safe_override(model)
-
-    if custom_prompt:
-        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE, model_override=override)
-
-    items = data.get("selected_items", [])
-    items_block = "\n\n".join(
-        f"Title: {item.get('title', '')}\nSummary: {item.get('summary', '')}"
-        for item in items
-    )
-
-    prompt = (
-        "Write the AMP's Finest section for this week's Flat White newsletter.\n\n"
-        f"Selected items:\n{items_block}\n\n"
-        "Curate these into a short, pointed section. Voice: dry Australian corporate sardony. "
-        "Each item gets one punchy sentence. Output ONLY the commentary. No title. No sign-off."
-    )
-    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE, model_override=override)
-
-
 def _proceed_off_the_clock(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
     from flatwhite.classify.prompts import EDITORIAL_VOICE
 
@@ -1984,7 +1908,6 @@ async def api_proceed_section(request: Request) -> JSONResponse:
         "big_conversation": _proceed_big_conversation,
         "finds": _proceed_finds,
         "thread": _proceed_thread,
-        "amp_finest": _proceed_amp_finest,
         "off_the_clock": _proceed_off_the_clock,
         "editorial": _proceed_editorial,
     }

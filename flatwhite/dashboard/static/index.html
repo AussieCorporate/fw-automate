@@ -399,7 +399,6 @@ var NAV_ITEMS = [
   { id: "whispers",    icon: "\uD83D\uDC41", label: "Whispers" },
   { id: "finds",       icon: "\uD83D\uDD25", label: "Finds" },
   { id: "thread",      icon: "\u00A7", label: "Thread" },
-  { id: "amp_finest",  icon: "\uD83D\uDCC8", label: "AMP's Finest" },
   { id: "off_the_clock", icon: "\uD83C\uDF77", label: "Off the Clock" },
   { id: "events",      icon: "\uD83D\uDCC5", label: "Events" },
   { id: "top_picks",   icon: "\uD83C\uDFC6", label: "Top Picks" },
@@ -452,9 +451,6 @@ function loadPageData(page) {
     case "thread":
       if (S.threads) return Promise.resolve();
       return api("/api/threads?limit=5").then(function(d) { S.threads = d.threads || []; S.weekIso = d.week_iso; S.lastScraped.threads = d.last_scraped_at || null; });
-    case "amp_finest":
-      if (S.ampFinest !== null) return Promise.resolve();
-      return api("/api/amp-finest").then(function(d) { S.ampFinest = d.data; S.weekIso = d.week_iso; });
     case "off_the_clock":
       if (S.otcData) return Promise.resolve();
       return api("/api/off-the-clock").then(function(d) { S.otcData = d; S.weekIso = d.week_iso; S.lastScraped.off_the_clock = d.last_scraped_at || null; });
@@ -576,7 +572,6 @@ function render() {
     case "whispers": renderWhispers(m); break;
     case "finds": renderFinds(m); break;
     case "thread": renderThread(m); break;
-    case "amp_finest": renderAmpFinest(m); break;
     case "off_the_clock": renderOTC(m); break;
     case "events": renderEvents(m); break;
     case "top_picks": renderTopPicks(m); break;
@@ -1353,61 +1348,6 @@ function proceedThread() {
       S.loading.thread = false; render(); showToast("Thread write-up generated");
     })
     .catch(function(e) { S.loading.thread = false; render(); showToast("Error: " + e.message, "error"); });
-}
-
-/* ═══════════════════════════════════════════════════════════════════════
-   SECTION: AMP'S FINEST
-   ═══════════════════════════════════════════════════════════════════════ */
-function renderAmpFinestBody() {
-  var existing = S.ampFinest || {};
-  var h = '';
-  h += '<div class="card mb20">';
-  h += '<div class="form-group"><label>Data Description</label><textarea class="form-input" id="amp-data-desc" rows="4" placeholder="Describe the data / chart...">' + esc(existing.data_description || "") + '</textarea></div>';
-  h += '<div class="form-group"><label>Notes</label><textarea class="form-input" id="amp-notes" rows="4" placeholder="Any additional notes...">' + esc(existing.notes || "") + '</textarea></div>';
-  h += '<button class="btn btn-sm btn-secondary" onclick="saveAmpData()">Save Data</button>';
-  h += '</div>';
-  return h;
-}
-
-function renderAmpFinest(el) {
-  var hasData = !!(S.ampFinest && (S.ampFinest.data_description || S.ampFinest.notes));
-  var hasOutput = !!(S.sectionOutputs.amp_finest && S.sectionOutputs.amp_finest.output_text);
-  if (!S.sectionPhase.amp_finest) S.sectionPhase.amp_finest = hasOutput ? 2 : 1;
-
-  var p1 = renderAmpFinestBody();
-
-  var p2 = '';
-  p2 += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
-  p2 += modelSelect("model-amp");
-  p2 += '<button class="btn btn-success" onclick="proceedAmpFinest()">PROCEED</button>';
-  if (S.loading.amp_finest) p2 += ' <span class="ingest-spinner"></span>';
-  p2 += '</div>';
-  p2 += outputBox("amp_finest");
-
-  var h = '';
-  h += phasePanel('amp_finest', 1, 'Data Entry', true, hasData, p1);
-  h += phasePanel('amp_finest', 2, 'Generate', hasData, hasOutput, p2);
-
-  el.innerHTML = h;
-  fillOutput("amp_finest");
-}
-
-function saveAmpData() {
-  var desc = ($("amp-data-desc") || {}).value || "";
-  var notes = ($("amp-notes") || {}).value || "";
-  api("/api/amp-finest", { method: "POST", body: { data_description: desc, notes: notes } })
-    .then(function() { S.ampFinest = { data_description: desc, notes: notes }; showToast("AMP data saved"); })
-    .catch(function(e) { showToast("Error: " + e.message, "error"); });
-}
-
-function proceedAmpFinest() {
-  var model = getModel("model-amp");
-  var desc = ($("amp-data-desc") || {}).value || "";
-  var notes = ($("amp-notes") || {}).value || "";
-  S.loading.amp_finest = true; render();
-  api("/api/proceed-section", { method: "POST", body: { section: "amp_finest", model: model, data: { data_description: desc, notes: notes } } })
-    .then(function(d) { S.sectionOutputs.amp_finest = { output_text: d.output, model_used: d.model }; S.loading.amp_finest = false; render(); showToast("AMP commentary generated"); })
-    .catch(function(e) { S.loading.amp_finest = false; render(); showToast("Error: " + e.message, "error"); });
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
