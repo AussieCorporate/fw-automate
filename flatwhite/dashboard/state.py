@@ -654,10 +654,47 @@ def _is_mass_outlet(url: str | None) -> bool:
     return any(domain == d or domain.endswith("." + d) for d in _MASS_OUTLET_DOMAINS)
 
 
+# 4 of the 5 OTC categories (eating/watching/wearing/going) are sourced via
+# Google News RSS (off_the_clock.py's _fetch_single_google_query), which
+# stores a news.google.com/rss/articles/... redirect URL, not the real
+# publisher domain - so _is_mass_outlet(url) alone never fires for them.
+# Confirmed against live Google News RSS output that titles are conventionally
+# formatted "Headline text - Publisher Name", e.g.
+#   "Curtis Stone will open his first restaurant ... - Gourmet Traveller"
+#   "Australia's first drive-thru Wendy's ... - Time Out Worldwide"
+#   "The tyranny of the algorithm ... - The Guardian"
+#   "The 'secret menu' IVF option ... - SMH.com.au"
+# so the publisher suffix (text after the last " - ") is a second, additive
+# signal we can check alongside the URL domain.
+_MASS_OUTLET_TITLE_NAMES = {
+    "concrete playground",
+    "time out",
+    "the guardian",
+    "guardian australia",
+    "smh",
+    "sydney morning herald",
+    "gourmet traveller",
+}
+
+
+def _is_mass_outlet_title(title: str | None) -> bool:
+    """True if the title's Google-News-style publisher suffix names a mass outlet."""
+    if not title or " - " not in title:
+        return False
+    suffix = title.rsplit(" - ", 1)[-1].strip().lower()
+    return any(name in suffix for name in _MASS_OUTLET_TITLE_NAMES)
+
+
 def _niche_rank_key(row: dict) -> tuple:
     """Sort key: niche domains (0) before mass outlets (1); within each tier,
-    highest weighted_composite first."""
-    return (1 if _is_mass_outlet(row.get("url")) else 0, -(row.get("weighted_composite") or 0))
+    highest weighted_composite first.
+
+    Mass-outlet detection uses two signals: the stored URL's domain, and (since
+    Google-News-sourced rows store a news.google.com redirect URL rather than
+    the publisher's real domain) the title's "- Publisher Name" suffix.
+    """
+    is_mass = _is_mass_outlet(row.get("url")) or _is_mass_outlet_title(row.get("title"))
+    return (1 if is_mass else 0, -(row.get("weighted_composite") or 0))
 
 
 def load_otc_candidates(week_iso: str | None = None) -> dict[str, list[dict[str, Any]]]:

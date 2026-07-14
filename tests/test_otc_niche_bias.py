@@ -65,6 +65,25 @@ def test_mass_outlet_still_surfaces_if_nothing_niche_beats_it(temp_db):
     assert grouped["otc_going"][0]["title"] == "Only item this week, from Concrete Playground"
 
 
+def test_google_news_mass_outlet_ranks_below_niche_at_equal_score(temp_db):
+    # Google News RSS items store a news.google.com redirect URL (not the
+    # publisher's real domain), so the URL-based check alone can't see this
+    # is a mass outlet - the title's "- Publisher Name" suffix must catch it.
+    _seed_item(
+        temp_db, "Melbourne's best rooftop bar is getting a huge upgrade - Time Out Worldwide",
+        "https://news.google.com/rss/articles/CBMi_fake_time_out_article", "otc_going", 6.0,
+    )
+    _seed_item(
+        temp_db, "A tiny Brunswick wine bar just opened",
+        "https://smallbusiness-example.com.au/brunswick-wine-bar", "otc_going", 6.0,
+    )
+    with patch.object(db_module, "DB_PATH", temp_db):
+        grouped = load_otc_candidates(week_iso=TEST_WEEK)
+    titles = [row["title"] for row in grouped["otc_going"]]
+    assert titles[0] == "A tiny Brunswick wine bar just opened"
+    assert titles[1] == "Melbourne's best rooftop bar is getting a huge upgrade - Time Out Worldwide"
+
+
 def test_cap_still_applies_after_niche_rerank(temp_db):
     # 6 niche items with descending scores; still capped to 3, still ordered by score.
     for i in range(6):
