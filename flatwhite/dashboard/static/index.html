@@ -49,7 +49,7 @@ input, textarea, select { font-family: var(--font-sans); font-size: 14px; }
   padding: 24px 0; position: fixed; top: 0; left: 0; z-index: 10;
   overflow-y: auto;
 }
-.main { flex: 1; margin-left: 200px; max-width: none; display: flex; flex-direction: column; min-height: 100vh; }
+#main { flex: 1; margin-left: 200px; max-width: none; display: flex; flex-direction: column; min-height: 100vh; }
 #content { flex: 1; overflow: auto; padding: 36px 48px; }
 .sidebar-brand { padding: 0 20px; margin-bottom: 32px; }
 .sidebar-brand h1 { font-family: var(--font-serif); font-size: 21px; font-weight: 700; letter-spacing: -0.5px; }
@@ -221,7 +221,7 @@ select.form-input { appearance: auto; }
 
 @media (max-width: 768px) {
   .sidebar { display: none; }
-  .main { margin-left: 0; }
+  #main { margin-left: 0; }
   #content { padding: 20px; }
   .g2 { grid-template-columns: 1fr; }
 }
@@ -262,18 +262,60 @@ select.form-input { appearance: auto; }
 .cmd-pill.pill-red { background: #4a1e1e; color: #f66; }
 .layout{max-width:1120px;margin:0 auto;padding:0 20px 90px;display:flex;gap:18px;align-items:flex-start}
 .side{width:264px;flex:none;position:sticky;top:14px;background:var(--card);border:1px solid var(--sep);border-radius:var(--r-card);padding:14px 12px}
-/* .main here shares its class name with the legacy #main sidebar-offset rule above (line 52); only min-width:0 is new/non-overlapping (safe flex-overflow fix), so Task 2 must recheck this when it restructures the HTML */
+/* Task 2 resolved the collision flagged here in Task 1: the legacy sidebar-offset
+   rule (was ".main", now scoped to "#main") targets the OLD fixed nav's content
+   wrapper by id only, so it no longer shares a selector with this NEW ".main"
+   (the middle column of .layout). Both can coexist in the DOM during the
+   transition; Task 3 removes the old nav/#main entirely. */
 .main{flex:1;min-width:0}
 .page{background:var(--card);border-radius:var(--r-card);border:1px solid var(--sep);overflow:hidden}
 .page-h{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:.5px solid var(--sep)}
 .page-h h2{margin:0;font-size:18px;font-weight:700;flex:1}
 .page-b{padding:18px 20px}
 @media(max-width:820px){.layout{flex-direction:column}.side{width:100%;position:static}}
+/* ── Running-order sidebar (Task 2) ── */
+.side-cap{color:var(--label3);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin:2px 6px 9px;display:flex;justify-content:space-between}
+.navlist{display:flex;flex-direction:column;gap:3px}
+.nav-card{border-radius:10px;display:flex;align-items:center;gap:10px;padding:9px 11px;cursor:pointer}
+.nav-card:hover{background:rgba(0,0,0,.035)}
+.nav-card.active{background:var(--accent-soft)}
+.nav-card.active .n-name{color:var(--accent)}
+.nav-card.dragging{opacity:.45}.nav-card.dragover{box-shadow:0 0 0 2px var(--accent)}
+.handle{cursor:grab;color:var(--label3);font-size:13px;opacity:0}
+.nav-card:hover .handle,.nav-card.active .handle{opacity:1}
+.nord{width:18px;color:var(--label3);font-size:11px;font-weight:700;text-align:center}
+.ndot{width:8px;height:8px;border-radius:50%}
+.n-ready{background:var(--green)}.n-notready{background:var(--label3)}.n-manual{background:#ff9f0a}
+.n-name{font-weight:600;font-size:14px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.navdiv{height:1px;background:var(--sep);margin:14px 6px}
+.nav-lite{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:10px;cursor:pointer;color:var(--label2);font-size:14px}
+.nav-lite:hover{background:rgba(0,0,0,.035)}.nav-lite.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
 </style>
 </head>
 <body>
 <nav class="sidebar" id="sidebar"></nav>
-<div class="main" id="main"><div id="cmd-bar-container"></div><div id="content"><div class="loading" style="padding:40px;text-align:center;">Loading dashboard...</div></div></div>
+<div id="main">
+<div id="cmd-bar-container"></div>
+<div id="content"><div class="loading" style="padding:40px;text-align:center;">Loading dashboard...</div></div>
+<!-- New running-order sidebar (Task 2), added alongside the old nav above.
+     Task 3 does the swap: removes the old <nav id="sidebar">/#main/#content
+     path and repoints render() to draw into #page below. Kept as a sibling
+     of #content (not nested inside it) because #content's innerHTML is
+     fully replaced by every old renderX(el) call — nesting it there would
+     wipe #navlist/#page out on every render(). -->
+<div class="layout">
+  <div class="side">
+    <div class="side-cap"><span>Running order</span><span id="readyStat"></span></div>
+    <div class="navlist" id="navlist"></div>
+    <div class="navdiv"></div>
+    <div class="nav-lite" id="nl-bank" onclick="selectSegment('bank')">Content bank</div>
+    <div class="nav-lite" id="nl-sources" onclick="selectSegment('sources')">Sources</div>
+  </div>
+  <div class="main">
+    <div class="page" id="page"></div>
+  </div>
+</div>
+</div>
 <div class="toast-container" id="toasts"></div>
 <div id="modal-root"></div>
 <script>
@@ -447,7 +489,7 @@ var NAV_ITEMS = [
 function nav(page) {
   if (page === "salary_vault") return;
   S.page = page;
-  renderSidebar();
+  renderLegacyNav();
   loadPageData(page).then(function() { render(); });
 }
 
@@ -572,8 +614,123 @@ function renderCommandBar() {
   return h;
 }
 
-/* ── Render sidebar ── */
+/* ── Running-order sidebar (Task 2) ───────────────────────────────────
+   New sidebar sitting alongside the old nav. Segment ids map to existing
+   section keys for the five kept segments; the rest are inert placeholders
+   for later increments. selectSegment() reuses the existing loadPageData()/
+   render() pipeline for the five kept segments so Task 3 has something to
+   hook into; placeholders render a simple "coming next" page straight into
+   the new #page container without touching render()'s switch, which Task 3
+   owns. */
+var SEGMENTS = [
+  { id: "editorial",        name: "Editorial",          status: "notready" },
+  { id: "brains",           name: "Brains Trust",        status: "notready" },
+  { id: "top_picks",        name: "Top Picks",           status: "notready" },
+  { id: "insidetrack",      name: "The Inside Track",    status: "notready" },
+  { id: "pulse",            name: "Pulse",               status: "notready" },
+  { id: "off_the_clock",    name: "Off the Clock",       status: "notready" },
+  // Reddit scrape for Thread of the Week is retired (dead/403); the segment
+  // itself stays and is filled in by hand (Victor pastes the thread), so it
+  // defaults to "manual" rather than "notready".
+  { id: "thread",           name: "Thread of the Week",  status: "manual" },
+  { id: "big_conversation", name: "Big Conversation",    status: "notready" },
+];
+
+// The five segments with a real, already-built section behind them today.
+var _REAL_SEGMENTS = { editorial: 1, pulse: 1, big_conversation: 1, off_the_clock: 1, top_picks: 1 };
+var _SEGMENT_TITLES = { bank: "Content bank", sources: "Sources" };
+var _dragFromIndex = null;
+
+function _segmentStatus(seg) {
+  // Real segments: reflect live readiness the same way the old sidebar's
+  // dot does (see sectionStatus()). Placeholders keep their static default.
+  if (_REAL_SEGMENTS[seg.id]) {
+    var o = S.sectionOutputs[seg.id];
+    return (o && o.output_text) ? "ready" : "notready";
+  }
+  return seg.status;
+}
+
 function renderSidebar() {
+  var h = "";
+  var doneCount = 0;
+  SEGMENTS.forEach(function(seg, i) {
+    var status = _segmentStatus(seg);
+    if (status === "ready") doneCount++;
+    var active = S.page === seg.id ? " active" : "";
+    h += '<div class="nav-card' + active + '" draggable="true" data-id="' + esc(seg.id) + '" data-idx="' + i + '"'
+      + ' ondragstart="dragStart(event)" ondragover="dragOver(event)" ondrop="drop(event)" ondragend="dragEnd(event)"'
+      + ' onclick="selectSegment(\'' + seg.id + '\')">'
+      + '<span class="handle">☰</span>'
+      + '<span class="nord">' + (i + 1) + '</span>'
+      + '<span class="ndot n-' + status + '"></span>'
+      + '<span class="n-name">' + esc(seg.name) + '</span>'
+      + '</div>';
+  });
+  var listEl = $("navlist");
+  if (listEl) listEl.innerHTML = h;
+  var statEl = $("readyStat");
+  if (statEl) statEl.textContent = doneCount + "/" + SEGMENTS.length;
+  var bankEl = $("nl-bank");
+  if (bankEl) bankEl.classList.toggle("active", S.page === "bank");
+  var srcEl = $("nl-sources");
+  if (srcEl) srcEl.classList.toggle("active", S.page === "sources");
+}
+
+function selectSegment(id) {
+  S.page = id;
+  renderSidebar();
+  if (_REAL_SEGMENTS[id]) {
+    loadPageData(id).then(function() { render(); });
+    return;
+  }
+  // Not built yet (new segment or the Content bank / Sources links). Render
+  // a simple placeholder straight into the new #page container.
+  var seg = SEGMENTS.filter(function(s) { return s.id === id; })[0];
+  var title = seg ? seg.name : (_SEGMENT_TITLES[id] || id);
+  var pageEl = $("page");
+  if (pageEl) {
+    pageEl.innerHTML = '<div class="page-h"><h2>' + esc(title) + '</h2></div>'
+      + '<div class="page-b" style="color:var(--label2)">Coming next.</div>';
+  }
+}
+
+/* ── Drag-to-reorder (HTML5 drag and drop) ── */
+function dragStart(e) {
+  _dragFromIndex = Number(e.currentTarget.getAttribute("data-idx"));
+  e.currentTarget.classList.add("dragging");
+  e.dataTransfer.effectAllowed = "move";
+  try { e.dataTransfer.setData("text/plain", String(_dragFromIndex)); } catch (err) {}
+}
+
+function dragOver(e) {
+  e.preventDefault();
+  e.currentTarget.classList.add("dragover");
+  e.dataTransfer.dropEffect = "move";
+}
+
+function drop(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove("dragover");
+  var toIdx = Number(e.currentTarget.getAttribute("data-idx"));
+  if (_dragFromIndex == null || toIdx === _dragFromIndex) return;
+  var moved = SEGMENTS.splice(_dragFromIndex, 1)[0];
+  SEGMENTS.splice(toIdx, 0, moved);
+  _dragFromIndex = null;
+  renderSidebar();
+}
+
+function dragEnd(e) {
+  e.currentTarget.classList.remove("dragging");
+  document.querySelectorAll(".nav-card.dragover").forEach(function(n) { n.classList.remove("dragover"); });
+}
+
+/* ── Render legacy top nav ──
+   Renamed from renderSidebar() -> renderLegacyNav() in Task 2 so the name
+   "renderSidebar" is free for the NEW running-order sidebar below (this is
+   the OLD vertical icon nav in <nav id="sidebar">, kept working unchanged
+   until Task 3 does the swap). */
+function renderLegacyNav() {
   var h = '<div class="sidebar-brand"><h1>Flat White</h1><span>The Aussie Corporate</span></div>';
   h += '<div class="sidebar-week"><div class="sidebar-week-inner"><div class="lbl">Current Week</div><div class="val">' + esc(S.weekIso || "...") + '</div></div></div>';
   h += '<div class="sidebar-nav">';
@@ -605,6 +762,7 @@ function renderSidebar() {
 
 /* ── Main render dispatch ── */
 function render() {
+  renderLegacyNav();
   renderSidebar();
   var cmdEl = document.getElementById("cmd-bar-container");
   if (cmdEl) cmdEl.innerHTML = renderCommandBar();
@@ -1440,6 +1598,7 @@ function saveOutput(section) {
       S.sectionOutputs[section] = S.sectionOutputs[section] || {};
       S.sectionOutputs[section].output_text = ta.value;
       showToast("Saved " + section.replace(/_/g, " "));
+      renderLegacyNav();
       renderSidebar();
     })
     .catch(function(e) { showToast("Error: " + e.message, "error"); });
