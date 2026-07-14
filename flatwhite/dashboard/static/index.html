@@ -301,6 +301,7 @@ var S = {
   selectedThread: null,
   customBigConv: null,
   editorialBigStory: "",
+  threadDraft: { title: "", url: "", preview: "", topComment: "" },
   findsChecked: {},
   findsBlurbs: {},
   lobbyChecked: {},
@@ -392,6 +393,56 @@ function formatScrapedDate(isoStr) {
   return d.getDate() + " " + months[d.getMonth()];
 }
 
+function formatThreadBlock(d) {
+  var title = (d.title || "").trim();
+  var url = (d.url || "").trim();
+  var preview = (d.preview || "").trim();
+  var topComment = (d.topComment || "").trim();
+  var lines = [];
+  lines.push("#### [_**" + title + "**_](" + url + ")");
+  lines.push("");
+  if (preview) lines.push(preview);
+  if (topComment) {
+    lines.push("");
+    lines.push("> _" + topComment + "_");
+  }
+  return lines.join("\n");
+}
+
+function renderThread(el) {
+  var d = S.threadDraft;
+  var hasOutput = !!(S.sectionOutputs.thread && S.sectionOutputs.thread.output_text);
+
+  var p1 = '';
+  p1 += '<div style="margin-bottom:10px;"><label style="font-size:12px;color:var(--text-2);">Thread title</label>';
+  p1 += '<input class="form-input" value="' + esc(d.title) + '" oninput="S.threadDraft.title=this.value"></div>';
+  p1 += '<div style="margin-bottom:10px;"><label style="font-size:12px;color:var(--text-2);">Reddit URL</label>';
+  p1 += '<input class="form-input" value="' + esc(d.url) + '" oninput="S.threadDraft.url=this.value"></div>';
+  p1 += '<div style="margin-bottom:10px;"><label style="font-size:12px;color:var(--text-2);">Preview / excerpt</label>';
+  p1 += '<textarea class="form-input" rows="3" oninput="S.threadDraft.preview=this.value">' + esc(d.preview) + '</textarea></div>';
+  p1 += '<div style="margin-bottom:10px;"><label style="font-size:12px;color:var(--text-2);">Top comment</label>';
+  p1 += '<textarea class="form-input" rows="2" oninput="S.threadDraft.topComment=this.value">' + esc(d.topComment) + '</textarea></div>';
+  p1 += '<button class="btn btn-success" onclick="formatThread()">Format</button>';
+
+  var h = '<div class="sh"><div><h2>Thread of the Week</h2><div class="sub">Paste the thread; the dash formats it into the FW block.</div></div></div>';
+  h += phasePanel('thread', 1, 'Paste thread', true, false, p1);
+  h += phasePanel('thread', 2, 'Output', true, hasOutput, outputBox('thread'));
+
+  el.innerHTML = h;
+  fillOutput('thread');
+}
+
+function formatThread() {
+  if (!S.threadDraft.title.trim() || !S.threadDraft.url.trim()) {
+    showToast("Add a title and URL first", "error");
+    return;
+  }
+  var block = formatThreadBlock(S.threadDraft);
+  var ta = $("output-thread");
+  if (ta) ta.value = block;
+  showToast("Thread formatted");
+}
+
 function showToast(msg, type) {
   var c = document.getElementById("toasts");
   var t = document.createElement("div");
@@ -427,10 +478,11 @@ function $(id) { return document.getElementById(id); }
      scraped and classified. _SECTION_RUNNERS["finds"] and its entry in
      _SCRAPE_ALL_SECTIONS / proceed_fns are therefore left intact on
      purpose.
-   - "thread" (the `thread_candidate` classifier section) has no working tab
-     (Thread of the Week is a placeholder segment in this increment; the
-     Reddit scrape behind it is dead/403 - see project CLAUDE.md). Its
-     scraper step is removed from _SCRAPE_ALL_SECTIONS and its entry from
+   - "thread" (the `thread_candidate` classifier section) has a real tab
+     again as of Task 6 (renderThread), but it is a paste-and-format page
+     with no scrape or backend call behind it - the Reddit scrape is dead/
+     403 and stays retired (see project CLAUDE.md). Its scraper step stays
+     removed from _SCRAPE_ALL_SECTIONS and its entry stays removed from
      proceed_fns, but `thread_candidate` stays in classify/classifier.py's
      VALID_SECTIONS and keeps being produced by classify_all_unclassified()
      - that shared function ALSO classifies the sections Big Conversation
@@ -581,8 +633,10 @@ function renderCommandBar() {
 
 /* ── Running-order sidebar (Task 2), wired into #page by render() (Task 3) ──
    Segment ids map to existing section keys for the five kept segments
-   (_REAL_SEGMENTS); the rest render a placeholder page via render()'s
-   switch until later increments build them out. */
+   (_REAL_SEGMENTS); thread has its own real paste-and-format page
+   (renderThread) but isn't in _REAL_SEGMENTS since it has no scrape to
+   derive readiness from; the remaining placeholders render a stub page
+   via render()'s switch until later increments build them out. */
 var SEGMENTS = [
   { id: "editorial",        name: "Editorial",          status: "notready" },
   { id: "brains",           name: "Brains Trust",        status: "notready" },
@@ -691,9 +745,11 @@ function dragEnd(e) {
    Builds the "{name} + status pill" header shown above every segment's
    existing renderX() output. Real segments (_REAL_SEGMENTS) show the same
    live-derived ready/not-ready _segmentStatus() the sidebar dot uses;
-   placeholder segments (brains/insidetrack/thread) show their static
-   SEGMENTS status; Content bank / Sources (not in SEGMENTS, no ready
-   concept) get a plain header with no pill. */
+   placeholder segments (brains/insidetrack) and thread (has a real paste-
+   and-format page, but stays manual/not in _REAL_SEGMENTS since there is
+   no scrape to derive readiness from) show their static SEGMENTS status,
+   flipped to "ready" by markReady()/toggleReady(); Content bank / Sources
+   (not in SEGMENTS, no ready concept) get a plain header with no pill. */
 function _statusLabel(status) {
   if (status === "ready") return "Ready";
   if (status === "manual") return "Manual";
@@ -719,7 +775,7 @@ function _refreshPageHeader() {
 // Segments a placeholder page ("This section arrives in a later increment.")
 // covers - the running-order items with no real section behind them yet,
 // plus the Content bank / Sources links.
-var _PLACEHOLDER_IDS = { brains: 1, insidetrack: 1, thread: 1, bank: 1, sources: 1 };
+var _PLACEHOLDER_IDS = { brains: 1, insidetrack: 1, bank: 1, sources: 1 };
 
 function toggleReady(id) {
   var seg = SEGMENTS.filter(function(s) { return s.id === id; })[0];
@@ -763,6 +819,7 @@ function render() {
       case "off_the_clock": renderOTC(bodyEl); break;
       case "top_picks": renderTopPicks(bodyEl); break;
       case "editorial": renderEditorial(bodyEl); break;
+      case "thread": renderThread(bodyEl); break;
       default:
         if (_PLACEHOLDER_IDS[S.page]) {
           bodyEl.innerHTML = '<p style="color:var(--label2)">This section arrives in a later increment.</p>';
