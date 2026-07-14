@@ -2246,3 +2246,52 @@ def api_top_picks_recent_posts() -> JSONResponse:
         return JSONResponse({"posts": posts})
     except Exception as e:
         return JSONResponse({"posts": [], "error": str(e)}, status_code=500)
+
+
+# ── Big Conversation (Instagram DM screenshotter pipeline) ─────────────────
+# Increment 4: the produced piece + screenshots live in the Instagram DM
+# screenshotter project's output/ folder (read-only from FW's side — the
+# `big-conversation` skill that writes them runs Claude-side, outside this
+# process; FW only prepares + reads). See
+# flatwhite/dashboard/big_conversation_bank.py for the filesystem logic.
+
+from flatwhite.dashboard import big_conversation_bank as _bcb
+from flatwhite.dashboard.state import (
+    load_topic_archive_state,
+    load_pairing_overrides,
+)
+
+
+@app.get("/api/big-conversation/topics")
+def api_big_conversation_topics() -> JSONResponse:
+    """Return the Big Conversation topic bank: every sorted Instagram topic
+    folder not excluded as junk/utility, each with its reply (screenshot)
+    count, whether the skill has already produced a piece for it, and
+    whether Victor has archived it. Fails soft (empty list, root_exists:
+    false) if the Instagram output folder isn't present on this machine."""
+    archived = load_topic_archive_state()
+    topics = _bcb.list_topic_folders()
+    for t in topics:
+        t["archived"] = archived.get(t["topic"], False)
+    return JSONResponse({"topics": topics, "root_exists": _bcb.INSTAGRAM_OUTPUT_DIR.is_dir()})
+
+
+@app.get("/api/big-conversation/topic/{topic}")
+def api_big_conversation_topic(topic: str) -> JSONResponse:
+    """Return the produced piece (if any) + paragraph->screenshot pairing +
+    viral/tier pools for one topic. `processed: false` means the skill
+    hasn't written its output yet — not an error."""
+    overrides = load_pairing_overrides(topic)
+    detail = _bcb.get_topic_detail(topic, pairing_overrides=overrides)
+    return JSONResponse(detail)
+
+
+@app.get("/api/big-conversation/assets/{rel_path:path}")
+def api_big_conversation_asset(rel_path: str):
+    """Serve one screenshot PNG/JPG from the Instagram output folder,
+    read-only and path-traversal-safe (only ever inside
+    big_conversation_bank.INSTAGRAM_OUTPUT_DIR)."""
+    resolved = _bcb.resolve_asset_path(rel_path)
+    if resolved is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    return FileResponse(resolved)
