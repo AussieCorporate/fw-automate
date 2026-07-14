@@ -729,6 +729,23 @@ function toggleReady(id) {
   _refreshPageHeader();
 }
 
+function markReady(section) {
+  var ta = $("output-" + section);
+  if (ta && ta.value && ta.value.trim()) {
+    saveOutput(section);
+  }
+  var seg = SEGMENTS.find(function(s) { return s.id === section; });
+  if (seg) seg.status = "ready";
+  renderSidebar();
+  showToast(section.replace(/_/g, " ") + " marked ready");
+}
+
+function allSegmentsReadyExcept(excludeId) {
+  return SEGMENTS.every(function(seg) {
+    return seg.id === excludeId || seg.status === "ready";
+  });
+}
+
 /* ── Main render dispatch (Task 3: draws into #page, not the old #content) ── */
 function render() {
   var cmdEl = document.getElementById("cmd-bar-container");
@@ -1541,6 +1558,7 @@ function outputBox(section) {
   h += '<div style="display:flex;gap:6px;">';
   h += '<button class="btn btn-sm" onclick="copyOutput(\'' + section + '\')" id="copy-btn-' + section + '">Copy</button>';
   h += '<button class="btn btn-sm btn-success" onclick="saveOutput(\'' + section + '\')">Save</button>';
+  h += '<button class="btn btn-sm btn-success" onclick="markReady(\'' + section + '\')">Mark ready</button>';
   h += '</div></div>';
   h += '<textarea id="output-' + section + '" placeholder="Generated output will appear here..."></textarea>';
   h += '</div>';
