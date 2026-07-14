@@ -44,6 +44,7 @@ from flatwhite.dashboard.state import (
     load_otc_candidates,
     save_otc_pick,
     load_otc_picks,
+    OTC_CATEGORY_LABELS,
 )
 
 def _safe_override(model: str | None) -> str | None:
@@ -1781,6 +1782,35 @@ def _proceed_off_the_clock(data: dict, model: str | None, custom_prompt: str | N
     return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE, model_override=override)
 
 
+def _generate_otc_custom_summary(category: str, url: str, content: str, model: str | None) -> str:
+    """Write a short, RAW draft blurb for a custom Off the Clock pick.
+
+    Deliberately produces only a 1-2 sentence draft summary (matching the shape
+    of candidate.summary for scraped picks) - NOT the final CATEGORY/title/
+    one-liner/[LINK] block that _proceed_off_the_clock produces. That final
+    formatting still happens once, later, when all 5 categories are combined
+    in a single _proceed_off_the_clock call. Producing the final format here
+    would mean the combined call runs an already-formatted block back through
+    the formatter a second time, garbling it.
+    """
+    from flatwhite.classify.prompts import EDITORIAL_VOICE
+
+    override = _safe_override(model)
+    label = OTC_CATEGORY_LABELS.get(category, category)
+
+    prompt = (
+        f"Write a short draft blurb for the Off the Clock '{label}' category.\n\n"
+        f"Pasted content:\n{content}\n\n"
+        + (f"URL: {url}\n\n" if url else "")
+        + "Write ONLY a 1-2 sentence draft summary of this pick, dry, specific and "
+        "engaging. Australian English. No filler intensifiers.\n\n"
+        "Do NOT include a category header, a title, or a markdown link - this is a "
+        "raw draft summary only, not the final formatted entry. The final "
+        "category header, title and link formatting is produced later, in a separate step."
+    )
+    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE, model_override=override)
+
+
 def _proceed_editorial(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
     from flatwhite.classify.prompts import EDITORIAL_INTRO_SYSTEM, EDITORIAL_INTRO_PROMPT
 
@@ -1852,6 +1882,40 @@ async def api_proceed_section(request: Request) -> JSONResponse:
         return JSONResponse({"section": section, "output": output, "model": model, "week_iso": week_iso})
     except Exception as e:
         return JSONResponse({"section": section, "error": str(e)}, status_code=500)
+
+
+@app.post("/api/otc-custom-summary")
+async def api_otc_custom_summary(request: Request) -> JSONResponse:
+    """Write a short RAW draft blurb for a custom (URL + pasted content) Off the
+    Clock pick, WITHOUT the final CATEGORY/title/[LINK] formatting.
+
+    Body: {"category": str, "url": str, "content": str, "model": str | None}
+    Returns: {"output": str}
+
+    This is deliberately separate from /api/proceed-section's off_the_clock
+    dispatch (_proceed_off_the_clock), which produces the fully formatted
+    entry block. Sending a custom pick through _proceed_off_the_clock here
+    and then again in the final combined Generate call would run an
+    already-formatted block through the formatter a second time.
+    """
+    body = await request.json()
+    category = body.get("category", "")
+    url = body.get("url", "")
+    content = body.get("content", "")
+    model = body.get("model") or None
+
+    if not content or not content.strip():
+        return JSONResponse({"error": "content is required"}, status_code=400)
+
+    import asyncio
+    loop = asyncio.get_event_loop()
+    try:
+        output = await loop.run_in_executor(
+            None, _generate_otc_custom_summary, category, url, content, model
+        )
+        return JSONResponse({"output": output})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @app.post("/api/preview-prompt")

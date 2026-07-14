@@ -1429,8 +1429,10 @@ function generateOTCCustomBlurb(cat) {
   }
   sel.generating = true; render();
   var model = getModel("model-otc");
-  var pick = { category: cat, title: sel.customContent.split("\n")[0].slice(0, 80), url: sel.customUrl || "", blurb: sel.customContent };
-  api("/api/proceed-section", { method: "POST", body: { section: "off_the_clock", model: model, data: { picks: [pick] } } })
+  // Deliberately calls the short-raw-summary endpoint, not /api/proceed-section -
+  // that produces the FULLY FORMATTED entry (category header + title + [LINK]),
+  // which would then get formatted a second time by the combined Generate call.
+  api("/api/otc-custom-summary", { method: "POST", body: { category: cat, url: sel.customUrl || "", content: sel.customContent, model: model } })
     .then(function(d) { sel.blurb = d.output; sel.generating = false; render(); showToast("Blurb generated for " + cat.replace("otc_", "")); })
     .catch(function(e) { sel.generating = false; render(); showToast("Error: " + e.message, "error"); });
 }
