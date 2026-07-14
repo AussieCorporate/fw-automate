@@ -285,6 +285,14 @@ select.form-input { appearance: auto; }
 .pick-date{width:84px;flex:none;color:var(--text-2);font-size:12px;padding-top:2px}
 .pick-pitch{font-weight:600;font-size:14px}
 .pick-angle{color:var(--text-2);font-size:13px;margin-top:2px}
+/* Assemble to beehiiv (Increment 7 Task 6) */
+.bench-chip{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;display:inline-block;margin-left:8px}
+.bench-within{background:var(--green-soft);color:var(--green-ink)}
+.bench-short,.bench-long{background:var(--amber-soft);color:var(--amber-ink)}
+.bench-no_data{background:var(--track);color:var(--label2)}
+.block-preview{border:1px solid var(--sep);border-radius:10px;padding:10px 14px;margin-bottom:10px}
+.block-preview h4{margin:0 0 6px;font-size:13px;color:var(--label2);text-transform:uppercase;letter-spacing:.03em}
+.assemble-missing{color:var(--label2);font-size:13px;margin:8px 0}
 </style>
 </head>
 <body>
@@ -299,6 +307,8 @@ select.form-input { appearance: auto; }
     <div class="navdiv"></div>
     <div class="nav-lite" id="nl-bank" onclick="selectSegment('bank')">Content bank</div>
     <div class="nav-lite" id="nl-sources" onclick="selectSegment('sources')">Sources</div>
+    <div class="navdiv"></div>
+    <div class="nav-lite" id="nl-assemble" onclick="selectSegment('assemble')">Assemble to beehiiv</div>
   </div>
   <div class="main">
     <div class="page" id="page"></div>
@@ -369,6 +379,11 @@ var S = {
   insideTrack: null,        // { folder_found, folder_name, submissions, week_iso }
   insideTrackPicked: {},     // { filename: true }
   insideTrackNotes: {},      // { filename: note text }
+  assembleSponsorOn: false,
+  assembleSponsorName: "",
+  assembleSponsorText: "",
+  assembleOddPicks: "",
+  assembly: null,            // last /api/assemble-edition response, once built
 };
 
 /* ── Helpers ───────────────────────────────────────────── */
@@ -713,7 +728,7 @@ var SEGMENTS = [
 
 // The segments with a real, already-built section behind them today.
 var _REAL_SEGMENTS = { editorial: 1, pulse: 1, big_conversation: 1, off_the_clock: 1, top_picks: 1, insidetrack: 1, brains_trust: 1 };
-var _SEGMENT_TITLES = { bank: "Content bank", sources: "Sources" };
+var _SEGMENT_TITLES = { bank: "Content bank", sources: "Sources", assemble: "Assemble to beehiiv" };
 var _dragFromIndex = null;
 
 function _segmentStatus(seg) {
@@ -751,6 +766,8 @@ function renderSidebar() {
   if (bankEl) bankEl.classList.toggle("active", S.page === "bank");
   var srcEl = $("nl-sources");
   if (srcEl) srcEl.classList.toggle("active", S.page === "sources");
+  var asmEl = $("nl-assemble");
+  if (asmEl) asmEl.classList.toggle("active", S.page === "assemble");
 }
 
 function selectSegment(id) {
@@ -884,6 +901,7 @@ function render() {
       case "editorial": renderEditorial(bodyEl); break;
       case "thread": renderThread(bodyEl); break;
       case "brains_trust": renderBrains(bodyEl); break;
+      case "assemble": renderAssemble(bodyEl); break;
       default:
         if (_PLACEHOLDER_IDS[S.page]) {
           bodyEl.innerHTML = '<p style="color:var(--label2)">This section arrives in a later increment.</p>';
@@ -2441,6 +2459,62 @@ function renderTopPicks(el) {
 
   el.innerHTML = h;
   fillOutput('top_picks');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SECTION: ASSEMBLE TO BEEHIIV (Increment 7 Task 6)
+   ═══════════════════════════════════════════════════════════════════════ */
+function renderAssemble(el) {
+  var h = '<p style="font-size:13px;color:var(--text-2);margin:0 0 12px 0;">Builds the edition from every segment marked ready, in the running order shown on the left.</p>';
+
+  h += '<div class="fb mb8"><label><input type="checkbox" id="asm-sponsor-on" onchange="S.assembleSponsorOn=this.checked"' +
+       (S.assembleSponsorOn ? ' checked' : '') + '> Include sponsor this week</label></div>';
+  h += '<input class="form-input mb8" id="asm-sponsor-name" placeholder="Sponsor name (e.g. Spaceship)" oninput="S.assembleSponsorName=this.value" value="' + escAttr(S.assembleSponsorName || "") + '">';
+  h += '<textarea class="form-input mb8" id="asm-sponsor-text" placeholder="Sponsor pitch text..." oninput="S.assembleSponsorText=this.value">' + esc(S.assembleSponsorText || "") + '</textarea>';
+  h += '<textarea class="form-input mb8" id="asm-odd-picks" placeholder="Odd Picks from last week (optional, one per line)..." oninput="S.assembleOddPicks=this.value">' + esc(S.assembleOddPicks || "") + '</textarea>';
+
+  h += '<button class="btn btn-primary mb8" onclick="buildAssembly()">Build assembly</button>';
+
+  if (S.assembly) {
+    if (S.assembly.missing_ready.length) {
+      h += '<p class="assemble-missing">Not ready / no saved output: ' + esc(S.assembly.missing_ready.join(", ")) + '</p>';
+    }
+    S.assembly.blocks.forEach(function(b) {
+      var bm = b.benchmark;
+      var chip = '';
+      if (bm.status !== "no_data") {
+        chip = '<span class="bench-chip bench-' + esc(bm.status) + '">' + bm.word_count + 'w vs ' + bm.target_min + '-' + bm.target_max + '</span>';
+      }
+      h += '<div class="block-preview"><h4>' + esc(b.label) + chip + '</h4>' + b.html + '</div>';
+    });
+    h += '<button class="btn btn-sm" onclick="copyAssembledHtml()">Copy assembled HTML</button>';
+    h += '<p style="font-size:12px;color:var(--text-3);margin-top:14px;">Design B: this dash formats the blocks only. To publish, open the beehiiv MCP in a Claude session, read the target draft with get_post_content, then insert this HTML with edit_post_content - raw-API content write is Enterprise-gated on our plan.</p>';
+  }
+
+  el.innerHTML = h;
+}
+
+function buildAssembly() {
+  S.assembleSponsorOn = $("asm-sponsor-on").checked;
+  S.assembleSponsorName = $("asm-sponsor-name").value;
+  S.assembleSponsorText = $("asm-sponsor-text").value;
+  S.assembleOddPicks = $("asm-odd-picks").value;
+
+  api("/api/assemble-edition", { method: "POST", body: {
+    segments: SEGMENTS.map(function(s) { return { id: s.id, status: _segmentStatus(s) }; }),
+    sponsor: { include: S.assembleSponsorOn, name: S.assembleSponsorName, text: S.assembleSponsorText },
+    odd_picks_text: S.assembleOddPicks,
+  }}).then(function(d) {
+    S.assembly = d;
+    render();
+  }).catch(function(e) { showToast("Assemble failed: " + e.message, "error"); });
+}
+
+function copyAssembledHtml() {
+  if (!S.assembly) return;
+  navigator.clipboard.writeText(S.assembly.assembled_html).then(function() {
+    showToast("Copied assembled HTML");
+  }).catch(function() { showToast("Copy failed - select manually", "error"); });
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
