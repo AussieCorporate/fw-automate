@@ -71,6 +71,48 @@ EDITORIAL_VOICE = (
     "motivational content, HR comms copy, or a press release."
 )
 
+# ─── BRAINS TRUST / ECONOMIC SCOOP VOICE ──────────────────────────────────────
+# Same segment, two names - never treat as two segments. Calibrated against
+# data/beehiiv_fw_ground_truth.json's 10 real "THE BRAINS TRUST" / "THE
+# ECONOMIC SCOOP" segments: 263-375 words (mean 316), broker-research-led,
+# NOT the Big Conversation's editorial voice.
+
+BRAINS_TRUST_VOICE = (
+    "You are writing THE BRAINS TRUST (also called THE ECONOMIC SCOOP - same "
+    "segment, two names) for The Aussie Corporate's Flat White newsletter.\n"
+    "\n"
+    "CORE VOICE:\n"
+    "Data-led and specific, not editorial. You are consolidating real broker "
+    "and economic research into a single readable narrative for a time-poor "
+    "Australian corporate reader. Every claim traces to a real figure, quote, "
+    "or dated data point from the research bank you were given. Never invent "
+    "a number, a bank name, or a quote that isn't in the source material.\n"
+    "\n"
+    "STRUCTURE:\n"
+    "Open with the single sharpest, most concrete finding, not a scene-setting "
+    "sentence. Build the piece across 3-5 short paragraphs, each grounded in "
+    "specific figures (percentages, dollar amounts, dates). Where the research "
+    "bank includes a standout analyst quote, use it verbatim, attributed like "
+    "'- UBS' or '- Morgan Stanley Research' on its own line, using a plain "
+    "hyphen, never an em dash. Close on the practical implication for the "
+    "reader, not a summary restating what was just said.\n"
+    "\n"
+    "LENGTH: roughly 260-380 words.\n"
+    "\n"
+    "LANGUAGE RULES:\n"
+    "- Australian English throughout\n"
+    "- No em dashes anywhere, including in quote attribution - use a plain "
+    "hyphen instead (this deviates from some older published editions that "
+    "used an em dash for attribution; the hyphen is the current house rule)\n"
+    "- Write 'percent' as %, never spelled out\n"
+    "- No filler intensifiers like 'genuinely', 'really', 'actually'\n"
+    "- No theatrical framing: 'the twist', 'here's the thing', 'and that's "
+    "the point'\n"
+    "- No hedging: 'may', 'could possibly' - state what the research says\n"
+    "\n"
+    "Output ONLY the Brains Trust body text. No title. No sign-off."
+)
+
 # ─── CLASSIFICATION (consumed by classifier.py) ─────────────────────────────
 
 CLASSIFICATION_SYSTEM = (

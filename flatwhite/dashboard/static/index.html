@@ -278,6 +278,13 @@ select.form-input { appearance: auto; }
 .it-fname{font-size:11px;color:var(--label2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:6px}
 .it-note{width:100%;font-size:12px;border:1px solid var(--sep);border-radius:6px;padding:6px;resize:vertical;font-family:inherit;box-sizing:border-box}
 .it-empty{color:var(--label2);font-size:13px;padding:8px 0}
+/* Brains Trust angle picker - .chip/.chip-green/.chip-amber already exist above */
+.pick-row{display:flex;gap:12px;padding:10px 12px;border-radius:10px;cursor:pointer;border:1px solid transparent;margin-bottom:6px}
+.pick-row:hover{background:rgba(0,0,0,.03)}
+.pick-row.picked{border-color:var(--accent,#6c63ff);background:rgba(108,99,255,.06)}
+.pick-date{width:84px;flex:none;color:var(--text-2);font-size:12px;padding-top:2px}
+.pick-pitch{font-weight:600;font-size:14px}
+.pick-angle{color:var(--text-2);font-size:13px;margin-top:2px}
 </style>
 </head>
 <body>
@@ -333,6 +340,9 @@ var S = {
   customBigConv: null,
   editorialBigStory: "",
   threadDraft: { title: "", url: "", preview: "", topComment: "" },
+  brainsAngles: null,        // [{id, date_iso, pitch, angle, why_tac}, ...] from the research bank
+  brainsChosen: null,        // the picked angle object
+  brainsDrafting: false,
   findsChecked: {},
   findsBlurbs: {},
   lobbyChecked: {},
@@ -616,6 +626,11 @@ function loadPageData(page) {
         S.lastScraped.finds = r[1].last_scraped_at || null;
         S.lastScraped.editorial = r[1].last_scraped_at || null;
       });
+    case "brains_trust":
+      if (S.brainsAngles) return Promise.resolve();
+      return api("/api/brains-trust/angles").then(function(d) {
+        S.brainsAngles = d.angles || [];
+      }).catch(function() { S.brainsAngles = []; });
     default: return Promise.resolve();
   }
 }
@@ -684,7 +699,7 @@ function renderCommandBar() {
    via render()'s switch until later increments build them out. */
 var SEGMENTS = [
   { id: "editorial",        name: "Editorial",          status: "notready" },
-  { id: "brains",           name: "Brains Trust",        status: "notready" },
+  { id: "brains_trust",     name: "Brains Trust",        status: "notready" },
   { id: "top_picks",        name: "Top Picks",           status: "notready" },
   { id: "insidetrack",      name: "The Inside Track",    status: "notready" },
   { id: "pulse",            name: "Pulse",               status: "notready" },
@@ -697,7 +712,7 @@ var SEGMENTS = [
 ];
 
 // The segments with a real, already-built section behind them today.
-var _REAL_SEGMENTS = { editorial: 1, pulse: 1, big_conversation: 1, off_the_clock: 1, top_picks: 1, insidetrack: 1 };
+var _REAL_SEGMENTS = { editorial: 1, pulse: 1, big_conversation: 1, off_the_clock: 1, top_picks: 1, insidetrack: 1, brains_trust: 1 };
 var _SEGMENT_TITLES = { bank: "Content bank", sources: "Sources" };
 var _dragFromIndex = null;
 
@@ -790,9 +805,9 @@ function dragEnd(e) {
    Builds the "{name} + status pill" header shown above every segment's
    existing renderX() output. Real segments (_REAL_SEGMENTS) show the same
    live-derived ready/not-ready _segmentStatus() the sidebar dot uses;
-   placeholder segments (brains) and thread (has a real paste-and-format
-   page, but stays manual/not in _REAL_SEGMENTS since there is no scrape
-   to derive readiness from) show their static SEGMENTS status,
+   thread (has a real paste-and-format page, but stays manual/not in
+   _REAL_SEGMENTS since there is no scrape to derive readiness from) shows
+   its static SEGMENTS status,
    flipped to "ready" by markReady()/toggleReady(); Content bank / Sources
    (not in SEGMENTS, no ready concept) get a plain header with no pill. */
 function _statusLabel(status) {
@@ -819,9 +834,10 @@ function _refreshPageHeader() {
 
 // Segments a placeholder page ("This section arrives in a later increment.")
 // covers - the running-order items with no real section behind them yet,
-// plus the Content bank / Sources links. The Inside Track (task 4) now has
-// a real renderInsideTrack() page, so it's out of this list.
-var _PLACEHOLDER_IDS = { brains: 1, bank: 1, sources: 1 };
+// plus the Content bank / Sources links. The Inside Track and Brains Trust
+// now both have real pages (renderInsideTrack()/renderBrains()), so neither
+// is in this list any more.
+var _PLACEHOLDER_IDS = { bank: 1, sources: 1 };
 
 function toggleReady(id) {
   var seg = SEGMENTS.filter(function(s) { return s.id === id; })[0];
@@ -867,6 +883,7 @@ function render() {
       case "insidetrack": renderInsideTrack(bodyEl); break;
       case "editorial": renderEditorial(bodyEl); break;
       case "thread": renderThread(bodyEl); break;
+      case "brains_trust": renderBrains(bodyEl); break;
       default:
         if (_PLACEHOLDER_IDS[S.page]) {
           bodyEl.innerHTML = '<p style="color:var(--label2)">This section arrives in a later increment.</p>';
@@ -948,6 +965,96 @@ function proceedEditorial() {
   api("/api/proceed-section", { method: "POST", body: { section: "editorial", model: model, data: data } })
     .then(function(d) { S.sectionOutputs.editorial = { output_text: d.output, model_used: d.model }; S.loading.editorial = false; render(); fillOutput('editorial'); showToast("Editorial written"); })
     .catch(function(e) { S.loading.editorial = false; render(); showToast("Error: " + e.message, "error"); });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SECTION: THE BRAINS TRUST (= THE ECONOMIC SCOOP, one segment, two names)
+   ═══════════════════════════════════════════════════════════════════════ */
+var BRAINS_WORD_RANGE = [230, 390]; // padded around the 10 real editions' 263-375 word range
+
+function _brainsWordCountChip(text) {
+  var words = (text || "").trim().length ? text.trim().split(/\s+/).length : 0;
+  var lo = BRAINS_WORD_RANGE[0], hi = BRAINS_WORD_RANGE[1];
+  var inRange = words >= lo && words <= hi;
+  var cls = inRange ? "chip chip-green" : "chip chip-amber";
+  var label = words + " words (target " + lo + "-" + hi + ")";
+  return '<span class="' + cls + '">' + esc(label) + '</span>';
+}
+
+function pickBrainsAngle(idx) {
+  S.brainsChosen = S.brainsAngles[idx];
+  render();
+}
+
+function draftBrainsTrust() {
+  if (!S.brainsChosen) return;
+  S.brainsDrafting = true;
+  render();
+  api("/api/proceed-section", {
+    method: "POST",
+    body: {
+      section: "brains_trust",
+      model: getModel("model-brains_trust"),
+      data: {
+        chosen_pitch: S.brainsChosen.pitch,
+        chosen_angle: S.brainsChosen.angle,
+        chosen_why_tac: S.brainsChosen.why_tac,
+        candidates_pool: S.brainsAngles,
+      },
+    },
+  }).then(function(d) {
+    S.brainsDrafting = false;
+    S.sectionOutputs.brains_trust = { output_text: d.output, model_used: d.model };
+    S.sectionPhase.brains_trust = 2;
+    render();
+    fillOutput('brains_trust');
+    showToast("Brains Trust drafted");
+  }).catch(function(e) {
+    S.brainsDrafting = false;
+    render();
+    showToast("Error: " + e.message, "error");
+  });
+}
+
+function renderBrainsPicker() {
+  var h = '<div style="font-size:13px;color:var(--text-2);margin-bottom:10px;font-weight:600;">Recommended angles (last 3 weeks)</div>';
+  var angles = S.brainsAngles || [];
+  if (!angles.length) {
+    h += '<p style="color:var(--text-3);font-size:13px;">No angles found in the research bank right now. The Friday digest email still runs independently of this list.</p>';
+  } else {
+    angles.forEach(function(a, i) {
+      var chosen = S.brainsChosen && S.brainsChosen.id === a.id;
+      h += '<div class="pick-row' + (chosen ? " picked" : "") + '" onclick="pickBrainsAngle(' + i + ')">';
+      h += '<div class="pick-date">' + esc(a.date_iso) + '</div>';
+      h += '<div><div class="pick-pitch">' + esc(a.pitch) + '</div>';
+      if (a.angle) h += '<div class="pick-angle">' + esc(a.angle) + '</div>';
+      h += '</div></div>';
+    });
+  }
+  if (S.brainsChosen) {
+    h += '<div style="display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap;">';
+    h += modelSelect('model-brains_trust');
+    h += '<button class="btn btn-primary" onclick="draftBrainsTrust()"' + (S.brainsDrafting ? ' disabled' : '') + '>' + (S.brainsDrafting ? "Drafting…" : "Draft") + '</button>';
+    h += '</div>';
+  }
+  return h;
+}
+
+function renderBrains(el) {
+  var hasOutput = !!(S.sectionOutputs.brains_trust && S.sectionOutputs.brains_trust.output_text);
+  if (!S.sectionPhase.brains_trust) S.sectionPhase.brains_trust = hasOutput ? 2 : 1;
+
+  var p1 = renderBrainsPicker();
+
+  var p2 = outputBox('brains_trust');
+  if (hasOutput) p2 += '<div style="margin-top:8px;">' + _brainsWordCountChip(S.sectionOutputs.brains_trust.output_text) + '</div>';
+
+  var h = '<div class="sh"><div><h2>The Brains Trust</h2><div class="sub">Pick an angle from the last 3 weeks of research; the dash drafts the piece.</div></div></div>';
+  h += phasePanel('brains_trust', 1, 'Pick + draft', true, !!S.brainsChosen, p1);
+  h += phasePanel('brains_trust', 2, 'Output', true, hasOutput, p2);
+
+  el.innerHTML = h;
+  fillOutput('brains_trust');
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

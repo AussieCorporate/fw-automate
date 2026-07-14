@@ -49,6 +49,7 @@ TEMPERATURE_BY_TASK: dict[str, float] = {
     "hook": 0.7,
     "big_conversation": 0.3,
     "signal_intelligence": 0.2,
+    "brains_trust": 0.3,
 }
 
 DEFAULT_MODEL_BY_TASK: dict[str, str] = {
@@ -61,6 +62,7 @@ DEFAULT_MODEL_BY_TASK: dict[str, str] = {
     "hook": "claude-sonnet-4-6",
     "big_conversation": "claude-sonnet-4-6",
     "signal_intelligence": "claude-haiku-4-5",
+    "brains_trust": "claude-sonnet-4-6",
 }
 
 MODEL_REGISTRY: dict[str, dict] = {
