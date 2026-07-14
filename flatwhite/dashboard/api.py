@@ -1620,7 +1620,10 @@ async def api_assemble_edition(request: Request) -> JSONResponse:
       "week_iso": str,
       "blocks": [{"section": str, "label": str, "html": str, "benchmark": {...}}, ...],
       "assembled_html": str,     # concatenation of every block's html, in order
-      "missing_ready": [str],    # running-order ids NOT marked ready (or with no saved output)
+      "missing_ready": [str],    # running-order ids NOT marked ready (or with no saved output);
+                                 # also includes "sponsor" when sponsor.include was True but the
+                                 # sponsor block was never inserted (e.g. Thread wasn't ready)
+      "sponsor_included": bool,  # True only when a sponsor block was actually appended to blocks
     }
     """
     from flatwhite.db import load_all_section_outputs
@@ -1634,6 +1637,7 @@ async def api_assemble_edition(request: Request) -> JSONResponse:
 
     blocks: list[dict] = []
     missing_ready: list[str] = []
+    sponsor_included = False
 
     for seg in segments:
         section_id = seg.get("id")
@@ -1670,6 +1674,17 @@ async def api_assemble_edition(request: Request) -> JSONResponse:
                                   "target_avg": None, "target_min": None,
                                   "target_max": None, "n_editions": 0},
                 })
+                sponsor_included = True
+
+    # A wanted sponsor placement (include=True) that never made it into blocks
+    # is a dropped paid placement, not a "no sponsor this week": most commonly
+    # Thread of the Week wasn't ready, so the loop above hit its missing-ready
+    # continue before ever reaching the sponsor-insertion step. Surface this
+    # through the same missing_ready signal the frontend already checks,
+    # rather than a second warning channel nothing consumes yet.
+    sponsor_wanted = bool((body.get("sponsor") or {}).get("include"))
+    if sponsor_wanted and not sponsor_included:
+        missing_ready.append("sponsor")
 
     # Odd Picks + Feedback Loop: handled at assembly, not as running-order work
     # pages (per spec). Odd Picks only when Victor supplied text; Feedback Loop
@@ -1699,6 +1714,7 @@ async def api_assemble_edition(request: Request) -> JSONResponse:
         "blocks": blocks,
         "assembled_html": assembled_html,
         "missing_ready": missing_ready,
+        "sponsor_included": sponsor_included,
     })
 
 

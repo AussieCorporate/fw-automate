@@ -102,9 +102,13 @@ def test_sponsor_included_only_when_toggled_on_and_placed_before_thread(assemble
         "segments": _BASE_SEGMENTS,
         "sponsor": {"include": True, "name": "Spaceship", "text": "Pitch text here."},
     })
-    sections = [b["section"] for b in resp_with.json()["blocks"]]
+    body = resp_with.json()
+    sections = [b["section"] for b in body["blocks"]]
     assert "sponsor" in sections
     assert sections.index("sponsor") == sections.index("thread") - 1
+    # Thread was ready, so the sponsor block genuinely made it into blocks.
+    assert body["sponsor_included"] is True
+    assert "sponsor" not in body["missing_ready"]
 
 
 def test_sponsor_toggled_off_omits_even_if_text_given(assemble_client):
@@ -113,7 +117,50 @@ def test_sponsor_toggled_off_omits_even_if_text_given(assemble_client):
         "segments": _BASE_SEGMENTS,
         "sponsor": {"include": False, "name": "Spaceship", "text": "Pitch text here."},
     })
-    assert "sponsor" not in [b["section"] for b in resp.json()["blocks"]]
+    body = resp.json()
+    assert "sponsor" not in [b["section"] for b in body["blocks"]]
+    # Sponsor wasn't wanted at all this week -- this is the normal "no sponsor"
+    # case, not a dropped paid placement, so no entry should land in
+    # missing_ready.
+    assert body["sponsor_included"] is False
+    assert "sponsor" not in body["missing_ready"]
+
+
+def test_sponsor_wanted_but_thread_not_ready_is_flagged_not_silently_dropped(assemble_client):
+    """Reproduces the Task 5 bug: sponsor.include=True but the Thread of the
+    Week segment isn't 'ready' (its documented default is 'manual', and it can
+    also be 'notready' before Victor has pasted/formatted the thread). The
+    sponsor-insertion code only runs inside the 'thread' branch of the ready
+    loop, so if Thread never reaches 'ready' the paid sponsor block was
+    previously dropped with zero signal in the response. It must now show up
+    as sponsor_included=False AND "sponsor" in missing_ready."""
+    client, _ = assemble_client
+    segments_thread_manual = [
+        {"id": s["id"], "status": ("manual" if s["id"] == "thread" else s["status"])}
+        for s in _BASE_SEGMENTS
+    ]
+    resp = client.post("/api/assemble-edition", json={
+        "segments": segments_thread_manual,
+        "sponsor": {"include": True, "name": "Spaceship", "text": "Pitch text here."},
+    })
+    body = resp.json()
+    assert "sponsor" not in [b["section"] for b in body["blocks"]]
+    assert body["sponsor_included"] is False
+    assert "sponsor" in body["missing_ready"]
+
+    # Also true when Thread is "notready" rather than "manual".
+    segments_thread_notready = [
+        {"id": s["id"], "status": ("notready" if s["id"] == "thread" else s["status"])}
+        for s in _BASE_SEGMENTS
+    ]
+    resp2 = client.post("/api/assemble-edition", json={
+        "segments": segments_thread_notready,
+        "sponsor": {"include": True, "name": "Spaceship", "text": "Pitch text here."},
+    })
+    body2 = resp2.json()
+    assert "sponsor" not in [b["section"] for b in body2["blocks"]]
+    assert body2["sponsor_included"] is False
+    assert "sponsor" in body2["missing_ready"]
 
 
 def test_assembled_html_is_concatenation_of_block_html(assemble_client):
