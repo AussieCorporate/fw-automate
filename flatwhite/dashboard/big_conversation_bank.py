@@ -15,7 +15,9 @@ than raising, since this machine may not have that project checked out.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
+from urllib.parse import quote
 
 INSTAGRAM_OUTPUT_DIR = Path(
     os.environ.get(
@@ -113,3 +115,60 @@ def list_topic_folders() -> list[dict]:
             # failing the whole listing for every other topic.
             continue
     return topics
+
+
+_VIRAL_RE = re.compile(r"red\s*hot|viral\s*extreme", re.IGNORECASE)
+_TIER_RES = {
+    "T1": re.compile(r"\bt(?:ier)?\s*1\b", re.IGNORECASE),
+    "T2": re.compile(r"\bt(?:ier)?\s*2\b", re.IGNORECASE),
+    "T3": re.compile(r"\bt(?:ier)?\s*3\b", re.IGNORECASE),
+}
+
+
+def classify_tier_folder(name: str) -> str | None:
+    """Map a topic subfolder name to a screenshot pool bucket: "viral",
+    "T1", "T2", "T3", or None (not a recognised tier folder — e.g. "Tier 4
+    - Rubbish" or "_EDITORIAL screenshots" — never shown in either pool).
+
+    Recognises both the CURRENT folder names ("\U0001F525 RED HOT Top 22",
+    "Tier 1 - Viral", "Tier 2 - Strong", "Tier 3 - Ordinary") and the
+    renamed buckets increment 3's rebuilt sort skill is expected to use
+    ("VIRAL EXTREME", "T1", "T2", "T3"). If increment 3 lands with
+    different folder names than either of these, update the two regex
+    tables above — nothing else in this module needs to change.
+    """
+    if _VIRAL_RE.search(name):
+        return "viral"
+    for bucket, pattern in _TIER_RES.items():
+        if pattern.search(name):
+            return bucket
+    return None
+
+
+def asset_url(*parts: str) -> str:
+    """Build the /api/big-conversation/assets/... URL for a file living at
+    INSTAGRAM_OUTPUT_DIR/<parts joined by '/'>, URL-encoding each segment
+    (topic and folder names may contain spaces, colons, or emoji)."""
+    rel = "/".join(quote(p, safe="") for p in parts)
+    return f"/api/big-conversation/assets/{rel}"
+
+
+def list_pool_screenshots(topic: str) -> dict[str, list[dict]]:
+    """Return {"viral": [...], "T1": [...], "T2": [...], "T3": [...]},
+    each a list of {"file": str, "url": str} for images directly inside
+    the matching tier subfolder(s) of `topic`. Empty (all buckets) if the
+    topic folder or the Instagram output root is absent."""
+    pools: dict[str, list[dict]] = {"viral": [], "T1": [], "T2": [], "T3": []}
+    topic_dir = INSTAGRAM_OUTPUT_DIR / topic
+    if not topic_dir.is_dir():
+        return pools
+    for sub in sorted(topic_dir.iterdir()):
+        if not sub.is_dir():
+            continue
+        bucket = classify_tier_folder(sub.name)
+        if not bucket:
+            continue
+        for img in sorted(sub.iterdir()):
+            if img.is_file() and img.suffix.lower() in IMAGE_EXTENSIONS:
+                pools[bucket].append({"file": img.name, "url": asset_url(topic, sub.name, img.name)})
+    return pools

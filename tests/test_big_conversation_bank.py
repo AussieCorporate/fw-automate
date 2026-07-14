@@ -164,3 +164,57 @@ def test_list_topic_folders_returns_empty_when_root_iterdir_raises(tmp_path, mon
     monkeypatch.setattr(Path, "iterdir", flaky_iterdir)
 
     assert bcb.list_topic_folders() == []
+
+
+def test_classify_tier_folder_recognises_current_and_future_names():
+    # Current real folder names (before increment 3's sort skill rebuild).
+    assert bcb.classify_tier_folder("\U0001F525 RED HOT Top 22") == "viral"
+    assert bcb.classify_tier_folder("Tier 1 - Viral") == "T1"
+    assert bcb.classify_tier_folder("Tier 2 - Strong") == "T2"
+    assert bcb.classify_tier_folder("Tier 3 - Ordinary") == "T3"
+    assert bcb.classify_tier_folder("Tier 4 - Rubbish") is None
+    # Names increment 3's rebuilt sort skill is expected to use.
+    assert bcb.classify_tier_folder("VIRAL EXTREME") == "viral"
+    assert bcb.classify_tier_folder("T1") == "T1"
+    assert bcb.classify_tier_folder("T2") == "T2"
+    assert bcb.classify_tier_folder("T3") == "T3"
+    # Not a tier folder at all.
+    assert bcb.classify_tier_folder("_EDITORIAL screenshots") is None
+    assert bcb.classify_tier_folder("_BIG_CONVERSATION_assets") is None
+
+
+def test_list_pool_screenshots_groups_by_bucket_and_drops_tier4(tmp_path, monkeypatch):
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
+    topic = tmp_path / "Kids in the Office"
+    (topic / "\U0001F525 RED HOT Top 22").mkdir(parents=True)
+    (topic / "\U0001F525 RED HOT Top 22" / "Erin_Lou_0001.png").write_bytes(b"x")
+    (topic / "Tier 1 - Viral").mkdir()
+    (topic / "Tier 1 - Viral" / "Someone_0001.png").write_bytes(b"x")
+    (topic / "Tier 4 - Rubbish").mkdir()
+    (topic / "Tier 4 - Rubbish" / "Junk_0001.png").write_bytes(b"x")
+
+    pools = bcb.list_pool_screenshots("Kids in the Office")
+    assert [s["file"] for s in pools["viral"]] == ["Erin_Lou_0001.png"]
+    assert [s["file"] for s in pools["T1"]] == ["Someone_0001.png"]
+    assert pools["T2"] == []
+    assert pools["T3"] == []
+    all_files = [s["file"] for shots in pools.values() for s in shots]
+    assert "Junk_0001.png" not in all_files
+
+
+def test_list_pool_screenshots_urls_point_at_the_asset_route(tmp_path, monkeypatch):
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
+    topic = tmp_path / "Kids in the Office"
+    (topic / "Tier 1 - Viral").mkdir(parents=True)
+    (topic / "Tier 1 - Viral" / "Someone_0001.png").write_bytes(b"x")
+
+    pools = bcb.list_pool_screenshots("Kids in the Office")
+    assert pools["T1"][0]["url"] == (
+        "/api/big-conversation/assets/Kids%20in%20the%20Office/Tier%201%20-%20Viral/Someone_0001.png"
+    )
+
+
+def test_list_pool_screenshots_empty_when_topic_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
+    pools = bcb.list_pool_screenshots("Nonexistent Topic")
+    assert pools == {"viral": [], "T1": [], "T2": [], "T3": []}
