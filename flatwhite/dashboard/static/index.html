@@ -715,7 +715,13 @@ function drop(e) {
   var toIdx = Number(e.currentTarget.getAttribute("data-idx"));
   if (_dragFromIndex == null || toIdx === _dragFromIndex) return;
   var moved = SEGMENTS.splice(_dragFromIndex, 1)[0];
-  SEGMENTS.splice(toIdx, 0, moved);
+  // Removing the dragged item shifts every later index down by one, so
+  // when the drop target was originally AFTER the source, the insertion
+  // index must be decremented to land the moved item at (not past) the
+  // target's new position. Upward drags (target originally before the
+  // source) are unaffected: indices before the removal point don't shift.
+  var insertIdx = toIdx > _dragFromIndex ? toIdx - 1 : toIdx;
+  SEGMENTS.splice(insertIdx, 0, moved);
   _dragFromIndex = null;
   renderSidebar();
 }
