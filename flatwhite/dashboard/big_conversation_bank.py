@@ -15,9 +15,7 @@ than raising, since this machine may not have that project checked out.
 from __future__ import annotations
 
 import os
-import re
 from pathlib import Path
-from urllib.parse import quote
 
 INSTAGRAM_OUTPUT_DIR = Path(
     os.environ.get(
@@ -42,16 +40,38 @@ def _is_excluded(name: str) -> bool:
     return any(name.startswith(prefix) for prefix in _EXCLUDED_PREFIXES)
 
 
+# Subfolder-name prefixes that mark a directory as a curated copy or working
+# area rather than a store of original submissions. Verified empirically
+# against the real output/ directory (see task-2-report.md, "Fix round 1"):
+#   - "_" — internal working/asset dirs: _BIG_CONVERSATION_assets (the
+#     piece's paragraph-mapped copies), plus other underscore-prefixed dirs
+#     found in real sorted topics (e.g. "_EDITORIAL screenshots",
+#     "_EDITORIAL_IMAGE_PACKS") that hold copies made after sorting, never
+#     new submissions.
+#   - "🔥" — curated "best of" pointer folders (RED HOT Top N, Top Picks,
+#     Top Picks R3, ...). In every sampled real sorted topic (Kids in the
+#     Office, Visa vs Resident Pay, Conference Room Sharing, Pay Negotiation,
+#     and others), every file inside a "🔥"-prefixed folder is a renamed COPY
+#     of a file that already exists at the topic root (topics with no tier
+#     folders) or inside a Tier N folder (topics that use tiers) — never a
+#     new, original submission. The "Pay Negotiation" topic's own curated
+#     manifest confirms this in writing: "Originals untouched; these are
+#     renamed copies in rank order." Counting a "🔥" folder's files in
+#     addition to their tier/root originals double-counts real replies.
+_EXCLUDED_SUBFOLDER_PREFIXES = ("_", "🔥")
+
+
 def _count_images(folder: Path) -> int:
     """Count original submission images directly under `folder`, excluding
-    any copies already placed in a _BIG_CONVERSATION_assets subfolder (those
-    are duplicates of originals elsewhere in the same tree, not new
-    submissions)."""
+    any files inside a subfolder that is itself a curated copy or working
+    area (see `_EXCLUDED_SUBFOLDER_PREFIXES`) rather than a store of new,
+    original submissions."""
     count = 0
     for p in folder.rglob("*"):
         if not p.is_file() or p.suffix.lower() not in IMAGE_EXTENSIONS:
             continue
-        if ASSETS_DIRNAME in p.relative_to(folder).parts:
+        dir_parts = p.relative_to(folder).parts[:-1]
+        if any(part.startswith(_EXCLUDED_SUBFOLDER_PREFIXES) for part in dir_parts):
             continue
         count += 1
     return count
@@ -71,13 +91,25 @@ def list_topic_folders() -> list[dict]:
     root = INSTAGRAM_OUTPUT_DIR
     if not root.is_dir():
         return []
+    try:
+        entries = sorted(root.iterdir())
+    except OSError:
+        # Can't even list the root (e.g. permission denied) - fail soft per
+        # this module's contract rather than raising.
+        return []
     topics = []
-    for entry in sorted(root.iterdir()):
-        if not entry.is_dir() or _is_excluded(entry.name):
+    for entry in entries:
+        try:
+            if not entry.is_dir() or _is_excluded(entry.name):
+                continue
+            topics.append({
+                "topic": entry.name,
+                "reply_count": _count_images(entry),
+                "processed": (entry / ASSETS_DIRNAME).is_dir(),
+            })
+        except OSError:
+            # A specific topic folder is unreadable (e.g. PermissionError
+            # partway through its tree) - skip just that topic rather than
+            # failing the whole listing for every other topic.
             continue
-        topics.append({
-            "topic": entry.name,
-            "reply_count": _count_images(entry),
-            "processed": (entry / ASSETS_DIRNAME).is_dir(),
-        })
     return topics
