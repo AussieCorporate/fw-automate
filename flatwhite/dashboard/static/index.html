@@ -1035,7 +1035,7 @@ function renderPulse(el) {
   var p3 = '';
   p3 += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
   p3 += modelSelect('model-pulse');
-  p3 += '<button class="btn btn-success" onclick="proceedPulse()">PROCEED</button>';
+  p3 += '<button class="btn btn-success" onclick="proceedPulse()">' + (hasOutput ? 'Regenerate' : 'Generate') + '</button>';
   p3 += '</div>';
   p3 += outputBox('pulse');
 
