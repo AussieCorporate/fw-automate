@@ -57,6 +57,12 @@ def _safe_override(model: str | None) -> str | None:
 
 
 _STATIC_DIR = Path(__file__).parent / "static"
+_SCREENSHOTTER_OUTPUT_DIR = Path(
+    os.environ.get(
+        "FW_SCREENSHOTTER_OUTPUT_DIR",
+        str(Path.home() / "Documents" / "MISC" / "instagram-dm-screenshotter" / "output"),
+    )
+)
 _AUTH_PASSWORD = os.environ.get("FLATWHITE_PASSWORD", "")
 _AUTH_TOKEN = hashlib.sha256((_AUTH_PASSWORD + "flatwhite").encode()).hexdigest()[:32] if _AUTH_PASSWORD else ""
 
@@ -287,6 +293,47 @@ def api_off_the_clock() -> JSONResponse:
         "week_iso": week_iso,
         "last_scraped_at": last_scraped_at,
     })
+
+
+@app.get("/api/inside-track")
+def api_inside_track() -> JSONResponse:
+    """List this week's Inside Track (gossip/redundancy) screenshot submissions.
+
+    Reads the Instagram DM screenshotter's output folder READ-ONLY (never
+    writes to it). Fails soft: if the screenshotter output dir or the
+    Inside Track folder inside it doesn't exist yet, returns an empty list
+    rather than erroring, so the page still renders.
+    """
+    from flatwhite.dashboard.inside_track import find_inside_track_folder, list_inside_track_submissions
+
+    folder = find_inside_track_folder(_SCREENSHOTTER_OUTPUT_DIR)
+    submissions = list_inside_track_submissions(_SCREENSHOTTER_OUTPUT_DIR)
+    return JSONResponse({
+        "folder_found": folder is not None,
+        "folder_name": folder.name if folder else None,
+        "submissions": [
+            {"filename": s["filename"], "thumb_url": "/api/inside-track/image/" + s["filename"]}
+            for s in submissions
+        ],
+        "week_iso": get_current_week_iso(),
+    })
+
+
+@app.get("/api/inside-track/image/{filename}", response_model=None)
+def api_inside_track_image(filename: str) -> FileResponse | JSONResponse:
+    """Serve one Inside Track screenshot, read-only and path-traversal-safe.
+
+    `filename` is validated by resolve_inside_track_image against the
+    Inside Track folder (resolve + is_relative_to check) before anything is
+    read off disk; any traversal attempt or missing file returns a 404.
+    """
+    from flatwhite.dashboard.inside_track import resolve_inside_track_image
+
+    path = resolve_inside_track_image(_SCREENSHOTTER_OUTPUT_DIR, filename)
+    if path is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    media_type = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
+    return FileResponse(path, media_type=media_type)
 
 
 @app.get("/api/draft")
@@ -1782,6 +1829,38 @@ def _proceed_off_the_clock(data: dict, model: str | None, custom_prompt: str | N
     return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE, model_override=override)
 
 
+def _proceed_inside_track(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
+    from flatwhite.classify.prompts import EDITORIAL_VOICE
+
+    override = _safe_override(model)
+
+    if custom_prompt:
+        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE, model_override=override)
+
+    selected = data.get("selected", [])
+    items_block = "\n\n".join(
+        "Screenshot: {}\nWhat it shows: {}".format(
+            item.get("filename", ""), item.get("note", "") or "(no note given)"
+        )
+        for item in selected
+    )
+
+    prompt = (
+        "Write THE INSIDE TRACK section for this week's Flat White newsletter.\n\n"
+        "THE INSIDE TRACK carries short gossip and redundancy/breaking-news items "
+        "submitted by the community, each paired with a screenshot. Write ONE short, "
+        "punchy line per item, 1-2 sentences, a plain statement of what happened, not "
+        "a review. Dry, observant, Australian corporate commentary. No filler "
+        "intensifiers. No em dashes. Australian English.\n\n"
+        f"Items:\n{items_block}\n\n"
+        "Output EXACTLY this format, one block per item, with a blank line between "
+        "blocks, and nothing else:\n\n"
+        "[Screenshot: <filename>]\n"
+        "<your punchy line>"
+    )
+    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE, model_override=override)
+
+
 def _generate_otc_custom_summary(category: str, url: str, content: str, model: str | None) -> str:
     """Write a short, RAW draft blurb for a custom Off the Clock pick.
 
@@ -1867,6 +1946,7 @@ async def api_proceed_section(request: Request) -> JSONResponse:
         # change minimal.
         "off_the_clock": _proceed_off_the_clock,
         "editorial": _proceed_editorial,
+        "insidetrack": _proceed_inside_track,
     }
 
     if section not in proceed_fns:

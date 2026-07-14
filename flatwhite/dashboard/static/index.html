@@ -270,6 +270,14 @@ select.form-input { appearance: auto; }
 .bc-pool-label{font-size:11px;font-weight:700;color:var(--label3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
 .bc-tier-toggle{margin-top:12px}
 .bc-instruction{background:var(--accent-soft);border-radius:8px;padding:10px;font-size:12px;margin-top:10px;font-family:monospace}
+.it-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.it-card{border:1px solid var(--sep);border-radius:10px;overflow:hidden;background:var(--card)}
+.it-card.picked{box-shadow:0 0 0 2px var(--accent)}
+.it-thumb{width:100%;height:140px;object-fit:cover;display:block;cursor:pointer;background:var(--track)}
+.it-body{padding:8px 10px}
+.it-fname{font-size:11px;color:var(--label2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:6px}
+.it-note{width:100%;font-size:12px;border:1px solid var(--sep);border-radius:6px;padding:6px;resize:vertical;font-family:inherit;box-sizing:border-box}
+.it-empty{color:var(--label2);font-size:13px;padding:8px 0}
 </style>
 </head>
 <body>
@@ -348,6 +356,9 @@ var S = {
   topicHeat: null,           // Reddit anomalies + Google rising queries
   signalIntelligence: {},   // { signal_name: {delta, articles, commentary} }
   signalIntelExpanded: {},  // { signal_name: bool }
+  insideTrack: null,        // { folder_found, folder_name, submissions, week_iso }
+  insideTrackPicked: {},     // { filename: true }
+  insideTrackNotes: {},      // { filename: note text }
 };
 
 /* ── Helpers ───────────────────────────────────────────── */
@@ -584,6 +595,9 @@ function loadPageData(page) {
     case "top_picks":
       if (S.topPicks) return Promise.resolve();
       return api("/api/top-picks").then(function(d) { S.topPicks = d; S.weekIso = d.week_iso; S.lastScraped.top_picks = d.scraped_at || null; });
+    case "insidetrack":
+      if (S.insideTrack) return Promise.resolve();
+      return api("/api/inside-track").then(function(d) { S.insideTrack = d; S.weekIso = d.week_iso; });
     case "editorial":
       // Also loads /api/items (same call the now-hidden "finds" case makes) so
       // S.lastScraped.editorial gets set independently of visiting Finds.
@@ -663,7 +677,7 @@ function renderCommandBar() {
 }
 
 /* ── Running-order sidebar (Task 2), wired into #page by render() (Task 3) ──
-   Segment ids map to existing section keys for the five kept segments
+   Segment ids map to existing section keys for the kept segments
    (_REAL_SEGMENTS); thread has its own real paste-and-format page
    (renderThread) but isn't in _REAL_SEGMENTS since it has no scrape to
    derive readiness from; the remaining placeholders render a stub page
@@ -682,8 +696,8 @@ var SEGMENTS = [
   { id: "big_conversation", name: "Big Conversation",    status: "notready" },
 ];
 
-// The five segments with a real, already-built section behind them today.
-var _REAL_SEGMENTS = { editorial: 1, pulse: 1, big_conversation: 1, off_the_clock: 1, top_picks: 1 };
+// The segments with a real, already-built section behind them today.
+var _REAL_SEGMENTS = { editorial: 1, pulse: 1, big_conversation: 1, off_the_clock: 1, top_picks: 1, insidetrack: 1 };
 var _SEGMENT_TITLES = { bank: "Content bank", sources: "Sources" };
 var _dragFromIndex = null;
 
@@ -776,9 +790,9 @@ function dragEnd(e) {
    Builds the "{name} + status pill" header shown above every segment's
    existing renderX() output. Real segments (_REAL_SEGMENTS) show the same
    live-derived ready/not-ready _segmentStatus() the sidebar dot uses;
-   placeholder segments (brains/insidetrack) and thread (has a real paste-
-   and-format page, but stays manual/not in _REAL_SEGMENTS since there is
-   no scrape to derive readiness from) show their static SEGMENTS status,
+   placeholder segments (brains) and thread (has a real paste-and-format
+   page, but stays manual/not in _REAL_SEGMENTS since there is no scrape
+   to derive readiness from) show their static SEGMENTS status,
    flipped to "ready" by markReady()/toggleReady(); Content bank / Sources
    (not in SEGMENTS, no ready concept) get a plain header with no pill. */
 function _statusLabel(status) {
@@ -805,8 +819,9 @@ function _refreshPageHeader() {
 
 // Segments a placeholder page ("This section arrives in a later increment.")
 // covers - the running-order items with no real section behind them yet,
-// plus the Content bank / Sources links.
-var _PLACEHOLDER_IDS = { brains: 1, insidetrack: 1, bank: 1, sources: 1 };
+// plus the Content bank / Sources links. The Inside Track (task 4) now has
+// a real renderInsideTrack() page, so it's out of this list.
+var _PLACEHOLDER_IDS = { brains: 1, bank: 1, sources: 1 };
 
 function toggleReady(id) {
   var seg = SEGMENTS.filter(function(s) { return s.id === id; })[0];
@@ -849,6 +864,7 @@ function render() {
       case "big_conversation": renderBigConv(bodyEl); break;
       case "off_the_clock": renderOTC(bodyEl); break;
       case "top_picks": renderTopPicks(bodyEl); break;
+      case "insidetrack": renderInsideTrack(bodyEl); break;
       case "editorial": renderEditorial(bodyEl); break;
       case "thread": renderThread(bodyEl); break;
       default:
@@ -1593,6 +1609,85 @@ function proceedOTC() {
   api("/api/proceed-section", { method: "POST", body: { section: "off_the_clock", model: model, data: { picks: picks } } })
     .then(function(d) { S.sectionOutputs.off_the_clock = { output_text: d.output, model_used: d.model }; S.loading.off_the_clock = false; render(); fillOutput('off_the_clock'); showToast("Off the Clock generated"); })
     .catch(function(e) { S.loading.off_the_clock = false; render(); showToast("Error: " + e.message, "error"); });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SECTION: THE INSIDE TRACK
+   Gossip / redundancy screenshots the DM sort routes out of the Big
+   Conversation pile. Victor ticks which ones to run, jots a one-line note
+   on what each shows, then writes them up. Its own top-level segment, not
+   nested under Big Conversation (see _REAL_SEGMENTS / SEGMENTS above).
+   ═══════════════════════════════════════════════════════════════════════ */
+function toggleInsideTrackPick(filename) {
+  if (S.insideTrackPicked[filename]) delete S.insideTrackPicked[filename];
+  else S.insideTrackPicked[filename] = true;
+  render();
+}
+
+function updateInsideTrackNote(filename, value) {
+  S.insideTrackNotes[filename] = value;
+}
+
+function proceedInsideTrack() {
+  var picked = Object.keys(S.insideTrackPicked);
+  if (!picked.length) { showToast("Tick at least one submission before writing up.", "error"); return; }
+  var selected = picked.map(function(f) { return { filename: f, note: S.insideTrackNotes[f] || "" }; });
+  var model = getModel("model-insidetrack");
+  S.loading.insidetrack = true;
+  render();
+  api("/api/proceed-section", { method: "POST", body: { section: "insidetrack", model: model, data: { selected: selected } } })
+    .then(function(d) {
+      S.sectionOutputs.insidetrack = { output_text: d.output, model_used: d.model };
+      S.loading.insidetrack = false;
+      render();
+      fillOutput('insidetrack');
+      showToast("Inside Track written up");
+    })
+    .catch(function(e) {
+      S.loading.insidetrack = false;
+      render();
+      showToast("Error: " + e.message, "error");
+    });
+}
+
+function renderInsideTrack(el) {
+  var d = S.insideTrack;
+  var pickedCount = Object.keys(S.insideTrackPicked).length;
+
+  var h = '';
+  h += '<p style="color:var(--label2);font-size:13px;margin:0 0 14px;">Tick the gossip and redundancy screenshots to run, add a one-line note on what each shows, then write them up.</p>';
+
+  if (!d || !d.submissions || !d.submissions.length) {
+    var msg = (d && d.folder_found === false)
+      ? 'No Inside Track folder found yet in the screenshotter output. Run the sort skill first.'
+      : 'No gossip/redundancy submissions this week.';
+    h += '<div class="it-empty">' + esc(msg) + '</div>';
+  } else {
+    h += '<div class="it-grid">';
+    d.submissions.forEach(function(s) {
+      var picked = !!S.insideTrackPicked[s.filename];
+      h += '<div class="it-card' + (picked ? ' picked' : '') + '">';
+      h += '<img class="it-thumb" src="' + escAttr(s.thumb_url) + '" onclick="toggleInsideTrackPick(' + jsq(s.filename) + ')" title="Click to ' + (picked ? 'un-tick' : 'tick') + '"/>';
+      h += '<div class="it-body">';
+      h += '<div class="it-fname">' + esc(s.filename) + '</div>';
+      if (picked) {
+        h += '<textarea class="it-note" rows="2" placeholder="What does this show?" oninput="updateInsideTrackNote(' + jsq(s.filename) + ', this.value)">' + esc(S.insideTrackNotes[s.filename] || '') + '</textarea>';
+      }
+      h += '</div></div>';
+    });
+    h += '</div>';
+  }
+
+  h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">';
+  h += modelSelect("model-insidetrack");
+  h += '<button class="btn btn-success" onclick="proceedInsideTrack()"' + (S.loading.insidetrack ? ' disabled' : '') + '>';
+  h += (S.loading.insidetrack ? 'Writing up…' : 'Write up selected (' + pickedCount + ')');
+  h += '</button></div>';
+
+  h += outputBox('insidetrack');
+
+  el.innerHTML = h;
+  fillOutput('insidetrack');
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
