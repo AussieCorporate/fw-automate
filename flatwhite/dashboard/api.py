@@ -1440,6 +1440,23 @@ async def api_save_section_output(section: str, request: Request) -> JSONRespons
     return JSONResponse({"saved": True, "section": section})
 
 
+# ── Brains Trust angle pool (read-only Trading Strategy research bank) ──────
+
+@app.get("/api/brains-trust/angles")
+def api_brains_trust_angles() -> JSONResponse:
+    """Read-only: recommended Brains Trust angles from the Trading Strategy
+    research bank across the last 3 weeks. Never writes to that project;
+    fails soft to an empty list on any error (missing folder, bad JSON,
+    locked DB, or anything else) so a research-bank outage never blocks
+    Victor picking an angle from whatever else is available."""
+    from flatwhite.dashboard.brains_trust_research import load_angle_recommendations
+    try:
+        angles = load_angle_recommendations(weeks=3)
+    except Exception:
+        angles = []
+    return JSONResponse({"angles": angles})
+
+
 # ── Big Conversation candidates ───────────────────────────────────────────────
 
 @app.get("/api/big-conversation-candidates")
@@ -1837,6 +1854,53 @@ def _proceed_editorial(data: dict, model: str | None, custom_prompt: str | None 
     return route(task_type="editorial", prompt=prompt, system=EDITORIAL_INTRO_SYSTEM, model_override=override)
 
 
+def _proceed_brains_trust(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
+    """Consolidate the angle Victor picked plus the surfaced 3-week research
+    pool into a Brains Trust draft. Same (data, model, custom_prompt) -> str
+    shape as every other _proceed_* function, so it plugs into proceed_fns
+    unchanged.
+
+    data: {
+        "chosen_pitch": str,             # the angle Victor picked
+        "chosen_angle": str,             # its supporting angle summary
+        "chosen_why_tac": str,           # optional, why it matters to readers
+        "candidates_pool": list[dict],   # the full window shown on screen,
+                                          # each {date_iso, pitch, angle}
+    }
+    """
+    from flatwhite.classify.prompts import BRAINS_TRUST_VOICE
+
+    override = _safe_override(model)
+
+    if custom_prompt:
+        return route(task_type="brains_trust", prompt=custom_prompt, system=BRAINS_TRUST_VOICE, model_override=override)
+
+    chosen_pitch = (data.get("chosen_pitch") or "").strip()
+    chosen_angle = (data.get("chosen_angle") or "").strip()
+    chosen_why = (data.get("chosen_why_tac") or "").strip()
+    pool = data.get("candidates_pool") or []
+
+    pool_lines = [
+        f"- ({p.get('date_iso', '')}) {p.get('pitch', '')} - {p.get('angle', '')}"
+        for p in pool if isinstance(p, dict) and p.get("pitch")
+    ]
+    pool_block = "\n".join(pool_lines) if pool_lines else "(no additional research pool supplied)"
+
+    prompt = (
+        "Write this week's Brains Trust (also called the Economic Scoop) section "
+        "for the Flat White newsletter.\n\n"
+        f"CHOSEN ANGLE:\n{chosen_pitch}\n{chosen_angle}\n"
+        + (f"Why it matters to readers: {chosen_why}\n" if chosen_why else "")
+        + "\n"
+        "RESEARCH BANK FROM THE LAST 3 WEEKS (consolidate whatever is relevant "
+        "to the chosen angle above; ignore anything unrelated):\n"
+        f"{pool_block}\n\n"
+        "Output ONLY the Brains Trust body text. No title. No sign-off. "
+        "Ground every claim in the research bank; do not invent figures."
+    )
+    return route(task_type="brains_trust", prompt=prompt, system=BRAINS_TRUST_VOICE, model_override=override)
+
+
 # ── Proceed section endpoint ──────────────────────────────────────────────────
 
 @app.post("/api/proceed-section")
@@ -1867,6 +1931,7 @@ async def api_proceed_section(request: Request) -> JSONResponse:
         # change minimal.
         "off_the_clock": _proceed_off_the_clock,
         "editorial": _proceed_editorial,
+        "brains_trust": _proceed_brains_trust,
     }
 
     if section not in proceed_fns:
