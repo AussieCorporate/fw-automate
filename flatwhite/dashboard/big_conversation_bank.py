@@ -361,7 +361,16 @@ def resolve_asset_path(rel_path: str) -> Path | None:
     try:
         root_resolved = root.resolve()
         candidate = (root_resolved / rel_path).resolve()
-    except OSError:
+    except Exception:
+        # This function's entire contract is "never raise for hostile or
+        # malformed input, only return None". Path.resolve() can raise more
+        # than OSError: embedded null bytes raise ValueError, symlink loops
+        # raise RuntimeError, and pathlib has changed which exception it
+        # raises for edge cases across Python versions before. A narrow
+        # except list has to be kept in sync with pathlib's behaviour
+        # forever to hold that contract; a blanket catch here is the
+        # correct level of defensiveness for a security boundary that must
+        # degrade to "reject the request" rather than "crash the server".
         return None
     if not candidate.is_relative_to(root_resolved):
         return None

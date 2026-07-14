@@ -482,3 +482,24 @@ def test_resolve_asset_path_rejects_symlink_escaping_root(tmp_path, monkeypatch)
     symlink.symlink_to(outside)
 
     assert bcb.resolve_asset_path("topic/_BIG_CONVERSATION_assets/evil.png") is None
+
+
+def test_resolve_asset_path_rejects_embedded_null_byte(tmp_path, monkeypatch):
+    # Path.resolve() raises ValueError (not OSError) for a null byte in the
+    # path. The resolver must swallow this and return None like every other
+    # rejection, not let it propagate as an uncaught exception.
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
+    assert bcb.resolve_asset_path("topic/x.png\x00.txt") is None
+
+
+def test_resolve_asset_path_rejects_symlink_loop(tmp_path, monkeypatch):
+    # A self-referential symlink makes Path.resolve() raise RuntimeError
+    # (not OSError). The resolver must swallow this too and return None
+    # instead of letting it propagate.
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
+    assets = tmp_path / "topic" / bcb.ASSETS_DIRNAME
+    assets.mkdir(parents=True)
+    loop = assets / "a.png"
+    loop.symlink_to(loop)
+
+    assert bcb.resolve_asset_path("topic/_BIG_CONVERSATION_assets/a.png") is None
