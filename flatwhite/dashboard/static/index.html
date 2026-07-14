@@ -1923,6 +1923,7 @@ function toggleTopPicksFeatureDraft(id, checked) {
   } else {
     delete S.topPicksFeatureDrafts[id];
     delete S.topPicksFeatureAdds[id];
+    S.topPicksChecked = {};
   }
   render();
 }
@@ -1936,6 +1937,7 @@ function addTopPicksFeature(id) {
   var blurb = (S.topPicksFeatureDrafts[id] || "").trim();
   if (!post || !blurb) { showToast("Write the feature's blurb first", "error"); return; }
   S.topPicksFeatureAdds[id] = { title: post.title, url: post.web_url, blurb: blurb };
+  S.topPicksChecked = {};
   showToast("Added feature: " + post.title);
   render();
 }
@@ -1976,9 +1978,10 @@ function buildTopPicksOutput() {
   if (!selected.length) { showToast("Select at least one pick first", "error"); return; }
   var lines = selected.map(function(p) {
     var summary = (p.summary || "").replace(/\s+/g, " ").trim();
+    if (!summary) return null;
     if (!/[.!?]$/.test(summary)) summary += ".";
     return summary + " " + (p.url || "");
-  });
+  }).filter(function(line) { return line !== null; });
   var ta = $("output-top_picks");
   if (ta) ta.value = lines.join("\n\n");
 }
