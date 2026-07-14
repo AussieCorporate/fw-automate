@@ -2258,7 +2258,9 @@ def api_top_picks_recent_posts() -> JSONResponse:
 from flatwhite.dashboard import big_conversation_bank as _bcb
 from flatwhite.dashboard.state import (
     load_topic_archive_state,
+    set_topic_archived,
     load_pairing_overrides,
+    save_pairing_override,
 )
 
 
@@ -2295,3 +2297,59 @@ def api_big_conversation_asset(rel_path: str):
     if resolved is None:
         return JSONResponse({"error": "Not found"}, status_code=404)
     return FileResponse(resolved)
+
+
+@app.post("/api/big-conversation/archive")
+async def api_big_conversation_archive(request: Request) -> JSONResponse:
+    """Archive or unarchive a topic bank entry.
+
+    Body: {"topic": str, "archived": bool}
+    """
+    body = await request.json()
+    topic = body.get("topic", "")
+    if not topic:
+        return JSONResponse({"error": "topic is required"}, status_code=400)
+    archived = bool(body.get("archived", True))
+    set_topic_archived(topic, archived)
+    return JSONResponse({"topic": topic, "archived": archived})
+
+
+@app.post("/api/big-conversation/topic/{topic}/prepare")
+def api_big_conversation_prepare(topic: str) -> JSONResponse:
+    """Prepare a topic for processing.
+
+    FW cannot call the Claude `big-conversation` skill itself - there is no
+    server-side Claude/skill invocation in this app. This confirms the
+    topic folder is ready and hands back the exact instruction to run the
+    skill in a Claude session, mirroring PS Dash's "Design B" pattern (the
+    dash prepares + reads; generation happens Claude-side). Once the skill
+    has run, GET /api/big-conversation/topic/{topic} picks up what it wrote.
+    """
+    folder = _bcb.INSTAGRAM_OUTPUT_DIR / topic
+    if not folder.is_dir():
+        return JSONResponse({"error": f"Topic folder not found: {topic}"}, status_code=404)
+    instruction = (
+        f'Run the big-conversation skill on "{topic}" from '
+        f'{_bcb.INSTAGRAM_OUTPUT_DIR} (a Claude session in the Instagram '
+        f'DM screenshotter project), then come back here and click Refresh.'
+    )
+    return JSONResponse({"topic": topic, "folder_path": str(folder), "instruction": instruction})
+
+
+@app.post("/api/big-conversation/topic/{topic}/pairing")
+async def api_big_conversation_pairing(topic: str, request: Request) -> JSONResponse:
+    """Record a drag-drop: move one screenshot to a different paragraph.
+
+    Body: {"filename": str, "paragraph_index": int}
+    Persisted in FW's own DB; never written into the Instagram output
+    folder the screenshot actually lives in.
+    """
+    body = await request.json()
+    filename = body.get("filename", "")
+    paragraph_index = body.get("paragraph_index")
+    if not filename or not isinstance(paragraph_index, int):
+        return JSONResponse(
+            {"error": "filename and paragraph_index (int) are required"}, status_code=400
+        )
+    save_pairing_override(topic, filename, paragraph_index)
+    return JSONResponse({"topic": topic, "filename": filename, "paragraph_index": paragraph_index})
