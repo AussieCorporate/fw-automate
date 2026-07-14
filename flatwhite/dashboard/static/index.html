@@ -737,12 +737,13 @@ function markReady(section) {
   var seg = SEGMENTS.find(function(s) { return s.id === section; });
   if (seg) seg.status = "ready";
   renderSidebar();
+  _refreshPageHeader();
   showToast(section.replace(/_/g, " ") + " marked ready");
 }
 
 function allSegmentsReadyExcept(excludeId) {
   return SEGMENTS.every(function(seg) {
-    return seg.id === excludeId || seg.status === "ready";
+    return seg.id === excludeId || _segmentStatus(seg) === "ready";
   });
 }
 
