@@ -825,3 +825,57 @@ def load_otc_picks(week_iso: str | None = None) -> list[dict[str, Any]]:
         }
         for r in rows
     ]
+
+
+def load_topic_archive_state() -> dict[str, bool]:
+    """Return {topic: True} for every Big Conversation topic Victor has
+    archived. Topics absent from the dict are treated as not archived.
+    Read-only lookup used to filter the topic bank list."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT topic FROM big_conversation_topic_state WHERE archived = 1"
+    ).fetchall()
+    conn.close()
+    return {r["topic"]: True for r in rows}
+
+
+def set_topic_archived(topic: str, archived: bool) -> None:
+    """Archive or unarchive a Big Conversation topic bank entry."""
+    conn = get_connection()
+    conn.execute(
+        """INSERT INTO big_conversation_topic_state (topic, archived, archived_at)
+           VALUES (?, ?, CASE WHEN ? THEN datetime('now') ELSE NULL END)
+           ON CONFLICT(topic) DO UPDATE SET
+             archived = excluded.archived,
+             archived_at = excluded.archived_at""",
+        (topic, 1 if archived else 0, 1 if archived else 0),
+    )
+    conn.commit()
+    conn.close()
+
+
+def load_pairing_overrides(topic: str) -> dict[str, int]:
+    """Return {filename: paragraph_index} drag-drop overrides Victor has
+    saved for one Big Conversation topic. Empty if none have been made."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT filename, paragraph_index FROM big_conversation_pairing_override WHERE topic = ?",
+        (topic,),
+    ).fetchall()
+    conn.close()
+    return {r["filename"]: r["paragraph_index"] for r in rows}
+
+
+def save_pairing_override(topic: str, filename: str, paragraph_index: int) -> None:
+    """Record that Victor dragged `filename` into `paragraph_index` for this
+    topic. Persisted in FW's own DB — the Instagram output folder this
+    filename actually lives in is never written to."""
+    conn = get_connection()
+    conn.execute(
+        """INSERT INTO big_conversation_pairing_override (topic, filename, paragraph_index)
+           VALUES (?, ?, ?)
+           ON CONFLICT(topic, filename) DO UPDATE SET paragraph_index = excluded.paragraph_index""",
+        (topic, filename, paragraph_index),
+    )
+    conn.commit()
+    conn.close()

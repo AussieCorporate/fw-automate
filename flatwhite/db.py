@@ -421,6 +421,26 @@ def migrate_db() -> None:
             )
         conn.execute("PRAGMA user_version = 1")
 
+    # v7 Big Conversation control-room state (increment 4): archive flag +
+    # drag-drop paragraph/screenshot pairing overrides. Both keyed by the
+    # Instagram output topic folder NAME (not an id) since that folder name
+    # is the only stable identifier the read-only Instagram project exposes.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS big_conversation_topic_state (
+            topic TEXT PRIMARY KEY,
+            archived INTEGER NOT NULL DEFAULT 0,
+            archived_at TEXT
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS big_conversation_pairing_override (
+            topic TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            paragraph_index INTEGER NOT NULL,
+            PRIMARY KEY (topic, filename)
+        )
+    """)
+
     conn.commit()
     conn.close()
 
