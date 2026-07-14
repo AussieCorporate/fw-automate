@@ -316,8 +316,10 @@ def get_topic_detail(topic: str, pairing_overrides: dict[str, int] | None = None
 
     if pairing_overrides:
         regrouped: dict[int, list[dict]] = {}
+        handled_files: set[str] = set()
         for paragraph, shots in by_paragraph.items():
             for shot in shots:
+                handled_files.add(shot["file"])
                 if shot["file"] not in pairing_overrides:
                     regrouped.setdefault(paragraph, []).append(shot)
                     continue
@@ -338,6 +340,38 @@ def get_topic_detail(topic: str, pairing_overrides: dict[str, int] | None = None
                     # not "delete this shot" - fall back to its own paragraph.
                     target = paragraph
                 regrouped.setdefault(target, []).append(shot)
+
+        # Pool-shot injection: a pairing override may target a screenshot
+        # that was never copied into the assets folder - it lives only in
+        # the viral/T1/T2/T3 tier pools. Per FW/CLAUDE.md ("FW mechanics
+        # ROUND 4"), the whole point of showing the tier pools is so Victor
+        # can swap in a more compelling pool shot when he thinks the skill's
+        # own paragraph pairing missed one, so a pool filename must be able
+        # to move into a paragraph too, not just paragraph-assigned shots.
+        # It gets a rank far past the skill's own 0/1/2/3... scheme so it
+        # sorts last within the paragraph - a manual swap-in, not one of the
+        # skill's own automatic pairings.
+        _POOL_INJECT_RANK = 10_000
+        pool_by_filename = {
+            shot["file"]: shot
+            for shot in pools["viral"] + pools["T1"] + pools["T2"] + pools["T3"]
+        }
+        for filename, target in pairing_overrides.items():
+            if filename in handled_files:
+                continue  # already applied above - a paragraph-assigned shot
+            if target == 0:
+                continue  # nothing to unassign - it was never placed
+            pool_shot = pool_by_filename.get(filename)
+            if pool_shot is None:
+                continue  # stale/garbage override (no such file anywhere) - no effect
+            if not (1 <= target <= paragraph_count):
+                continue  # out-of-range target and no original paragraph to fall back to - no effect
+            regrouped.setdefault(target, []).append({
+                "file": pool_shot["file"],
+                "url": pool_shot["url"],
+                "rank": _POOL_INJECT_RANK,
+            })
+
         by_paragraph = regrouped
 
     paragraphs = [

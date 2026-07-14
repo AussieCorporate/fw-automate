@@ -450,6 +450,55 @@ def test_get_topic_detail_override_into_empty_paragraph(tmp_path, monkeypatch):
     ]
 
 
+def test_get_topic_detail_pairing_override_moves_pool_shot_into_paragraph(tmp_path, monkeypatch):
+    # Reviewer-found bug: dragging a screenshot from the viral/T1/T2/T3
+    # tier pool onto a paragraph (the whole point of showing those pools -
+    # see FW/CLAUDE.md "FW mechanics ROUND 4") wrote an override keyed by
+    # the pool shot's own filename, but that filename never appears in
+    # by_paragraph (it lives in a tier subfolder, not the assets folder),
+    # so the override was silently never applied. Confirmed empirically on
+    # real "Kids in the Office" data: pool_files & paragraph_files == set().
+    _seed_processed_topic(tmp_path, monkeypatch)
+    pool_dir = tmp_path / "Kids in the Office" / "Tier 1 - Viral"
+    pool_dir.mkdir(parents=True)
+    (pool_dir / "01_Glitterpussee_0001.png").write_bytes(b"x")
+
+    overrides = {"01_Glitterpussee_0001.png": 3}
+    detail = bcb.get_topic_detail("Kids in the Office", pairing_overrides=overrides)
+
+    p3_files = [s["file"] for s in detail["paragraphs"][2]["screenshots"]]
+    assert p3_files == ["01_Glitterpussee_0001.png"]
+    p3_shot = detail["paragraphs"][2]["screenshots"][0]
+    assert p3_shot["url"] == bcb.asset_url("Kids in the Office", "Tier 1 - Viral", "01_Glitterpussee_0001.png")
+
+    # Untouched paragraph-assigned shots are unaffected.
+    assert [s["file"] for s in detail["paragraphs"][0]["screenshots"]] == [
+        "p1_1_Katie_Moloney.png"
+    ]
+    assert [s["file"] for s in detail["paragraphs"][1]["screenshots"]] == [
+        "p2_1_IMG_7955.jpg"
+    ]
+    # The pool shot still shows up in the T1 pool too - injecting it into a
+    # paragraph doesn't remove it from the pool listing.
+    assert "01_Glitterpussee_0001.png" in [s["file"] for s in detail["pools"]["T1"]]
+
+
+def test_get_topic_detail_pairing_override_garbage_filename_has_no_effect(tmp_path, monkeypatch):
+    # An override for a filename that exists in neither by_paragraph nor any
+    # tier pool (stale/garbage) must not error or add a phantom screenshot -
+    # same fail-soft discipline as the out-of-range-target case.
+    _seed_processed_topic(tmp_path, monkeypatch)
+    overrides = {"totally_fake_file_that_never_existed.png": 2}
+    detail = bcb.get_topic_detail("Kids in the Office", pairing_overrides=overrides)
+
+    all_files = [
+        s["file"] for p in detail["paragraphs"] for s in p["screenshots"]
+    ]
+    assert set(all_files) == {"p1_1_Katie_Moloney.png", "p2_1_IMG_7955.jpg"}
+    assert len(all_files) == 2
+    assert "totally_fake_file_that_never_existed.png" not in all_files
+
+
 def test_resolve_asset_path_serves_file_inside_root(tmp_path, monkeypatch):
     monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
     assets = tmp_path / "Kids in the Office" / bcb.ASSETS_DIRNAME
