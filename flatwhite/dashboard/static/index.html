@@ -2069,10 +2069,10 @@ function renderTopPicksBody() {
   picks.forEach(function(p, i) {
     var domain = esc(p.source_domain || "");
     var summary = esc(p.summary || "No summary extracted");
-    var url = esc(p.url || "#");
+    var url = escAttr(p.url || "#");
     var clicks = p.clicks || 0;
     var campaign = esc(p.campaign_title || "");
-    var campaignUrl = esc(p.campaign_url || "#");
+    var campaignUrl = escAttr(p.campaign_url || "#");
     var checked = S.topPicksChecked && S.topPicksChecked[i];
 
     h += '<div class="card mb12 hov' + (checked ? " sel" : "") + '" style="padding:14px 16px;">';
