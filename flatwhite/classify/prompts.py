@@ -290,6 +290,61 @@ BIG_CONVERSATION_DRAFT_PROMPT = (
     "Output ONLY the commentary text. No title. No sign-off. No preamble."
 )
 
+# ─── EDITORIAL INTRO (consumed by dashboard/api.py _proceed_editorial) ───────
+# Shape confirmed against data/beehiiv_fw_ground_truth.json (10 real editions)
+# and ~/.claude/skills/flat-white-intro/SKILL.md. Written LAST, once every
+# other segment is ready, so it can bridge into the actual Big Conversation
+# output rather than guess at it.
+
+EDITORIAL_INTRO_SYSTEM = (
+    EDITORIAL_VOICE + "\n\n"
+    "STRUCTURE FOR THE EDITORIAL INTRO (the 'Good morning AusCorp.' opener):\n"
+    "This is the top-of-edition hook, not a full piece. Two paragraphs, "
+    "occasionally three. Roughly 70-120 words of prose total.\n"
+    "\n"
+    "Paragraph 1: Open with the exact bold phrase 'Good morning AusCorp.' "
+    "with the hook starting in the SAME line, no line break after it. The "
+    "hook is 1-2 sentences built from the BIG STORY OF THE WEEK supplied "
+    "below, then a bridge into the Big Conversation angle supplied below. "
+    "Use a reframe, a specific number, or a found fact - never a vague tease.\n"
+    "Paragraph 2: The preview paragraph. Opens with a variant of 'In this "
+    "week's edition, we...' and lists the OTHER SEGMENTS supplied below as "
+    "three mini-hooks, not section names. Vary the verb across editions: "
+    "'we discuss / we're unpacking / we're looking into / we're asking "
+    "whether / we cover'. Each item teases, it does not summarise.\n"
+    "\n"
+    "HARD RULES (from the flat-white-intro skill):\n"
+    "- Open with '**Good morning AusCorp.**' verbatim, bold, hook on the same line.\n"
+    "- No em dashes. Use '-' instead.\n"
+    "- No Oxford commas. Australian spelling. 'percent' as %.\n"
+    "- The hook never repeats the edition's subject-line wording.\n"
+    "- Second person where natural ('your right to stay').\n"
+    "- Numbers stay specific (13%, $1.4 million), never rounded to vague terms.\n"
+    "- No signposting ('Here's the thing'), no reader-validation ('If you've "
+    "ever...'), no zoom-out endings, no rule-of-three drumbeats, no announced "
+    "punchlines.\n"
+    "\n"
+    "Output ONLY the intro prose (the two or three paragraphs). No headings, "
+    "no commentary, no image or boilerplate blocks."
+)
+
+EDITORIAL_INTRO_PROMPT = (
+    "Write this week's Flat White editorial intro.\n"
+    "\n"
+    "BIG STORY OF THE WEEK (the open hook Victor nominated - this is what "
+    "makes people open the email):\n"
+    "{big_story}\n"
+    "\n"
+    "THE BIG CONVERSATION (bridge into this after the hook):\n"
+    "{big_conversation_text}\n"
+    "\n"
+    "OTHER SEGMENTS THIS WEEK (pick three as mini-hooks for the preview "
+    "paragraph; if fewer than three are supplied, use what is here):\n"
+    "{other_segments}\n"
+    "\n"
+    "Follow the structure and hard rules from your system prompt exactly."
+)
+
 # ─── PULSE SUMMARY (consumed by summary.py) ──────────────────────────────────
 
 PULSE_SUMMARY_SYSTEM = (

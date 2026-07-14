@@ -1782,26 +1782,29 @@ def _proceed_off_the_clock(data: dict, model: str | None, custom_prompt: str | N
 
 
 def _proceed_editorial(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
-    from flatwhite.classify.prompts import EDITORIAL_VOICE
+    from flatwhite.classify.prompts import EDITORIAL_INTRO_SYSTEM, EDITORIAL_INTRO_PROMPT
 
     override = _safe_override(model)
 
     if custom_prompt:
-        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE, model_override=override)
+        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_INTRO_SYSTEM, model_override=override)
 
-    items = data.get("selected_items", [])
-    items_block = "\n\n".join(
-        f"Title: {item.get('title', '')}\nSummary: {item.get('summary', '')}"
-        for item in items
-    )
+    big_story = (data.get("big_story") or "").strip()
+    big_conversation_text = (data.get("big_conversation_output") or "").strip()
+    other_segments = data.get("other_segments", [])
 
-    prompt = (
-        "Write the editorial section for this week's Flat White newsletter.\n\n"
-        f"Selected items:\n{items_block}\n\n"
-        "Voice: dry, specific, opinionated. Australian corporate commentary. "
-        "Output ONLY the editorial text. No title. No sign-off."
+    other_block = "\n\n".join(
+        f"{seg.get('label', seg.get('id', ''))}:\n{seg.get('output_text', '')}"
+        for seg in other_segments
+        if seg.get("output_text")
+    ) or "(no other segment output supplied)"
+
+    prompt = EDITORIAL_INTRO_PROMPT.format(
+        big_story=big_story or "(no big story of the week nominated)",
+        big_conversation_text=big_conversation_text or "(no Big Conversation output supplied)",
+        other_segments=other_block,
     )
-    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE, model_override=override)
+    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_INTRO_SYSTEM, model_override=override)
 
 
 # ── Proceed section endpoint ──────────────────────────────────────────────────
