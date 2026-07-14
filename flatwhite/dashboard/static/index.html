@@ -33,7 +33,7 @@
 --amber-soft:rgba(255,159,10,.15);--amber-ink:#b25e00;--track:#ececf1;--r-card:14px;--r-btn:10px;}
 body{background:var(--bg);color:var(--label)}
 html { font-size: 16px; -webkit-font-smoothing: antialiased; }
-body { font-family: var(--font-sans); background: var(--bg); color: var(--text); min-height: 100vh; display: flex; font-size: 15px; }
+body { font-family: var(--font-sans); background: var(--bg); color: var(--text); min-height: 100vh; font-size: 15px; }
 a { color: var(--blue); text-decoration: none; }
 a:hover { text-decoration: underline; }
 button { font-family: var(--font-sans); cursor: pointer; border: none; }
@@ -41,42 +41,11 @@ input, textarea, select { font-family: var(--font-sans); font-size: 14px; }
 ::selection { background: var(--amber-light); }
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-
-/* ── Sidebar ── */
-.sidebar {
-  width: 200px; min-height: 100vh; background: var(--surface);
-  border-right: 1px solid var(--border); display: flex; flex-direction: column;
-  padding: 24px 0; position: fixed; top: 0; left: 0; z-index: 10;
-  overflow-y: auto;
-}
-#main { flex: 1; margin-left: 200px; max-width: none; display: flex; flex-direction: column; min-height: 100vh; }
-#content { flex: 1; overflow: auto; padding: 36px 48px; }
-.sidebar-brand { padding: 0 20px; margin-bottom: 32px; }
-.sidebar-brand h1 { font-family: var(--font-serif); font-size: 21px; font-weight: 700; letter-spacing: -0.5px; }
-.sidebar-brand span { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1.5px; display: block; margin-top: 2px; }
-.sidebar-week { padding: 0 16px; margin-bottom: 20px; }
-.sidebar-week-inner { background: var(--amber-light); border-radius: 10px; padding: 10px 14px; border: 1px solid var(--border-gold); }
-.sidebar-week-inner .lbl { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; }
-.sidebar-week-inner .val { font-size: 14px; font-weight: 600; margin-top: 2px; }
-.sidebar-nav { flex: 1; padding: 0 10px; }
-.nav-item {
-  display: flex; align-items: center; gap: 10px; padding: 9px 12px;
-  border-radius: 9px; margin-bottom: 3px; cursor: pointer;
-  border-left: 3px solid transparent; transition: all 0.15s ease;
-  font-size: 13px; color: var(--text-2);
-}
-.nav-item:hover { background: var(--surface-warm); }
-.nav-item.active { background: var(--amber-light); border-left-color: var(--amber); color: var(--text); font-weight: 600; }
-.nav-item.greyed { opacity: 0.45; cursor: default; }
-.nav-icon { font-size: 15px; width: 20px; text-align: center; color: var(--text-3); }
-.nav-item.active .nav-icon { color: var(--amber); }
-.dot { margin-left: auto; width: 8px; height: 8px; border-radius: 50%; }
-.dot-done { background: var(--green); }
-.dot-amber { background: var(--amber); }
-.sidebar-footer { padding: 16px 20px 0; }
-.sidebar-footer .lbl { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
-.pbar { width: 100%; height: 3px; background: var(--divider); border-radius: 3px; overflow: hidden; }
-.pbar-fill { height: 100%; background: var(--amber); border-radius: 3px; transition: width 0.4s ease; }
+/* Task 3: retired the old fixed-width icon <nav id="sidebar">, #main and
+   #content rules that used to hold it (body no longer needs display:flex
+   for that offset - #cmd-bar-container and .layout now stack as normal
+   block children). renderLegacyNav()/NAV_ITEMS/sectionStatus() (JS) were
+   removed with it. */
 
 /* ── Section header ── */
 .sh { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px; padding-bottom: 14px; border-bottom: 2px solid var(--border-gold); }
@@ -220,9 +189,6 @@ select.form-input { appearance: auto; }
 .otc-cat-title { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 12px; color: var(--amber-dark); }
 
 @media (max-width: 768px) {
-  .sidebar { display: none; }
-  #main { margin-left: 0; }
-  #content { padding: 20px; }
   .g2 { grid-template-columns: 1fr; }
 }
 .modal-overlay { position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:flex-start;justify-content:center;padding-top:60px; }
@@ -262,16 +228,13 @@ select.form-input { appearance: auto; }
 .cmd-pill.pill-red { background: #4a1e1e; color: #f66; }
 .layout{max-width:1120px;margin:0 auto;padding:0 20px 90px;display:flex;gap:18px;align-items:flex-start}
 .side{width:264px;flex:none;position:sticky;top:14px;background:var(--card);border:1px solid var(--sep);border-radius:var(--r-card);padding:14px 12px}
-/* Task 2 resolved the collision flagged here in Task 1: the legacy sidebar-offset
-   rule (was ".main", now scoped to "#main") targets the OLD fixed nav's content
-   wrapper by id only, so it no longer shares a selector with this NEW ".main"
-   (the middle column of .layout). Both can coexist in the DOM during the
-   transition; Task 3 removes the old nav/#main entirely. */
 .main{flex:1;min-width:0}
 .page{background:var(--card);border-radius:var(--r-card);border:1px solid var(--sep);overflow:hidden}
 .page-h{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:.5px solid var(--sep)}
 .page-h h2{margin:0;font-size:18px;font-weight:700;flex:1}
 .page-b{padding:18px 20px}
+.stat{font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;cursor:pointer}
+.s-ready{background:var(--green-soft);color:var(--green-ink)}.s-notready{background:var(--track);color:var(--label2)}.s-manual{background:var(--amber-soft);color:var(--amber-ink)}
 @media(max-width:820px){.layout{flex-direction:column}.side{width:100%;position:static}}
 /* ── Running-order sidebar (Task 2) ── */
 .side-cap{color:var(--label3);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin:2px 6px 9px;display:flex;justify-content:space-between}
@@ -293,16 +256,10 @@ select.form-input { appearance: auto; }
 </style>
 </head>
 <body>
-<nav class="sidebar" id="sidebar"></nav>
-<div id="main">
+<!-- Task 3: old <nav id="sidebar">/#main/#content path is retired. render()
+     now draws into #page below; the running-order sidebar (Task 2) plus
+     #cmd-bar-container are the only top-level UI. -->
 <div id="cmd-bar-container"></div>
-<div id="content"><div class="loading" style="padding:40px;text-align:center;">Loading dashboard...</div></div>
-<!-- New running-order sidebar (Task 2), added alongside the old nav above.
-     Task 3 does the swap: removes the old <nav id="sidebar">/#main/#content
-     path and repoints render() to draw into #page below. Kept as a sibling
-     of #content (not nested inside it) because #content's innerHTML is
-     fully replaced by every old renderX(el) call — nesting it there would
-     wipe #navlist/#page out on every render(). -->
 <div class="layout">
   <div class="side">
     <div class="side-cap"><span>Running order</span><span id="readyStat"></span></div>
@@ -314,7 +271,6 @@ select.form-input { appearance: auto; }
   <div class="main">
     <div class="page" id="page"></div>
   </div>
-</div>
 </div>
 <div class="toast-container" id="toasts"></div>
 <div id="modal-root"></div>
@@ -448,48 +404,61 @@ function showToast(msg, type) {
 function $(id) { return document.getElementById(id); }
 
 /* ── Navigation ───────────────────────────────────────── */
+/* The old icon-only left nav (NAV_ITEMS + renderLegacyNav()) is retired as
+   of Task 3 - the running-order sidebar (SEGMENTS/renderSidebar) is now the
+   only nav, and render() draws into #page. nav(page) is kept only because
+   the command-bar pills (_CMD_PILL_SECTIONS below) still call it to jump to
+   a page; it no longer touches the old nav.
+
+   Preserved from the old NAV_ITEMS comments (still true, unrelated to the
+   nav swap - do not "finish the job" by trimming the classifier entries
+   these describe):
+   - "whisper" (the `whisper` classifier section) has no tab anywhere, but
+     classify/classifier.py's VALID_SECTIONS and classify_all_unclassified()
+     still classify raw items into "whisper" as one branch of a single
+     shared function that ALSO produces the "finds"/"big_conversation_seed"/
+     "what_we_watching" sections Big Conversation's candidate query depends
+     on. Editing that shared function to drop "whisper" risks breaking
+     classification for the sections Big Conversation reads.
+   - "finds" (the `finds` classifier section) has no tab, but
+     /api/big-conversation-candidates filters on ci.section IN
+     ('big_conversation_seed', 'what_we_watching', 'finds'), so Big
+     Conversation's own candidate pool depends on "finds" items still being
+     scraped and classified. _SECTION_RUNNERS["finds"] and its entry in
+     _SCRAPE_ALL_SECTIONS / proceed_fns are therefore left intact on
+     purpose.
+   - "thread" (the `thread_candidate` classifier section) has no working tab
+     (Thread of the Week is a placeholder segment in this increment; the
+     Reddit scrape behind it is dead/403 - see project CLAUDE.md). Its
+     scraper step is removed from _SCRAPE_ALL_SECTIONS and its entry from
+     proceed_fns, but `thread_candidate` stays in classify/classifier.py's
+     VALID_SECTIONS and keeps being produced by classify_all_unclassified()
+     - that shared function ALSO classifies the sections Big Conversation
+     depends on, so it is intentionally left untouched.
+   - "salary_vault" / "assemble" (Composer) have no tab per Victor's
+     decision; flatwhite/assemble/renderer.py and templates.py are NOT
+     deleted (flatwhite/cli.py and orchestrate/runner.py still invoke them
+     directly) - only the dashboard tab was ever hidden.
+
+   NAV_ITEMS itself is UNUSED at runtime now (nothing renders it - see
+   above), but it is kept, verbatim in shape, because
+   tests/test_dashboard_trim.py parses this exact array out of the source
+   to guard which tabs were cut vs kept in the earlier trim. Do not delete
+   it; if the trim guard needs to move to a different data source, update
+   that test in the same change. */
 var NAV_ITEMS = [
   { id: "editorial",   icon: "GM",  label: "Editorial" },
-  { id: "pulse",       icon: "\u25C9", label: "Pulse" },
-  { id: "big_conversation", icon: "\u00B6", label: "Big Conversation" },
-  // "whispers" (the `whisper` classifier section) has NO tab here: the tab is
-  // removed, but classify/classifier.py's VALID_SECTIONS and
-  // classify_all_unclassified() still classify raw items into "whisper" as
-  // one branch of a single shared function that ALSO produces the
-  // "finds"/"big_conversation_seed"/"what_we_watching" sections Big
-  // Conversation's candidate query depends on. Editing that shared function
-  // to drop "whisper" risks breaking classification for the sections Big
-  // Conversation reads. So the classifier is intentionally left untouched;
-  // do not "finish the job" by trimming it later.
-  // "finds" (the `finds` classifier section) has NO tab here: hidden per
-  // Victor's decision, but /api/big-conversation-candidates filters on
-  // ci.section IN ('big_conversation_seed', 'what_we_watching', 'finds'), so
-  // Big Conversation's own candidate pool depends on "finds" items still
-  // being scraped and classified. _SECTION_RUNNERS["finds"] and its entry in
-  // _SCRAPE_ALL_SECTIONS / proceed_fns are therefore left intact on purpose;
-  // only the tab (nav item + render function) is removed here.
-  // "thread" (the `thread_candidate` classifier section) has NO tab here:
-  // hidden per Victor's decision. Its scraper step is removed from
-  // _SCRAPE_ALL_SECTIONS and its entry from proceed_fns (nothing can
-  // generate a Thread write-up without the tab), but `thread_candidate`
-  // stays in classify/classifier.py's VALID_SECTIONS and keeps being
-  // produced by classify_all_unclassified() - that shared function ALSO
-  // classifies the sections Big Conversation depends on, so it is
-  // intentionally left untouched.
-  { id: "off_the_clock", icon: "\uD83C\uDF77", label: "Off the Clock" },
-  { id: "top_picks",   icon: "\uD83C\uDFC6", label: "Top Picks" },
-  { id: "salary_vault", icon: "\uD83D\uDCB0", label: "Salary Vault", greyed: true },
-  // "assemble" (Composer) tab hidden per Victor's decision. This is a
-  // separate legacy render path from flatwhite/assemble/renderer.py and
-  // templates.py, which are NOT deleted (flatwhite/cli.py and
-  // orchestrate/runner.py still invoke them directly). Only the dashboard
-  // tab is hidden here.
+  { id: "pulse",       icon: "◉", label: "Pulse" },
+  { id: "big_conversation", icon: "¶", label: "Big Conversation" },
+  { id: "off_the_clock", icon: "🍷", label: "Off the Clock" },
+  { id: "top_picks",   icon: "🏆", label: "Top Picks" },
+  { id: "salary_vault", icon: "💰", label: "Salary Vault", greyed: true },
 ];
 
 function nav(page) {
   if (page === "salary_vault") return;
   S.page = page;
-  renderLegacyNav();
+  renderSidebar();
   loadPageData(page).then(function() { render(); });
 }
 
@@ -570,13 +539,9 @@ function getModel(id) {
   return el ? el.value : (S.models.length ? S.models[0].id : null);
 }
 
-/* ── Status dot for sidebar ── */
-function sectionStatus(sectionId) {
-  var o = S.sectionOutputs[sectionId];
-  if (o && o.output_text) return '<span class="dot dot-done"></span>';
-  return "";
-}
-
+/* sectionStatus() (old icon-nav's done-dot) removed with renderLegacyNav()
+   in Task 3 - the running-order sidebar's own _segmentStatus()/renderSidebar()
+   below is the one status source now. */
 var _CMD_PILL_SECTIONS = [
   { id: "pulse",            label: "Pulse" },
   { id: "big_conversation", label: "Big Conv" },
@@ -614,14 +579,10 @@ function renderCommandBar() {
   return h;
 }
 
-/* ── Running-order sidebar (Task 2) ───────────────────────────────────
-   New sidebar sitting alongside the old nav. Segment ids map to existing
-   section keys for the five kept segments; the rest are inert placeholders
-   for later increments. selectSegment() reuses the existing loadPageData()/
-   render() pipeline for the five kept segments so Task 3 has something to
-   hook into; placeholders render a simple "coming next" page straight into
-   the new #page container without touching render()'s switch, which Task 3
-   owns. */
+/* ── Running-order sidebar (Task 2), wired into #page by render() (Task 3) ──
+   Segment ids map to existing section keys for the five kept segments
+   (_REAL_SEGMENTS); the rest render a placeholder page via render()'s
+   switch until later increments build them out. */
 var SEGMENTS = [
   { id: "editorial",        name: "Editorial",          status: "notready" },
   { id: "brains",           name: "Brains Trust",        status: "notready" },
@@ -642,8 +603,9 @@ var _SEGMENT_TITLES = { bank: "Content bank", sources: "Sources" };
 var _dragFromIndex = null;
 
 function _segmentStatus(seg) {
-  // Real segments: reflect live readiness the same way the old sidebar's
-  // dot does (see sectionStatus()). Placeholders keep their static default.
+  // Real segments: reflect live readiness from whether that section has
+  // generated output (S.sectionOutputs). Placeholders keep their static
+  // default from SEGMENTS, which toggleReady() can flip.
   if (_REAL_SEGMENTS[seg.id]) {
     var o = S.sectionOutputs[seg.id];
     return (o && o.output_text) ? "ready" : "notready";
@@ -684,15 +646,9 @@ function selectSegment(id) {
     loadPageData(id).then(function() { render(); });
     return;
   }
-  // Not built yet (new segment or the Content bank / Sources links). Render
-  // a simple placeholder straight into the new #page container.
-  var seg = SEGMENTS.filter(function(s) { return s.id === id; })[0];
-  var title = seg ? seg.name : (_SEGMENT_TITLES[id] || id);
-  var pageEl = $("page");
-  if (pageEl) {
-    pageEl.innerHTML = '<div class="page-h"><h2>' + esc(title) + '</h2></div>'
-      + '<div class="page-b" style="color:var(--label2)">Coming next.</div>';
-  }
+  // Not built yet (new segment, or the Content bank / Sources links) - no
+  // extra data to load, render()'s switch draws the placeholder page.
+  render();
 }
 
 /* ── Drag-to-reorder (HTML5 drag and drop) ── */
@@ -731,55 +687,71 @@ function dragEnd(e) {
   document.querySelectorAll(".nav-card.dragover").forEach(function(n) { n.classList.remove("dragover"); });
 }
 
-/* ── Render legacy top nav ──
-   Renamed from renderSidebar() -> renderLegacyNav() in Task 2 so the name
-   "renderSidebar" is free for the NEW running-order sidebar below (this is
-   the OLD vertical icon nav in <nav id="sidebar">, kept working unchanged
-   until Task 3 does the swap). */
-function renderLegacyNav() {
-  var h = '<div class="sidebar-brand"><h1>Flat White</h1><span>The Aussie Corporate</span></div>';
-  h += '<div class="sidebar-week"><div class="sidebar-week-inner"><div class="lbl">Current Week</div><div class="val">' + esc(S.weekIso || "...") + '</div></div></div>';
-  h += '<div class="sidebar-nav">';
-  NAV_ITEMS.forEach(function(n) {
-    var active = S.page === n.id ? " active" : "";
-    var greyed = n.greyed ? " greyed" : "";
-    h += '<div class="nav-item' + active + greyed + '" onclick="nav(\'' + n.id + '\')">';
-    h += '<span class="nav-icon">' + n.icon + '</span>';
-    h += '<span>' + esc(n.label) + '</span>';
-    if (n.greyed) {
-      h += '<span style="margin-left:auto;font-size:9px;color:var(--text-3);text-transform:uppercase;letter-spacing:0.8px;">Soon</span>';
-    } else {
-      h += sectionStatus(n.id);
-    }
-    h += '</div>';
-  });
-  h += '</div>';
-  // Progress footer
-  var done = 0; var total = 0;
-  NAV_ITEMS.forEach(function(n) {
-    if (n.greyed || n.id === "assemble") return;
-    total++;
-    if (S.sectionOutputs[n.id] && S.sectionOutputs[n.id].output_text) done++;
-  });
-  var pct = total > 0 ? Math.round(done / total * 100) : 0;
-  h += '<div class="sidebar-footer"><div class="lbl">Progress</div><div class="pbar"><div class="pbar-fill" style="width:' + pct + '%"></div></div><div style="font-size:12px;color:var(--text-2);margin-top:6px;">' + done + '/' + total + ' sections</div></div>';
-  $("sidebar").innerHTML = h;
+/* ── Segment detail-page header (Task 3) ───────────────────────────────
+   Builds the "{name} + status pill" header shown above every segment's
+   existing renderX() output. Real segments (_REAL_SEGMENTS) show the same
+   live-derived ready/not-ready _segmentStatus() the sidebar dot uses;
+   placeholder segments (brains/insidetrack/thread) show their static
+   SEGMENTS status; Content bank / Sources (not in SEGMENTS, no ready
+   concept) get a plain header with no pill. */
+function _statusLabel(status) {
+  if (status === "ready") return "Ready";
+  if (status === "manual") return "Manual";
+  return "Not ready";
 }
 
-/* ── Main render dispatch ── */
-function render() {
-  renderLegacyNav();
+function _pageHeaderHtml(id) {
+  var seg = SEGMENTS.filter(function(s) { return s.id === id; })[0];
+  if (!seg) {
+    var title = _SEGMENT_TITLES[id] || id;
+    return '<h2>' + esc(title) + '</h2>';
+  }
+  var status = _segmentStatus(seg);
+  return '<h2>' + esc(seg.name) + '</h2>'
+    + '<span class="stat s-' + status + '" onclick="toggleReady(\'' + esc(id) + '\')">' + esc(_statusLabel(status)) + '</span>';
+}
+
+function _refreshPageHeader() {
+  var hEl = $("page-h");
+  if (hEl) hEl.innerHTML = _pageHeaderHtml(S.page);
+}
+
+// Segments a placeholder page ("This section arrives in a later increment.")
+// covers - the running-order items with no real section behind them yet,
+// plus the Content bank / Sources links.
+var _PLACEHOLDER_IDS = { brains: 1, insidetrack: 1, thread: 1, bank: 1, sources: 1 };
+
+function toggleReady(id) {
+  var seg = SEGMENTS.filter(function(s) { return s.id === id; })[0];
+  if (!seg) return;
+  seg.status = (_segmentStatus(seg) === "ready") ? "notready" : "ready";
   renderSidebar();
+  _refreshPageHeader();
+}
+
+/* ── Main render dispatch (Task 3: draws into #page, not the old #content) ── */
+function render() {
   var cmdEl = document.getElementById("cmd-bar-container");
   if (cmdEl) cmdEl.innerHTML = renderCommandBar();
-  var m = $("content");
-  switch (S.page) {
-    case "pulse": renderPulse(m); break;
-    case "big_conversation": renderBigConv(m); break;
-    case "off_the_clock": renderOTC(m); break;
-    case "top_picks": renderTopPicks(m); break;
-    case "editorial": renderEditorial(m); break;
-    default: m.innerHTML = '<p>Unknown page</p>';
+  renderSidebar();
+  var pageEl = $("page");
+  if (pageEl) {
+    pageEl.innerHTML = '<div class="page-h" id="page-h">' + _pageHeaderHtml(S.page) + '</div>'
+      + '<div class="page-b" id="page-b"></div>';
+    var bodyEl = $("page-b");
+    switch (S.page) {
+      case "pulse": renderPulse(bodyEl); break;
+      case "big_conversation": renderBigConv(bodyEl); break;
+      case "off_the_clock": renderOTC(bodyEl); break;
+      case "top_picks": renderTopPicks(bodyEl); break;
+      case "editorial": renderEditorial(bodyEl); break;
+      default:
+        if (_PLACEHOLDER_IDS[S.page]) {
+          bodyEl.innerHTML = '<p style="color:var(--label2)">This section arrives in a later increment.</p>';
+        } else {
+          bodyEl.innerHTML = '<p>Unknown page</p>';
+        }
+    }
   }
   // Render modal overlay (outside main content)
   var modalEl = document.getElementById("modal-root");
@@ -1604,8 +1576,8 @@ function saveOutput(section) {
       S.sectionOutputs[section] = S.sectionOutputs[section] || {};
       S.sectionOutputs[section].output_text = ta.value;
       showToast("Saved " + section.replace(/_/g, " "));
-      renderLegacyNav();
       renderSidebar();
+      _refreshPageHeader();
     })
     .catch(function(e) { showToast("Error: " + e.message, "error"); });
 }
@@ -2107,7 +2079,9 @@ function init() {
     S.anomalies = results[2].anomalies || [];
     S.lastScraped.pulse = results[2].last_scraped_at || null;
     S.trends = results[3] || null;
-    render();
+    // Task 3 Step 3: default selection opens on a real page (Editorial,
+    // SEGMENTS[0]) instead of the bare render() the shell used to call.
+    selectSegment(SEGMENTS[0].id);
   });
 }
 
