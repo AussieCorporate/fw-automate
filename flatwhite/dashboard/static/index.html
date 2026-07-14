@@ -384,6 +384,7 @@ var S = {
   assembleSponsorText: "",
   assembleOddPicks: "",
   assembly: null,            // last /api/assemble-edition response, once built
+  bankItems: null,           // [{id, segment_type, title, body_text, source_note, status}, ...]
 };
 
 /* ── Helpers ───────────────────────────────────────────── */
@@ -646,6 +647,8 @@ function loadPageData(page) {
       return api("/api/brains-trust/angles").then(function(d) {
         S.brainsAngles = d.angles || [];
       }).catch(function() { S.brainsAngles = []; });
+    case "bank":
+      return loadBankItems();
     default: return Promise.resolve();
   }
 }
@@ -727,7 +730,11 @@ var SEGMENTS = [
 ];
 
 // The segments with a real, already-built section behind them today.
-var _REAL_SEGMENTS = { editorial: 1, pulse: 1, big_conversation: 1, off_the_clock: 1, top_picks: 1, insidetrack: 1, brains_trust: 1 };
+// "bank" is included here too (Increment 7 Task 7) purely so selectSegment()
+// below fetches its data via loadPageData() before rendering — Content bank
+// is not one of the running-order SEGMENTS, has no ready/not-ready concept,
+// and _segmentStatus() is never called with it, so this addition is safe.
+var _REAL_SEGMENTS = { editorial: 1, pulse: 1, big_conversation: 1, off_the_clock: 1, top_picks: 1, insidetrack: 1, brains_trust: 1, bank: 1 };
 var _SEGMENT_TITLES = { bank: "Content bank", sources: "Sources", assemble: "Assemble to beehiiv" };
 var _dragFromIndex = null;
 
@@ -777,8 +784,9 @@ function selectSegment(id) {
     loadPageData(id).then(function() { render(); });
     return;
   }
-  // Not built yet (new segment, or the Content bank / Sources links) - no
-  // extra data to load, render()'s switch draws the placeholder page.
+  // Not built yet (new segment, or the Sources link) - no extra data to
+  // load, render()'s switch draws the placeholder page. (Content bank used
+  // to fall here too, but now loads via the _REAL_SEGMENTS branch above.)
   render();
 }
 
@@ -851,10 +859,10 @@ function _refreshPageHeader() {
 
 // Segments a placeholder page ("This section arrives in a later increment.")
 // covers - the running-order items with no real section behind them yet,
-// plus the Content bank / Sources links. The Inside Track and Brains Trust
-// now both have real pages (renderInsideTrack()/renderBrains()), so neither
-// is in this list any more.
-var _PLACEHOLDER_IDS = { bank: 1, sources: 1 };
+// plus the Sources link. The Inside Track, Brains Trust and Content bank
+// now all have real pages (renderInsideTrack()/renderBrains()/renderBank()),
+// so none of them is in this list any more.
+var _PLACEHOLDER_IDS = { sources: 1 };
 
 function toggleReady(id) {
   var seg = SEGMENTS.filter(function(s) { return s.id === id; })[0];
@@ -902,6 +910,7 @@ function render() {
       case "thread": renderThread(bodyEl); break;
       case "brains_trust": renderBrains(bodyEl); break;
       case "assemble": renderAssemble(bodyEl); break;
+      case "bank": renderBank(bodyEl); break;
       default:
         if (_PLACEHOLDER_IDS[S.page]) {
           bodyEl.innerHTML = '<p style="color:var(--label2)">This section arrives in a later increment.</p>';
@@ -2515,6 +2524,82 @@ function copyAssembledHtml() {
   navigator.clipboard.writeText(S.assembly.assembled_html).then(function() {
     showToast("Copied assembled HTML");
   }).catch(function() { showToast("Copy failed - select manually", "error"); });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SECTION: CONTENT BANK (Increment 7 Task 7)
+   Replaces Increment 1's "bank" placeholder. Pieces produced ahead of time
+   (Big Conversation, Brains Trust), decoupled from any specific week; "Pull
+   into edition" writes the piece into THIS week's section_outputs under a
+   chosen running-order segment id, via /api/content-bank/{id}/pull.
+   ═══════════════════════════════════════════════════════════════════════ */
+function renderBank(el) {
+  var h = '<p style="font-size:13px;color:var(--text-2);margin:0 0 12px 0;">Pieces produced ahead of time. Pull one into this week\'s running order when needed.</p>';
+
+  h += '<div class="fb mb8">';
+  h += '<select class="form-input" id="bank-type"><option value="big_conversation">Big Conversation</option><option value="brains_trust">Brains Trust</option></select>';
+  h += '<input class="form-input" id="bank-title" placeholder="Title">';
+  h += '</div>';
+  h += '<textarea class="form-input mb8" id="bank-body" placeholder="Piece text..."></textarea>';
+  h += '<input class="form-input mb8" id="bank-source" placeholder="Source note (optional, e.g. folder name)">';
+  h += '<button class="btn btn-primary mb8" onclick="addBankItem()">Add to bank</button>';
+
+  (S.bankItems || []).forEach(function(item) {
+    h += '<div class="block-preview"><h4>' + esc(item.segment_type) + '</h4>';
+    h += '<div style="font-weight:600;margin-bottom:4px;">' + esc(item.title) + '</div>';
+    h += '<div style="color:var(--label2);font-size:13px;margin-bottom:8px;">' + esc((item.body_text || "").slice(0, 160)) + '...</div>';
+    h += '<select class="form-input" id="pull-target-' + item.id + '">';
+    // NOTE: "brains_trust" (not "brains") is the real Brains Trust section
+    // id everywhere else in this file (see SEGMENTS, loadPageData's
+    // "brains_trust" case, and the render switch's "brains_trust" case) -
+    // must match here too, or a pull "into" Brains Trust would silently
+    // write to an orphaned "brains" section_outputs key that page never
+    // reads.
+    ["editorial","brains_trust","top_picks","insidetrack","pulse","off_the_clock","thread","big_conversation"].forEach(function(sid) {
+      h += '<option value="' + sid + '">' + sid + '</option>';
+    });
+    h += '</select> ';
+    h += '<button class="btn btn-sm" onclick="pullBankItem(' + item.id + ')">Pull into edition</button> ';
+    h += '<button class="btn btn-sm" onclick="archiveBankItem(' + item.id + ')">Archive</button>';
+    h += '</div>';
+  });
+
+  el.innerHTML = h;
+}
+
+function addBankItem() {
+  var segmentType = $("bank-type").value;
+  var title = $("bank-title").value.trim();
+  var bodyText = $("bank-body").value.trim();
+  var sourceNote = $("bank-source").value.trim();
+  if (!title || !bodyText) { showToast("Title and body text are required", "error"); return; }
+
+  api("/api/content-bank", { method: "POST", body: {
+    segment_type: segmentType, title: title, body_text: bodyText, source_note: sourceNote || null,
+  }}).then(function() {
+    showToast("Added to bank");
+    return loadBankItems();
+  }).then(render).catch(function(e) { showToast("Error: " + e.message, "error"); });
+}
+
+function loadBankItems() {
+  return api("/api/content-bank").then(function(d) { S.bankItems = d.items || []; });
+}
+
+function pullBankItem(bankId) {
+  var target = $("pull-target-" + bankId).value;
+  api("/api/content-bank/" + bankId + "/pull", { method: "POST", body: { target_section: target } })
+    .then(function() {
+      showToast("Pulled into " + target + " - open that page to review and mark ready");
+    })
+    .catch(function(e) { showToast("Pull failed: " + e.message, "error"); });
+}
+
+function archiveBankItem(bankId) {
+  api("/api/content-bank/" + bankId + "/archive", { method: "POST" })
+    .then(function() { return loadBankItems(); })
+    .then(render)
+    .catch(function(e) { showToast("Archive failed: " + e.message, "error"); });
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
