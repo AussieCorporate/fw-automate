@@ -1829,6 +1829,38 @@ def _proceed_off_the_clock(data: dict, model: str | None, custom_prompt: str | N
     return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE, model_override=override)
 
 
+def _proceed_inside_track(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
+    from flatwhite.classify.prompts import EDITORIAL_VOICE
+
+    override = _safe_override(model)
+
+    if custom_prompt:
+        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE, model_override=override)
+
+    selected = data.get("selected", [])
+    items_block = "\n\n".join(
+        "Screenshot: {}\nWhat it shows: {}".format(
+            item.get("filename", ""), item.get("note", "") or "(no note given)"
+        )
+        for item in selected
+    )
+
+    prompt = (
+        "Write THE INSIDE TRACK section for this week's Flat White newsletter.\n\n"
+        "THE INSIDE TRACK carries short gossip and redundancy/breaking-news items "
+        "submitted by the community, each paired with a screenshot. Write ONE short, "
+        "punchy line per item, 1-2 sentences, a plain statement of what happened, not "
+        "a review. Dry, observant, Australian corporate commentary. No filler "
+        "intensifiers. No em dashes. Australian English.\n\n"
+        f"Items:\n{items_block}\n\n"
+        "Output EXACTLY this format, one block per item, with a blank line between "
+        "blocks, and nothing else:\n\n"
+        "[Screenshot: <filename>]\n"
+        "<your punchy line>"
+    )
+    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE, model_override=override)
+
+
 def _generate_otc_custom_summary(category: str, url: str, content: str, model: str | None) -> str:
     """Write a short, RAW draft blurb for a custom Off the Clock pick.
 
@@ -1914,6 +1946,7 @@ async def api_proceed_section(request: Request) -> JSONResponse:
         # change minimal.
         "off_the_clock": _proceed_off_the_clock,
         "editorial": _proceed_editorial,
+        "insidetrack": _proceed_inside_track,
     }
 
     if section not in proceed_fns:
