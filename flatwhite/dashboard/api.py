@@ -1563,6 +1563,145 @@ async def api_pull_bank_item(bank_id: int, request: Request) -> JSONResponse:
     return JSONResponse({"pulled": True, "target_section": target_section, "week_iso": week_iso})
 
 
+# ── Assemble to beehiiv (Design B: format here, insert via beehiiv MCP) ──────
+# This endpoint does NOT call beehiiv. It reads each ready segment's saved text
+# from section_outputs, formats it into beehiiv-editor HTML (Task 4's
+# beehiiv_format), benchmarks it against the real corpus (Task 3's
+# assemble/benchmark), and folds in the template furniture the spec calls out
+# for assembly-time handling: sponsor (only ~6/10 real editions carry one),
+# Odd Picks, and the fixed Feedback Loop boilerplate. The response is the
+# ordered block list + a concatenated assembled_html string. Inserting that
+# into an actual beehiiv draft is a separate, human-in-the-loop step: read the
+# target draft with the beehiiv MCP's get_post_content(format="editor_html"),
+# then call edit_post_content with an operation whose content is
+# assembled_html (a whole-doc "replace", or per-block "insertAfter" against a
+# template scaffold for finer control) — never beehiiv's v2 REST content-write
+# endpoints, which are Enterprise-gated (403 SEND_API_NOT_ENTERPRISE_PLAN) on
+# this plan.
+
+# NOTE: the real FW dashboard section id for the Brains Trust segment is
+# "brains_trust" (see flatwhite/dashboard/static/index.html's SEGMENTS array
+# and flatwhite/dashboard/api.py's proceed_fns dict) — NOT "brains". Task 3's
+# flatwhite/assemble/benchmark.py was corrected the same way; kept consistent
+# here so benchmark_segment("brains_trust", ...) actually matches a profile.
+_REAL_SEGMENT_HEADINGS: dict[str, str] = {
+    "editorial": "INTRO",
+    "brains_trust": "THE BRAINS TRUST",
+    "top_picks": "PICK & SCROLL BY THE AUSSIE CORPORATE | LAST WEEK'S TOP PICKS",
+    "insidetrack": "THE INSIDE TRACK",
+    "pulse": "AUSCORP STRESS INDEX",
+    "off_the_clock": "OFF THE CLOCK",
+    "thread": "THREAD OF THE WEEK - r/AUSCORP",
+    "big_conversation": "THE BIG CONVERSATION",
+}
+
+# Identical every week per beehiiv_fw_ground_truth_ANALYSIS.md ("the only
+# fully invariant segment word-for-word across all 10 editions") — no input
+# needed, always appended last.
+_FEEDBACK_LOOP_HTML = (
+    "<h3>FEEDBACK LOOP | SHARE YOUR THOUGHTS</h3>"
+    "<p>If you have want to provide more detailed feedback or have any topics "
+    "that you want to hear more about, you can let us know "
+    '<a href="https://tally.so/r/3xXb8k">HERE</a>.</p>'
+)
+
+
+@app.post("/api/assemble-edition")
+async def api_assemble_edition(request: Request) -> JSONResponse:
+    """Build the FW edition as beehiiv-ready HTML blocks, in the current
+    running order, from every segment marked ready.
+
+    Body: {
+      "segments": [{"id": str, "status": str}, ...],   # the current SEGMENTS order
+      "sponsor": {"include": bool, "name": str, "text": str}?,   # optional
+      "odd_picks_text": str?,                                    # optional
+    }
+    Returns: {
+      "week_iso": str,
+      "blocks": [{"section": str, "label": str, "html": str, "benchmark": {...}}, ...],
+      "assembled_html": str,     # concatenation of every block's html, in order
+      "missing_ready": [str],    # running-order ids NOT marked ready (or with no saved output)
+    }
+    """
+    from flatwhite.db import load_all_section_outputs
+    from flatwhite.assemble.beehiiv_format import format_segment_block
+    from flatwhite.assemble.benchmark import benchmark_segment
+
+    body = await request.json()
+    segments = body.get("segments") or []
+    week_iso = get_current_week_iso()
+    saved_outputs = load_all_section_outputs(week_iso)
+
+    blocks: list[dict] = []
+    missing_ready: list[str] = []
+
+    for seg in segments:
+        section_id = seg.get("id")
+        if section_id not in _REAL_SEGMENT_HEADINGS:
+            continue  # not a real-content running-order segment (ignore unknown ids defensively)
+        is_ready = seg.get("status") == "ready"
+        saved = saved_outputs.get(section_id)
+        if not is_ready or not saved or not saved.get("output_text", "").strip():
+            missing_ready.append(section_id)
+            continue
+
+        label = _REAL_SEGMENT_HEADINGS[section_id]
+        text = saved["output_text"]
+        blocks.append({
+            "section": section_id,
+            "label": label,
+            "html": format_segment_block(label, text),
+            "benchmark": benchmark_segment(section_id, text),
+        })
+
+        # Sponsor sits immediately before Thread of the Week in every
+        # sponsor-present real edition (confirmed across all 6/10 sponsor
+        # editions in beehiiv_fw_ground_truth.json).
+        if section_id == "thread":
+            sponsor = body.get("sponsor") or {}
+            if sponsor.get("include"):
+                sponsor_label = f"TOGETHER WITH {sponsor.get('name', '').upper()}".strip()
+                sponsor_html = format_segment_block(sponsor_label, sponsor.get("text", ""))
+                blocks.insert(len(blocks) - 1, {
+                    "section": "sponsor",
+                    "label": sponsor_label,
+                    "html": sponsor_html,
+                    "benchmark": {"status": "no_data", "word_count": None,
+                                  "target_avg": None, "target_min": None,
+                                  "target_max": None, "n_editions": 0},
+                })
+
+    # Odd Picks + Feedback Loop: handled at assembly, not as running-order work
+    # pages (per spec). Odd Picks only when Victor supplied text; Feedback Loop
+    # always, as fixed boilerplate.
+    odd_picks_text = (body.get("odd_picks_text") or "").strip()
+    if odd_picks_text:
+        blocks.append({
+            "section": "odd_picks",
+            "label": "ODD PICKS FROM LAST WEEK",
+            "html": format_segment_block("ODD PICKS FROM LAST WEEK", odd_picks_text),
+            "benchmark": benchmark_segment("odd_picks", odd_picks_text),
+        })
+
+    blocks.append({
+        "section": "feedback_loop",
+        "label": "FEEDBACK LOOP | SHARE YOUR THOUGHTS",
+        "html": _FEEDBACK_LOOP_HTML,
+        "benchmark": {"status": "no_data", "word_count": None,
+                      "target_avg": None, "target_min": None,
+                      "target_max": None, "n_editions": 0},
+    })
+
+    assembled_html = "".join(b["html"] for b in blocks)
+
+    return JSONResponse({
+        "week_iso": week_iso,
+        "blocks": blocks,
+        "assembled_html": assembled_html,
+        "missing_ready": missing_ready,
+    })
+
+
 # ── Brains Trust angle pool (read-only Trading Strategy research bank) ──────
 
 @app.get("/api/brains-trust/angles")
