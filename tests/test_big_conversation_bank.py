@@ -41,6 +41,10 @@ def test_list_topic_folders_excludes_junk_and_utility_names(tmp_path, monkeypatc
     _make_topic(tmp_path, "INCOMPLETE - Office Attendance Bonus")
     (tmp_path / "_work").mkdir()
     (tmp_path / "_SPILLOVER hold").mkdir()
+    # Dotfolders like .claude (Claude skills) and .git must not appear as topics
+    (tmp_path / ".claude").mkdir()
+    (tmp_path / ".claude" / "skills").mkdir()
+    (tmp_path / ".git").mkdir()
 
     names = {t["topic"] for t in bcb.list_topic_folders()}
     assert names == {"Kids in the Office"}

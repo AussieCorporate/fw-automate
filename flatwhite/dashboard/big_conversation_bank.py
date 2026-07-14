@@ -33,7 +33,7 @@ IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
 # candidates: junk, work-in-progress scratch space, or routed to a
 # different segment (The Inside Track).
 _EXCLUDED_EXACT = {"Rubbish", "MISC Stand alone", "Redundancies & Breaking News", "untitled folder"}
-_EXCLUDED_PREFIXES = ("_", "DONE - ", "INCOMPLETE - ")
+_EXCLUDED_PREFIXES = (".", "_", "DONE - ", "INCOMPLETE - ")
 
 
 def _is_excluded(name: str) -> bool:
