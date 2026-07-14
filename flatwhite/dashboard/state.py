@@ -630,6 +630,36 @@ OTC_CATEGORY_LABELS = {
 }
 
 
+# Domains that already get mass press coverage; Off the Clock is meant to
+# surface niche small businesses that BENEFIT from being featured, not
+# outlets that already reach a huge audience on their own. Candidates from
+# these domains are ranked BEHIND equally- or lower-scored niche candidates,
+# not excluded outright - a genuinely standout mass-outlet story can still
+# surface if nothing niche beats it this week.
+_MASS_OUTLET_DOMAINS = {
+    "concreteplayground.com",
+    "timeout.com",
+    "theguardian.com",
+    "smh.com.au",
+    "gourmettraveller.com.au",
+}
+
+
+def _is_mass_outlet(url: str | None) -> bool:
+    if not url or "//" not in url:
+        return False
+    domain = url.split("/")[2].lower()
+    if domain.startswith("www."):
+        domain = domain[4:]
+    return any(domain == d or domain.endswith("." + d) for d in _MASS_OUTLET_DOMAINS)
+
+
+def _niche_rank_key(row: dict) -> tuple:
+    """Sort key: niche domains (0) before mass outlets (1); within each tier,
+    highest weighted_composite first."""
+    return (1 if _is_mass_outlet(row.get("url")) else 0, -(row.get("weighted_composite") or 0))
+
+
 def load_otc_candidates(week_iso: str | None = None) -> dict[str, list[dict[str, Any]]]:
     """Return Off the Clock candidates grouped by category for the editor pick UI.
 
@@ -676,6 +706,9 @@ def load_otc_candidates(week_iso: str | None = None) -> dict[str, list[dict[str,
                 continue
             seen_titles[section].add(title_key)
             grouped[section].append(d)
+
+    for items in grouped.values():
+        items.sort(key=_niche_rank_key)
 
     return {section: items[:cap] for section, items in grouped.items()}
 
