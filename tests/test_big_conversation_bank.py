@@ -258,6 +258,22 @@ def test_find_piece_markdown_returns_none_when_unprocessed(tmp_path, monkeypatch
     assert bcb.find_piece_markdown("Kids in the Office") is None
 
 
+def test_find_piece_markdown_does_not_match_suffix_of_another_topic(tmp_path, monkeypatch):
+    # Reviewer-found bug: "Office" and "the Office" are trailing substrings
+    # of "Kids in the Office", so a plain (unanchored) substring search over
+    # "Assets in `Kids in the Office/_BIG_CONVERSATION_assets/`." wrongly
+    # matched them. Neither shorter name has its own piece file, so both
+    # must return None rather than the "Kids in the Office" piece.
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
+    (tmp_path / "_KIDS_OFFICE_BIG_CONVERSATION.md").write_text(_FIXTURE_MD)
+    assert bcb.find_piece_markdown("the Office") is None
+    assert bcb.find_piece_markdown("Office") is None
+    # Regression check: the real topic still matches correctly.
+    assert bcb.find_piece_markdown("Kids in the Office") == (
+        tmp_path / "_KIDS_OFFICE_BIG_CONVERSATION.md"
+    )
+
+
 def test_find_piece_markdown_returns_none_when_root_missing(tmp_path, monkeypatch):
     monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path / "does-not-exist")
     assert bcb.find_piece_markdown("Kids in the Office") is None

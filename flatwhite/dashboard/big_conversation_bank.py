@@ -183,6 +183,13 @@ def find_piece_markdown(topic: str) -> Path | None:
     one whose BUILD map references this topic's own assets folder, e.g.
     "Assets in `Kids in the Office/_BIG_CONVERSATION_assets/`."
 
+    The skill always wraps that reference in backticks immediately before
+    the topic name (no other text in between). Matching includes the
+    leading backtick rather than a bare substring so a topic name that is
+    a trailing fragment of a longer topic's name (e.g. "Office" or "the
+    Office" inside "Kids in the Office") can't false-match it — the
+    backtick only ever sits directly before the FULL topic name.
+
     Returns None (soft-fail, not an error) if the Instagram output root is
     absent or no matching piece has been written yet — the topic just
     isn't processed yet.
@@ -190,7 +197,7 @@ def find_piece_markdown(topic: str) -> Path | None:
     root = INSTAGRAM_OUTPUT_DIR
     if not root.is_dir():
         return None
-    needle = f"{topic}/{ASSETS_DIRNAME}".lower()
+    needle = f"`{topic}/{ASSETS_DIRNAME}".lower()
     for md in sorted(root.glob("_*_BIG_CONVERSATION.md")):
         try:
             text = md.read_text(encoding="utf-8", errors="replace")
