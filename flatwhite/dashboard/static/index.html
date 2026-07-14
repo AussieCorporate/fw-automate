@@ -5,10 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Flat White — Editor Dashboard</title>
 <style>
-:root{--bg:#f2f2f7;--card:#fff;--sep:rgba(60,60,67,.11);--label:#1c1c1e;--label2:#8e8e93;--label3:#b7b7c0;
---accent:#6c63ff;--accent-soft:rgba(108,99,255,.09);--green:#34c759;--green-soft:rgba(52,199,89,.13);--green-ink:#248a3d;
---amber-soft:rgba(255,159,10,.15);--amber-ink:#b25e00;--track:#ececf1;--r-card:14px;--r-btn:10px;}
-body{background:var(--bg);color:var(--label)}
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
   --bg: #F7F6F3;
@@ -31,6 +27,11 @@ body{background:var(--bg);color:var(--label)}
   --font-serif: Arial, Helvetica, sans-serif;
   --font-sans: Arial, Helvetica, sans-serif;
 }
+/* iOS token overrides: intentionally redefines --bg/--green from the legacy :root above so the new iOS values win the cascade (later block wins on equal specificity) */
+:root{--bg:#f2f2f7;--card:#fff;--sep:rgba(60,60,67,.11);--label:#1c1c1e;--label2:#8e8e93;--label3:#b7b7c0;
+--accent:#6c63ff;--accent-soft:rgba(108,99,255,.09);--green:#34c759;--green-soft:rgba(52,199,89,.13);--green-ink:#248a3d;
+--amber-soft:rgba(255,159,10,.15);--amber-ink:#b25e00;--track:#ececf1;--r-card:14px;--r-btn:10px;}
+body{background:var(--bg);color:var(--label)}
 html { font-size: 16px; -webkit-font-smoothing: antialiased; }
 body { font-family: var(--font-sans); background: var(--bg); color: var(--text); min-height: 100vh; display: flex; font-size: 15px; }
 a { color: var(--blue); text-decoration: none; }
@@ -261,6 +262,7 @@ select.form-input { appearance: auto; }
 .cmd-pill.pill-red { background: #4a1e1e; color: #f66; }
 .layout{max-width:1120px;margin:0 auto;padding:0 20px 90px;display:flex;gap:18px;align-items:flex-start}
 .side{width:264px;flex:none;position:sticky;top:14px;background:var(--card);border:1px solid var(--sep);border-radius:var(--r-card);padding:14px 12px}
+/* .main here shares its class name with the legacy #main sidebar-offset rule above (line 52); only min-width:0 is new/non-overlapping (safe flex-overflow fix), so Task 2 must recheck this when it restructures the HTML */
 .main{flex:1;min-width:0}
 .page{background:var(--card);border-radius:var(--r-card);border:1px solid var(--sep);overflow:hidden}
 .page-h{display:flex;align-items:center;gap:12px;padding:16px 20px;border-bottom:.5px solid var(--sep)}
