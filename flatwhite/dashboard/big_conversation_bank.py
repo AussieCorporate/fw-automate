@@ -226,3 +226,47 @@ def parse_piece_markdown(text: str) -> dict:
     headline = blocks[0] if blocks else ""
     paragraphs = blocks[1:]
     return {"headline": headline, "paragraphs": paragraphs}
+
+
+_ASSET_NAME_RE = re.compile(r"^p(\d+)_(1|alt\d*)_.+\.(?:png|jpg|jpeg)$", re.IGNORECASE)
+
+
+def _asset_rank(token: str) -> int:
+    """Sort key for a screenshot's rank token: "1" (primary) sorts first,
+    then "alt", then "alt2", "alt3", ... in order."""
+    token = token.lower()
+    if token == "1":
+        return 0
+    if token == "alt":
+        return 1
+    return int(token[3:])  # "alt2" -> 2, "alt3" -> 3
+
+
+def list_paragraph_screenshots(topic: str) -> dict[int, list[dict]]:
+    """Group `<topic>/_BIG_CONVERSATION_assets/*.png` files by paragraph
+    number, using the skill's own naming convention
+    `p<paragraph>_<rank>_<handle>.png` (rank is "1" for the primary pick,
+    "alt"/"alt2"/"alt3" for ranked alternates — see SKILL.md's "Emit
+    outputs" step). Returns {} if the assets folder is absent (topic not
+    processed yet) or the Instagram output root is absent.
+    """
+    assets_dir = INSTAGRAM_OUTPUT_DIR / topic / ASSETS_DIRNAME
+    if not assets_dir.is_dir():
+        return {}
+    by_paragraph: dict[int, list[dict]] = {}
+    for img in assets_dir.iterdir():
+        if not img.is_file():
+            continue
+        match = _ASSET_NAME_RE.match(img.name)
+        if not match:
+            continue
+        paragraph = int(match.group(1))
+        rank = _asset_rank(match.group(2))
+        by_paragraph.setdefault(paragraph, []).append({
+            "file": img.name,
+            "rank": rank,
+            "url": asset_url(topic, ASSETS_DIRNAME, img.name),
+        })
+    for shots in by_paragraph.values():
+        shots.sort(key=lambda s: s["rank"])
+    return dict(sorted(by_paragraph.items()))

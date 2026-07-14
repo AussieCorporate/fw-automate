@@ -287,3 +287,38 @@ def test_parse_piece_markdown_splits_headline_and_paragraphs():
     assert parsed["paragraphs"][3].startswith("Fourth paragraph")
     # The BUILD map after the --- divider must not leak into paragraphs.
     assert not any("BUILD" in p for p in parsed["paragraphs"])
+
+
+def test_list_paragraph_screenshots_groups_and_ranks(tmp_path, monkeypatch):
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
+    assets = tmp_path / "Kids in the Office" / bcb.ASSETS_DIRNAME
+    assets.mkdir(parents=True)
+    for fname in [
+        "p1_1_Katie_Moloney.png", "p1_alt_IMG_7962.jpg", "p1_alt2_Emma_Ainley.png",
+        "p2_1_IMG_7955.jpg",
+    ]:
+        (assets / fname).write_bytes(b"x")
+
+    grouped = bcb.list_paragraph_screenshots("Kids in the Office")
+    assert [s["file"] for s in grouped[1]] == [
+        "p1_1_Katie_Moloney.png", "p1_alt_IMG_7962.jpg", "p1_alt2_Emma_Ainley.png",
+    ]
+    assert [s["file"] for s in grouped[2]] == ["p2_1_IMG_7955.jpg"]
+
+
+def test_list_paragraph_screenshots_ignores_non_matching_files(tmp_path, monkeypatch):
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
+    assets = tmp_path / "Kids in the Office" / bcb.ASSETS_DIRNAME
+    assets.mkdir(parents=True)
+    (assets / "p1_1_Katie_Moloney.png").write_bytes(b"x")
+    (assets / ".DS_Store").write_bytes(b"junk")
+    (assets / "notes.txt").write_text("not an image")
+
+    grouped = bcb.list_paragraph_screenshots("Kids in the Office")
+    assert list(grouped.keys()) == [1]
+    assert len(grouped[1]) == 1
+
+
+def test_list_paragraph_screenshots_empty_when_not_processed(tmp_path, monkeypatch):
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
+    assert bcb.list_paragraph_screenshots("Kids in the Office") == {}
