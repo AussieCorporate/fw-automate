@@ -1,6 +1,5 @@
 import os, json, sqlite3
 from datetime import datetime
-from unittest.mock import patch
 import flatwhite.dashboard.brains_trust_research as bt
 
 
@@ -128,3 +127,47 @@ def test_absent_db_still_returns_rows(tmp_path, monkeypatch):
     rows = bt.load_angle_recommendations(root=str(tmp_path), weeks=3)
     assert len(rows) == 1
     assert rows[0]["source_pdf_date"] is None
+
+
+def test_non_string_pitch_is_skipped_not_fatal(tmp_path, monkeypatch):
+    """A candidate with non-string pitch (e.g., int) is skipped gracefully."""
+    _frozen_today(tmp_path, monkeypatch, "20260713")
+    _write_candidates(str(tmp_path), "20260713", [
+        {"pitch": 123, "angle": "Has number pitch", "why_tac": "", "source_pdf_ids": []},
+        {"pitch": "Valid pitch", "angle": "", "why_tac": "", "source_pdf_ids": []},
+    ])
+    rows = bt.load_angle_recommendations(root=str(tmp_path), weeks=3)
+    assert len(rows) == 1 and rows[0]["pitch"] == "Valid pitch"
+
+
+def test_non_string_angle_is_skipped_not_fatal(tmp_path, monkeypatch):
+    """A candidate with non-string angle is skipped gracefully."""
+    _frozen_today(tmp_path, monkeypatch, "20260713")
+    _write_candidates(str(tmp_path), "20260713", [
+        {"pitch": "Has bad angle", "angle": 456, "why_tac": "", "source_pdf_ids": []},
+        {"pitch": "Valid angle", "angle": "OK", "why_tac": "", "source_pdf_ids": []},
+    ])
+    rows = bt.load_angle_recommendations(root=str(tmp_path), weeks=3)
+    assert len(rows) == 1 and rows[0]["pitch"] == "Valid angle"
+
+
+def test_non_string_why_tac_is_skipped_not_fatal(tmp_path, monkeypatch):
+    """A candidate with non-string why_tac is skipped gracefully."""
+    _frozen_today(tmp_path, monkeypatch, "20260713")
+    _write_candidates(str(tmp_path), "20260713", [
+        {"pitch": "Bad why_tac", "angle": "", "why_tac": 789, "source_pdf_ids": []},
+        {"pitch": "Valid why_tac", "angle": "", "why_tac": "Good", "source_pdf_ids": []},
+    ])
+    rows = bt.load_angle_recommendations(root=str(tmp_path), weeks=3)
+    assert len(rows) == 1 and rows[0]["pitch"] == "Valid why_tac"
+
+
+def test_non_list_source_pdf_ids_is_skipped_not_fatal(tmp_path, monkeypatch):
+    """A candidate with non-list source_pdf_ids (e.g., scalar int) is skipped gracefully."""
+    _frozen_today(tmp_path, monkeypatch, "20260713")
+    _write_candidates(str(tmp_path), "20260713", [
+        {"pitch": "Scalar PDF ids", "angle": "", "why_tac": "", "source_pdf_ids": 5},
+        {"pitch": "Valid PDF ids", "angle": "", "why_tac": "", "source_pdf_ids": [123]},
+    ])
+    rows = bt.load_angle_recommendations(root=str(tmp_path), weeks=3)
+    assert len(rows) == 1 and rows[0]["pitch"] == "Valid PDF ids"

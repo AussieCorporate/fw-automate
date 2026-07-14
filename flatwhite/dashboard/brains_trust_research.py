@@ -104,11 +104,22 @@ def load_angle_recommendations(
         cands = data.get("candidates")
         if not isinstance(cands, list):
             continue
-        good = [c for c in cands if isinstance(c, dict) and (c.get("pitch") or "").strip()]
+        good = []
+        for c in cands:
+            if not isinstance(c, dict):
+                continue
+            pitch = c.get("pitch")
+            if not isinstance(pitch, str) or not pitch.strip():
+                continue
+            good.append(c)
         for c in good:
-            for i in (c.get("source_pdf_ids") or []):
-                if isinstance(i, int):
-                    all_pdf_ids.add(i)
+            try:
+                for i in (c.get("source_pdf_ids") or []):
+                    if isinstance(i, int):
+                        all_pdf_ids.add(i)
+            except TypeError:
+                # source_pdf_ids is not iterable; skip it gracefully
+                pass
         parsed.append((date_digits, good))
 
     src_dates = _pdf_dates(root, all_pdf_ids)
@@ -116,19 +127,42 @@ def load_angle_recommendations(
     rows: list[dict] = []
     for date_digits, cands in parsed:
         for c in cands:
-            pitch = c["pitch"].strip()
-            src_date = ""
-            for i in (c.get("source_pdf_ids") or []):
-                if isinstance(i, int) and i in src_dates and src_dates[i][0]:
-                    src_date = max(src_date, src_dates[i][0])
-            key = hashlib.sha1(f"{date_digits}:{pitch}".encode("utf-8")).hexdigest()[:16]
-            rows.append({
-                "id": f"angle:{key}",
-                "date_iso": _dir_date_iso(date_digits),
-                "pitch": pitch,
-                "angle": (c.get("angle") or "").strip(),
-                "why_tac": (c.get("why_tac") or "").strip(),
-                "source_pdf_ids": [i for i in (c.get("source_pdf_ids") or []) if isinstance(i, int)],
-                "source_pdf_date": src_date or None,
-            })
+            try:
+                pitch = c["pitch"]
+                if not isinstance(pitch, str):
+                    continue
+                pitch = pitch.strip()
+
+                angle = c.get("angle")
+                if angle is not None and not isinstance(angle, str):
+                    continue
+                angle = (angle or "").strip()
+
+                why_tac = c.get("why_tac")
+                if why_tac is not None and not isinstance(why_tac, str):
+                    continue
+                why_tac = (why_tac or "").strip()
+
+                src_date = ""
+                try:
+                    for i in (c.get("source_pdf_ids") or []):
+                        if isinstance(i, int) and i in src_dates and src_dates[i][0]:
+                            src_date = max(src_date, src_dates[i][0])
+                except TypeError:
+                    # source_pdf_ids is not iterable; skip the enrichment
+                    pass
+
+                key = hashlib.sha1(f"{date_digits}:{pitch}".encode("utf-8")).hexdigest()[:16]
+                rows.append({
+                    "id": f"angle:{key}",
+                    "date_iso": _dir_date_iso(date_digits),
+                    "pitch": pitch,
+                    "angle": angle,
+                    "why_tac": why_tac,
+                    "source_pdf_ids": [i for i in (c.get("source_pdf_ids") or []) if isinstance(i, int)],
+                    "source_pdf_date": src_date or None,
+                })
+            except (AttributeError, TypeError, KeyError):
+                # Skip malformed candidates
+                continue
     return rows[:limit]
