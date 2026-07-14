@@ -2228,3 +2228,21 @@ async def api_top_picks_scrape(request: Request) -> JSONResponse:
         })
     except Exception as e:
         return JSONResponse({"picks": [], "error": str(e)}, status_code=500)
+
+
+@app.get("/api/top-picks/recent-posts")
+def api_top_picks_recent_posts() -> JSONResponse:
+    """Return recent Pick & Scroll edition posts (title + link) so Victor can
+    flag which ones were FEATURE stories.
+
+    A feature has no click-tracked link (the story runs inline, not as an
+    external link), so it never shows up in /api/top-picks/scrape's
+    click-ranked list - the "top clicks" that DO show for a feature edition
+    are just the OTHER links in that same article, not the feature itself.
+    """
+    from flatwhite.editorial.beehiiv_picks import fetch_recent_posts
+    try:
+        posts = fetch_recent_posts(days=7)
+        return JSONResponse({"posts": posts})
+    except Exception as e:
+        return JSONResponse({"posts": [], "error": str(e)}, status_code=500)

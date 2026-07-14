@@ -318,6 +318,9 @@ var S = {
   proceedData: {},
   topPicks: null,            // Beehiiv click data from Pick & Scroll
   topPicksChecked: {},       // { index: true }
+  topPicksRecentPosts: null,
+  topPicksFeatureDrafts: {},   // { post_id: draftBlurbText }
+  topPicksFeatureAdds: {},     // { post_id: {title, url, blurb} } — confirmed features merged into the list
   topicHeat: null,           // Reddit anomalies + Google rising queries
   signalIntelligence: {},   // { signal_name: {delta, articles, commentary} }
   signalIntelExpanded: {},  // { signal_name: bool }
@@ -1895,8 +1898,93 @@ function renderProceedModal() {
 /* ═══════════════════════════════════════════════════════════════════════
    SECTION: TOP PICKS (Beehiiv Pick & Scroll)
    ═══════════════════════════════════════════════════════════════════════ */
+function _allTopPicks() {
+  var clickPicks = (S.topPicks && S.topPicks.picks) || [];
+  var features = Object.keys(S.topPicksFeatureAdds).map(function(id) {
+    var f = S.topPicksFeatureAdds[id];
+    return {
+      url: f.url, summary: f.blurb, clicks: null, is_feature: true,
+      campaign_title: f.title, campaign_url: f.url, source_domain: "feature",
+    };
+  });
+  return clickPicks.concat(features);
+}
+
+function loadTopPicksRecentPosts() {
+  S.loading.top_picks_features = true; render();
+  api("/api/top-picks/recent-posts")
+    .then(function(d) { S.topPicksRecentPosts = d.posts || []; S.loading.top_picks_features = false; render(); })
+    .catch(function(e) { S.loading.top_picks_features = false; render(); showToast("Could not load recent editions: " + e.message, "error"); });
+}
+
+function toggleTopPicksFeatureDraft(id, checked) {
+  if (checked) {
+    if (S.topPicksFeatureDrafts[id] === undefined) S.topPicksFeatureDrafts[id] = "";
+  } else {
+    delete S.topPicksFeatureDrafts[id];
+    delete S.topPicksFeatureAdds[id];
+  }
+  render();
+}
+
+function updateTopPicksFeatureBlurb(id, value) {
+  S.topPicksFeatureDrafts[id] = value;
+}
+
+function addTopPicksFeature(id) {
+  var post = (S.topPicksRecentPosts || []).find(function(p) { return p.id === id; });
+  var blurb = (S.topPicksFeatureDrafts[id] || "").trim();
+  if (!post || !blurb) { showToast("Write the feature's blurb first", "error"); return; }
+  S.topPicksFeatureAdds[id] = { title: post.title, url: post.web_url, blurb: blurb };
+  showToast("Added feature: " + post.title);
+  render();
+}
+
+function renderTopPicksFeaturesPanel() {
+  var h = '<div class="card mb20">';
+  h += '<div style="font-weight:600;margin-bottom:8px;">Feature stories</div>';
+  h += '<p style="font-size:12px;color:var(--text-3);margin:0 0 10px 0;">Features run inline with no click-tracked link, so they never show up in the click-ranked list above. Flag the ones that ran this week and write their own blurb so they can make the cut.</p>';
+  if (!S.topPicksRecentPosts) {
+    h += '<button class="btn btn-sm btn-secondary" onclick="loadTopPicksRecentPosts()"' + (S.loading.top_picks_features ? ' disabled' : '') + '>' + (S.loading.top_picks_features ? 'Loading…' : 'Load recent editions') + '</button>';
+    h += '</div>';
+    return h;
+  }
+  if (!S.topPicksRecentPosts.length) {
+    h += '<p style="font-size:12px;color:var(--text-3);">No recent editions found.</p></div>';
+    return h;
+  }
+  S.topPicksRecentPosts.forEach(function(post) {
+    var added = S.topPicksFeatureAdds[post.id];
+    h += '<div class="fr mb8" style="align-items:flex-start;gap:8px;">';
+    h += '<input type="checkbox"' + (added ? " checked" : "") + ' onchange="toggleTopPicksFeatureDraft(\'' + esc(post.id) + '\',this.checked)">';
+    h += '<div style="flex:1;">';
+    h += '<div style="font-size:13px;font-weight:600;">' + esc(post.title) + '</div>';
+    h += '<div style="font-size:11px;color:var(--text-3);margin-bottom:4px;"><a href="' + esc(post.web_url) + '" target="_blank">' + esc(post.web_url) + '</a></div>';
+    if (S.topPicksFeatureDrafts[post.id] !== undefined) {
+      h += '<textarea class="form-input" rows="2" placeholder="Write this feature\'s blurb..." oninput="updateTopPicksFeatureBlurb(\'' + esc(post.id) + '\',this.value)">' + esc(S.topPicksFeatureDrafts[post.id] || "") + '</textarea>';
+      h += '<button class="btn btn-sm btn-success" style="margin-top:6px;" onclick="addTopPicksFeature(\'' + esc(post.id) + '\')">Add to list</button>';
+    }
+    h += '</div></div>';
+  });
+  h += '</div>';
+  return h;
+}
+
+function buildTopPicksOutput() {
+  var picks = _allTopPicks();
+  var selected = picks.filter(function(p, i) { return S.topPicksChecked && S.topPicksChecked[i]; });
+  if (!selected.length) { showToast("Select at least one pick first", "error"); return; }
+  var lines = selected.map(function(p) {
+    var summary = (p.summary || "").replace(/\s+/g, " ").trim();
+    if (!/[.!?]$/.test(summary)) summary += ".";
+    return summary + " " + (p.url || "");
+  });
+  var ta = $("output-top_picks");
+  if (ta) ta.value = lines.join("\n\n");
+}
+
 function renderTopPicksBody() {
-  var picks = (S.topPicks && S.topPicks.picks) || [];
+  var picks = _allTopPicks();
   if (!picks.length) return '<div class="card mb20"><p style="color:var(--text-3);font-size:13px;">No data yet. Click SCRAPE to fetch click data from Pick &amp; Scroll.</p></div>';
 
   var checkedCount = Object.keys(S.topPicksChecked || {}).filter(function(k) { return S.topPicksChecked[k]; }).length;
@@ -1932,10 +2020,14 @@ function renderTopPicksBody() {
     h += '</div>';
     h += '<div style="font-size:11px;color:var(--text-3);margin-top:4px;">Campaign: <a href="' + campaignUrl + '" target="_blank" rel="noopener" style="color:var(--text-2);text-decoration:underline;">' + campaign + '</a></div>';
     h += '</div></div>';
-    h += '<div style="text-align:center;flex-shrink:0;min-width:60px;">';
-    h += '<div style="font-size:24px;font-weight:700;color:var(--amber);">' + clicks + '</div>';
-    h += '<div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;">clicks</div>';
-    h += '</div>';
+    if (p.is_feature) {
+      h += '<div style="text-align:center;flex-shrink:0;min-width:60px;"><span class="chip chip-amber" style="font-size:10px;">FEATURE</span></div>';
+    } else {
+      h += '<div style="text-align:center;flex-shrink:0;min-width:60px;">';
+      h += '<div style="font-size:24px;font-weight:700;color:var(--amber);">' + clicks + '</div>';
+      h += '<div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;">clicks</div>';
+      h += '</div>';
+    }
     h += '</div></div>';
   });
   return h;
@@ -1948,7 +2040,7 @@ function toggleTopPick(idx, val) {
 }
 
 function copyTopPicks() {
-  var picks = (S.topPicks && S.topPicks.picks) || [];
+  var picks = _allTopPicks();
   var selected = [];
   for (var i = 0; i < picks.length; i++) {
     if (S.topPicksChecked && S.topPicksChecked[i]) selected.push(picks[i]);
@@ -2020,7 +2112,8 @@ function scrapeTopPicks() {
 
 function renderTopPicks(el) {
   var hasPicks = !!(S.topPicks && S.topPicks.picks && S.topPicks.picks.length);
-  if (!S.sectionPhase.top_picks) S.sectionPhase.top_picks = hasPicks ? 2 : 1;
+  var hasOutput = !!(S.sectionOutputs.top_picks && S.sectionOutputs.top_picks.output_text);
+  if (!S.sectionPhase.top_picks) S.sectionPhase.top_picks = hasOutput ? 3 : (hasPicks ? 2 : 1);
 
   var p1 = '';
   p1 += '<div class="card mb20">';
@@ -2029,14 +2122,18 @@ function renderTopPicks(el) {
   if (S.loading.top_picks) p1 += ' <span class="ingest-spinner"></span>';
   if (S.lastScraped.top_picks) p1 += '<span style="font-size:11px;color:var(--text-3);margin-left:10px;">Last scraped: ' + esc(S.lastScraped.top_picks) + '</span>';
   p1 += '</div>';
+  p1 += renderTopPicksFeaturesPanel();
 
   var p2 = renderTopPicksBody();
+  p2 += '<div style="margin-top:12px;"><button class="btn btn-sm btn-secondary" onclick="buildTopPicksOutput()">Build block from selected</button></div>';
 
   var h = '';
-  h += phasePanel('top_picks', 1, 'Scrape', true, hasPicks, p1);
-  h += phasePanel('top_picks', 2, 'Select & Copy', hasPicks, false, p2);
+  h += phasePanel('top_picks', 1, 'Scrape + flag features', true, hasPicks, p1);
+  h += phasePanel('top_picks', 2, 'Select & Copy', true, false, p2);
+  h += phasePanel('top_picks', 3, 'Output', true, hasOutput, outputBox('top_picks'));
 
   el.innerHTML = h;
+  fillOutput('top_picks');
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
