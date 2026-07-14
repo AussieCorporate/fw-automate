@@ -281,3 +281,51 @@ def list_paragraph_screenshots(topic: str) -> dict[int, list[dict]]:
     for shots in by_paragraph.values():
         shots.sort(key=lambda s: s["rank"])
     return dict(sorted(by_paragraph.items()))
+
+
+def get_topic_detail(topic: str, pairing_overrides: dict[str, int] | None = None) -> dict:
+    """Return the full Big Conversation working page for one topic: the
+    drafted piece's headline + paragraphs, each paragraph's paired
+    screenshots (with any drag-drop overrides applied), and the viral /
+    T1 / T2 / T3 pools.
+
+    `pairing_overrides` is {filename: paragraph_index}, loaded by the
+    caller from FW's own DB (flatwhite.dashboard.state.load_pairing_overrides)
+    — this module never persists anything itself; it only applies
+    overrides handed to it, keeping filesystem reads and DB writes cleanly
+    separated.
+
+    Soft-fails when the topic isn't processed yet (no piece markdown, or
+    no screenshots parsed from its assets folder): returns
+    {"processed": False, "topic": topic, "pools": {...}} so the UI can show
+    a "waiting for the skill to run" state instead of an error.
+    """
+    pairing_overrides = pairing_overrides or {}
+    pools = list_pool_screenshots(topic)
+    md_path = find_piece_markdown(topic)
+    by_paragraph = list_paragraph_screenshots(topic)
+
+    if md_path is None or not by_paragraph:
+        return {"processed": False, "topic": topic, "pools": pools}
+
+    if pairing_overrides:
+        regrouped: dict[int, list[dict]] = {p: [] for p in by_paragraph}
+        for paragraph, shots in by_paragraph.items():
+            for shot in shots:
+                target = pairing_overrides.get(shot["file"], paragraph)
+                regrouped.setdefault(target, []).append(shot)
+        by_paragraph = regrouped
+
+    parsed = parse_piece_markdown(md_path.read_text(encoding="utf-8", errors="replace"))
+    paragraphs = [
+        {"index": i, "text": text, "screenshots": by_paragraph.get(i, [])}
+        for i, text in enumerate(parsed["paragraphs"], start=1)
+    ]
+
+    return {
+        "processed": True,
+        "topic": topic,
+        "headline": parsed["headline"],
+        "paragraphs": paragraphs,
+        "pools": pools,
+    }

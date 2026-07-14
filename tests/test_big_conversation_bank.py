@@ -343,3 +343,43 @@ def test_list_paragraph_screenshots_ignores_non_matching_files(tmp_path, monkeyp
 def test_list_paragraph_screenshots_empty_when_not_processed(tmp_path, monkeypatch):
     monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
     assert bcb.list_paragraph_screenshots("Kids in the Office") == {}
+
+
+def _seed_processed_topic(tmp_path, monkeypatch):
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
+    (tmp_path / "_KIDS_OFFICE_BIG_CONVERSATION.md").write_text(_FIXTURE_MD)
+    assets = tmp_path / "Kids in the Office" / bcb.ASSETS_DIRNAME
+    assets.mkdir(parents=True)
+    (assets / "p1_1_Katie_Moloney.png").write_bytes(b"x")
+    (assets / "p2_1_IMG_7955.jpg").write_bytes(b"x")
+
+
+def test_get_topic_detail_soft_fails_when_not_processed(tmp_path, monkeypatch):
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
+    detail = bcb.get_topic_detail("Kids in the Office")
+    assert detail == {
+        "processed": False,
+        "topic": "Kids in the Office",
+        "pools": {"viral": [], "T1": [], "T2": [], "T3": []},
+    }
+
+
+def test_get_topic_detail_returns_paragraphs_with_paired_screenshots(tmp_path, monkeypatch):
+    _seed_processed_topic(tmp_path, monkeypatch)
+    detail = bcb.get_topic_detail("Kids in the Office")
+    assert detail["processed"] is True
+    assert detail["headline"] == "Nobody decided kids should be in the office."
+    assert len(detail["paragraphs"]) == 4
+    assert detail["paragraphs"][0]["index"] == 1
+    assert [s["file"] for s in detail["paragraphs"][0]["screenshots"]] == ["p1_1_Katie_Moloney.png"]
+    assert [s["file"] for s in detail["paragraphs"][1]["screenshots"]] == ["p2_1_IMG_7955.jpg"]
+    assert detail["paragraphs"][2]["screenshots"] == []
+
+
+def test_get_topic_detail_applies_pairing_overrides(tmp_path, monkeypatch):
+    _seed_processed_topic(tmp_path, monkeypatch)
+    overrides = {"p1_1_Katie_Moloney.png": 2}
+    detail = bcb.get_topic_detail("Kids in the Office", pairing_overrides=overrides)
+    assert detail["paragraphs"][0]["screenshots"] == []
+    files_in_p2 = {s["file"] for s in detail["paragraphs"][1]["screenshots"]}
+    assert files_in_p2 == {"p1_1_Katie_Moloney.png", "p2_1_IMG_7955.jpg"}
