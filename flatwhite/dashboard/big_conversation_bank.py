@@ -308,15 +308,26 @@ def get_topic_detail(topic: str, pairing_overrides: dict[str, int] | None = None
     if md_path is None or not by_paragraph:
         return {"processed": False, "topic": topic, "pools": pools}
 
+    # Parsed before regrouping so paragraph_count is available to bounds-check
+    # overrides below (an override targeting a paragraph that doesn't exist
+    # must not be able to silently disappear a screenshot from the response).
+    parsed = parse_piece_markdown(md_path.read_text(encoding="utf-8", errors="replace"))
+    paragraph_count = len(parsed["paragraphs"])
+
     if pairing_overrides:
-        regrouped: dict[int, list[dict]] = {p: [] for p in by_paragraph}
+        regrouped: dict[int, list[dict]] = {}
         for paragraph, shots in by_paragraph.items():
             for shot in shots:
                 target = pairing_overrides.get(shot["file"], paragraph)
+                if not (1 <= target <= paragraph_count):
+                    # Stale or out-of-range override (piece reprocessed with a
+                    # different paragraph count, or a bad index from the
+                    # drag-drop UI): treat it as "no override for this shot",
+                    # not "delete this shot" - fall back to its own paragraph.
+                    target = paragraph
                 regrouped.setdefault(target, []).append(shot)
         by_paragraph = regrouped
 
-    parsed = parse_piece_markdown(md_path.read_text(encoding="utf-8", errors="replace"))
     paragraphs = [
         {"index": i, "text": text, "screenshots": by_paragraph.get(i, [])}
         for i, text in enumerate(parsed["paragraphs"], start=1)

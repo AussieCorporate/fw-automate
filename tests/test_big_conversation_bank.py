@@ -383,3 +383,43 @@ def test_get_topic_detail_applies_pairing_overrides(tmp_path, monkeypatch):
     assert detail["paragraphs"][0]["screenshots"] == []
     files_in_p2 = {s["file"] for s in detail["paragraphs"][1]["screenshots"]}
     assert files_in_p2 == {"p1_1_Katie_Moloney.png", "p2_1_IMG_7955.jpg"}
+
+
+def test_get_topic_detail_falls_back_on_out_of_range_override(tmp_path, monkeypatch):
+    # Reviewer-found bug: an override targeting a paragraph index that
+    # doesn't exist on this piece (e.g. stale after reprocessing with fewer
+    # paragraphs, or a bad index from the drag-drop UI) must not silently
+    # drop the screenshot. It should fall back to the shot's ORIGINAL
+    # paragraph, as if no override had been supplied for it.
+    _seed_processed_topic(tmp_path, monkeypatch)
+    overrides = {"p1_1_Katie_Moloney.png": 99}
+    detail = bcb.get_topic_detail("Kids in the Office", pairing_overrides=overrides)
+
+    # The fixture piece has 4 paragraphs, so the shot falls back to its
+    # original home: paragraph 1.
+    assert [s["file"] for s in detail["paragraphs"][0]["screenshots"]] == [
+        "p1_1_Katie_Moloney.png"
+    ]
+    # No screenshot may vanish without a trace: every screenshot seeded for
+    # this topic must appear in exactly one paragraph's screenshots list.
+    all_files = [
+        s["file"] for p in detail["paragraphs"] for s in p["screenshots"]
+    ]
+    assert set(all_files) == {"p1_1_Katie_Moloney.png", "p2_1_IMG_7955.jpg"}
+    assert len(all_files) == 2
+
+
+def test_get_topic_detail_override_into_empty_paragraph(tmp_path, monkeypatch):
+    # Confirmed working already via the `setdefault` fallback, but untested
+    # before this fix pass - lock it in now that the pre-seeding line
+    # (`regrouped = {p: [] for p in by_paragraph}`) has been simplified away,
+    # to make sure moving a shot into a paragraph with zero original
+    # screenshots still works.
+    _seed_processed_topic(tmp_path, monkeypatch)
+    overrides = {"p2_1_IMG_7955.jpg": 3}
+    detail = bcb.get_topic_detail("Kids in the Office", pairing_overrides=overrides)
+
+    assert detail["paragraphs"][1]["screenshots"] == []
+    assert [s["file"] for s in detail["paragraphs"][2]["screenshots"]] == [
+        "p2_1_IMG_7955.jpg"
+    ]
