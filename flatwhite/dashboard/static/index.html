@@ -989,6 +989,7 @@ function draftBrainsTrust() {
   }).then(function(d) {
     S.brainsDrafting = false;
     S.sectionOutputs.brains_trust = { output_text: d.output, model_used: d.model };
+    S.sectionPhase.brains_trust = 2;
     render();
     fillOutput('brains_trust');
     showToast("Brains Trust drafted");
@@ -1025,6 +1026,7 @@ function renderBrainsPicker() {
 
 function renderBrains(el) {
   var hasOutput = !!(S.sectionOutputs.brains_trust && S.sectionOutputs.brains_trust.output_text);
+  if (!S.sectionPhase.brains_trust) S.sectionPhase.brains_trust = hasOutput ? 2 : 1;
 
   var p1 = renderBrainsPicker();
 
