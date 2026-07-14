@@ -218,3 +218,56 @@ def test_list_pool_screenshots_empty_when_topic_missing(tmp_path, monkeypatch):
     monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
     pools = bcb.list_pool_screenshots("Nonexistent Topic")
     assert pools == {"viral": [], "T1": [], "T2": [], "T3": []}
+
+
+_FIXTURE_MD = """**THE BIG CONVERSATION**
+
+Nobody decided kids should be in the office.
+
+First paragraph text here about the arithmetic of school holidays.
+
+Second paragraph about it not being easy on everyone else.
+
+Third paragraph about the upside and the insurance risk.
+
+Fourth paragraph about companies that already sorted it.
+
+---
+
+# BUILD: paragraph -> screenshot map
+
+Assets in `Kids in the Office/_BIG_CONVERSATION_assets/`.
+
+**P1 -- the arithmetic**
+1. `p1_1_Katie_Moloney.png` -- some note.
+"""
+
+
+def test_find_piece_markdown_matches_by_assets_reference(tmp_path, monkeypatch):
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
+    (tmp_path / "_KIDS_OFFICE_BIG_CONVERSATION.md").write_text(_FIXTURE_MD)
+    (tmp_path / "_OTHER_TOPIC_BIG_CONVERSATION.md").write_text(
+        "Assets in `Some Other Topic/_BIG_CONVERSATION_assets/`.\n"
+    )
+    found = bcb.find_piece_markdown("Kids in the Office")
+    assert found == tmp_path / "_KIDS_OFFICE_BIG_CONVERSATION.md"
+
+
+def test_find_piece_markdown_returns_none_when_unprocessed(tmp_path, monkeypatch):
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
+    assert bcb.find_piece_markdown("Kids in the Office") is None
+
+
+def test_find_piece_markdown_returns_none_when_root_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path / "does-not-exist")
+    assert bcb.find_piece_markdown("Kids in the Office") is None
+
+
+def test_parse_piece_markdown_splits_headline_and_paragraphs():
+    parsed = bcb.parse_piece_markdown(_FIXTURE_MD)
+    assert parsed["headline"] == "Nobody decided kids should be in the office."
+    assert len(parsed["paragraphs"]) == 4
+    assert parsed["paragraphs"][0].startswith("First paragraph")
+    assert parsed["paragraphs"][3].startswith("Fourth paragraph")
+    # The BUILD map after the --- divider must not leak into paragraphs.
+    assert not any("BUILD" in p for p in parsed["paragraphs"])

@@ -172,3 +172,50 @@ def list_pool_screenshots(topic: str) -> dict[str, list[dict]]:
             if img.is_file() and img.suffix.lower() in IMAGE_EXTENSIONS:
                 pools[bucket].append({"file": img.name, "url": asset_url(topic, sub.name, img.name)})
     return pools
+
+
+def find_piece_markdown(topic: str) -> Path | None:
+    """Find the `_<SHORTNAME>_BIG_CONVERSATION.md` file the skill wrote for
+    `topic`, at the Instagram output root. The shortname is an AI-chosen
+    abbreviation (e.g. "Kids in the Office" -> "_KIDS_OFFICE_BIG_CONVERSATION.md")
+    that can't be derived from the folder name programmatically — instead
+    this searches every `_*_BIG_CONVERSATION.md` at the output root for the
+    one whose BUILD map references this topic's own assets folder, e.g.
+    "Assets in `Kids in the Office/_BIG_CONVERSATION_assets/`."
+
+    Returns None (soft-fail, not an error) if the Instagram output root is
+    absent or no matching piece has been written yet — the topic just
+    isn't processed yet.
+    """
+    root = INSTAGRAM_OUTPUT_DIR
+    if not root.is_dir():
+        return None
+    needle = f"{topic}/{ASSETS_DIRNAME}".lower()
+    for md in sorted(root.glob("_*_BIG_CONVERSATION.md")):
+        try:
+            text = md.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if needle in text.lower():
+            return md
+    return None
+
+
+def parse_piece_markdown(text: str) -> dict:
+    """Split a `_<TOPIC>_BIG_CONVERSATION.md` file's finished-piece section
+    into {"headline": str, "paragraphs": list[str]}.
+
+    Per the big-conversation skill's own output shape: a
+    `**THE BIG CONVERSATION**` header line, a one-line bold headline, then
+    one paragraph per screenshot group (p1, p2, ...), then a `---` divider
+    before the BUILD map. Only the text before the first such divider is
+    the piece; everything after is the paragraph->screenshot map, read
+    separately from the assets folder's own filenames (Task 5).
+    """
+    piece = text.split("\n---\n", 1)[0].strip()
+    blocks = [b.strip() for b in re.split(r"\n\s*\n", piece) if b.strip()]
+    if blocks and re.fullmatch(r"\*\*THE BIG CONVERSATION\*\*", blocks[0]):
+        blocks = blocks[1:]
+    headline = blocks[0] if blocks else ""
+    paragraphs = blocks[1:]
+    return {"headline": headline, "paragraphs": paragraphs}
