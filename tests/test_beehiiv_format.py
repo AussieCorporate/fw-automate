@@ -71,3 +71,21 @@ def test_link_with_multiple_underscores_in_url_not_corrupted():
     assert f'href="{url}"' in html
     assert "<em>" not in html
     assert "</em>" not in html
+
+
+def test_url_with_quote_char_prevents_attribute_injection():
+    """Verify that a URL containing a literal double-quote character does not
+    break out of the href attribute and inject new HTML attributes. All quotes
+    must be escaped to &quot; so the href attribute closes properly."""
+    html = md_to_editor_html('[here](https://reddit.com/x" onmouseover="alert(1))')
+    # The dangerous input has unescaped quotes. After the fix, those quotes
+    # must be escaped as &quot; inside the href attribute value.
+    # The markdown regex stops at the first ), so the captured URL is:
+    # https://reddit.com/x&quot; onmouseover=&quot;alert(1
+    assert 'href="https://reddit.com/x&quot; onmouseover=&quot;alert(1' in html
+    # Verify the link still renders
+    assert '>here</a>' in html
+    # Critical: confirm no unescaped quote breaks out of the href attribute.
+    # If the injection worked, we'd see: href="short_url" onmouseover="alert(1)">
+    # That pattern is ABSENT, proving the quotes are escaped and contained.
+    assert 'href="https://reddit.com/x" ' not in html  # Would indicate breakout

@@ -74,7 +74,7 @@ def _inline(text: str) -> str:
     Text is HTML-escaped first so raw '<'/'>'/'&' in source prose can't break
     the output; marks are then reintroduced as real tags via _process_marks().
     """
-    escaped = html.escape(text, quote=False)
+    escaped = html.escape(text, quote=True)
     return _process_marks(escaped)
 
 
@@ -111,6 +111,6 @@ def format_segment_block(label: str, text: str, heading_level: str = "h3") -> st
     label is used verbatim as the visible heading text (callers pass the real
     published header name, e.g. "THE BIG CONVERSATION", not the FW section id).
     """
-    heading = f"<{heading_level}>{html.escape(label, quote=False)}</{heading_level}>"
+    heading = f"<{heading_level}>{html.escape(label, quote=True)}</{heading_level}>"
     body = md_to_editor_html(text)
     return heading + body
