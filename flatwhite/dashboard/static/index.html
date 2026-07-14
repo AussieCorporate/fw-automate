@@ -258,6 +258,17 @@ select.form-input { appearance: auto; }
 .bc-topic-name{font-weight:600;flex:1}
 .bc-topic-meta{color:var(--label2);font-size:12px}
 .bc-topic-actions{display:flex;gap:8px}
+.bc-detail-head{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.bc-detail-title{font-weight:700;font-size:15px}
+.bc-headline{font-weight:700;font-size:16px;margin-bottom:14px}
+.bc-paragraph{border-top:.5px solid var(--sep);padding:14px 0}
+.bc-p-text{font-size:14px;line-height:1.5;margin-bottom:10px}
+.bc-shots{display:flex;gap:8px;flex-wrap:wrap;min-height:64px}
+.bc-shot{width:72px;height:72px;object-fit:cover;border-radius:8px;cursor:grab;border:1px solid var(--sep)}
+.bc-pool{margin-top:16px}
+.bc-pool-label{font-size:11px;font-weight:700;color:var(--label3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+.bc-tier-toggle{margin-top:12px}
+.bc-instruction{background:var(--accent-soft);border-radius:8px;padding:10px;font-size:12px;margin-top:10px;font-family:monospace}
 </style>
 </head>
 <body>
@@ -1281,8 +1292,106 @@ function closeBigConvTopic() {
 }
 
 function renderBigConvTopicDetail() {
-  // Replaced with the full paragraph/screenshot detail view in Task 11.
-  return '<div class="card"><p>Loading topic detail…</p></div>';
+  var topic = S.bigConvSelectedTopic;
+  var h = '<div class="bc-detail-head">';
+  h += '<button class="btn btn-sm btn-secondary" onclick="closeBigConvTopic()">&larr; Back to bank</button>';
+  h += '<span class="bc-detail-title">' + esc(topic) + '</span>';
+  h += '</div>';
+
+  var d = S.bigConvDetail;
+  if (!d) return h + '<div class="card"><p>Loading…</p></div>';
+
+  if (!d.processed) {
+    h += '<div class="card">';
+    h += '<p style="font-size:13px;color:var(--label2);">No piece drafted yet for this topic.</p>';
+    h += '<button class="btn btn-primary" onclick="prepareBigConvTopic(' + jsq(topic) + ')">Process</button>';
+    if (S.bigConvPrepare && S.bigConvPrepare.topic === topic) {
+      h += '<div class="bc-instruction">' + esc(S.bigConvPrepare.instruction) + '</div>';
+      h += '<button class="btn btn-sm btn-secondary" onclick="refreshBigConvTopic()">Refresh</button>';
+    }
+    h += '</div>';
+    h += renderBigConvViralPool(d.pools);
+    return h;
+  }
+
+  h += '<div class="bc-headline">' + esc(d.headline) + '</div>';
+  (d.paragraphs || []).forEach(function(p) {
+    h += '<div class="bc-paragraph" ondragover="bcDragOver(event)" ondrop="bcDrop(event,' + p.index + ')">';
+    h += '<div class="bc-p-text">' + esc(p.text) + '</div>';
+    h += '<div class="bc-shots">';
+    (p.screenshots || []).forEach(function(s) {
+      h += '<img class="bc-shot" src="' + s.url + '" draggable="true" ondragstart="bcDragStart(event,' + jsq(s.file) + ')" title="' + esc(s.file) + '">';
+    });
+    h += '</div></div>';
+  });
+
+  h += renderBigConvViralPool(d.pools);
+  h += '<div class="bc-tier-toggle"><button class="btn btn-sm btn-secondary" onclick="toggleBigConvTierPool()">' + (S.bigConvShowTierPool ? 'Hide' : 'Show') + ' tier pool</button></div>';
+  if (S.bigConvShowTierPool) h += renderBigConvTierPools(d.pools);
+
+  h += '<div style="margin-top:16px;"><button class="btn btn-success" onclick="toggleReady(\'big_conversation\')">Mark ready</button></div>';
+  return h;
+}
+
+function renderBigConvViralPool(pools) {
+  var shots = (pools && pools.viral) || [];
+  var h = '<div class="bc-pool"><div class="bc-pool-label">Viral extreme (always shown, in case a paragraph pick missed something compelling)</div><div class="bc-shots" ondragover="bcDragOver(event)" ondrop="bcDrop(event,0)">';
+  shots.forEach(function(s) {
+    h += '<img class="bc-shot" src="' + s.url + '" draggable="true" ondragstart="bcDragStart(event,' + jsq(s.file) + ')" title="' + esc(s.file) + '">';
+  });
+  h += '</div></div>';
+  return h;
+}
+
+function renderBigConvTierPools(pools) {
+  var h = '<div class="bc-tier-pools">';
+  ["T1", "T2", "T3"].forEach(function(tier) {
+    var shots = (pools && pools[tier]) || [];
+    h += '<div class="bc-pool"><div class="bc-pool-label">' + tier + '</div><div class="bc-shots">';
+    shots.forEach(function(s) {
+      h += '<img class="bc-shot" src="' + s.url + '" draggable="true" ondragstart="bcDragStart(event,' + jsq(s.file) + ')" title="' + esc(s.file) + '">';
+    });
+    h += '</div></div>';
+  });
+  h += '</div>';
+  return h;
+}
+
+function refreshBigConvTopic() {
+  if (S.bigConvSelectedTopic) loadBigConvTopicDetail(S.bigConvSelectedTopic);
+}
+
+function prepareBigConvTopic(topic) {
+  api("/api/big-conversation/topic/" + encodeURIComponent(topic) + "/prepare", { method: "POST" })
+    .then(function(d) {
+      S.bigConvPrepare = d;
+      render();
+    })
+    .catch(function(e) { showToast("Error: " + e.message, "error"); });
+}
+
+function toggleBigConvTierPool() {
+  S.bigConvShowTierPool = !S.bigConvShowTierPool;
+  render();
+}
+
+var _bcDragFile = null;
+function bcDragStart(e, filename) {
+  _bcDragFile = filename;
+  e.dataTransfer.effectAllowed = "move";
+}
+function bcDragOver(e) { e.preventDefault(); }
+function bcDrop(e, paragraphIndex) {
+  e.preventDefault();
+  if (!_bcDragFile || !S.bigConvSelectedTopic) return;
+  var filename = _bcDragFile;
+  _bcDragFile = null;
+  api("/api/big-conversation/topic/" + encodeURIComponent(S.bigConvSelectedTopic) + "/pairing", {
+    method: "POST",
+    body: { filename: filename, paragraph_index: paragraphIndex },
+  }).then(function() {
+    loadBigConvTopicDetail(S.bigConvSelectedTopic);
+  }).catch(function(e) { showToast("Error: " + e.message, "error"); });
 }
 
 function loadBigConvTopicDetail(topic) {
