@@ -836,7 +836,7 @@ function proceedEditorial() {
   var bigStory = (S.editorialBigStory || "").trim();
   if (!bigStory) { showToast("Add the big story of the week first", "error"); return; }
   var model = getModel("model-editorial");
-  var otherSegments = SEGMENTS.filter(function(s) { return s.id !== "editorial"; }).map(function(s) {
+  var otherSegments = SEGMENTS.filter(function(s) { return s.id !== "editorial" && s.id !== "big_conversation"; }).map(function(s) {
     return { id: s.id, label: s.name, output_text: (S.sectionOutputs[s.id] && S.sectionOutputs[s.id].output_text) || "" };
   });
   var bigConv = (S.sectionOutputs.big_conversation && S.sectionOutputs.big_conversation.output_text) || "";
