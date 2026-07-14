@@ -340,3 +340,33 @@ def get_topic_detail(topic: str, pairing_overrides: dict[str, int] | None = None
         "paragraphs": paragraphs,
         "pools": pools,
     }
+
+
+def resolve_asset_path(rel_path: str) -> Path | None:
+    """Resolve a `/api/big-conversation/assets/<rel_path>` request to a real
+    file strictly inside INSTAGRAM_OUTPUT_DIR.
+
+    Returns None (the caller responds 404) if: the Instagram output root is
+    absent; `rel_path` is empty or absolute (an absolute path would make
+    `root / rel_path` ignore `root` entirely - pathlib's own join
+    behaviour); the resolved path escapes the root (covers `..` segments
+    and symlinks that point outside); the extension isn't an allowed image
+    type; or the file doesn't exist.
+    """
+    root = INSTAGRAM_OUTPUT_DIR
+    if not root.is_dir():
+        return None
+    if not rel_path or Path(rel_path).is_absolute():
+        return None
+    try:
+        root_resolved = root.resolve()
+        candidate = (root_resolved / rel_path).resolve()
+    except OSError:
+        return None
+    if not candidate.is_relative_to(root_resolved):
+        return None
+    if candidate.suffix.lower() not in IMAGE_EXTENSIONS:
+        return None
+    if not candidate.is_file():
+        return None
+    return candidate

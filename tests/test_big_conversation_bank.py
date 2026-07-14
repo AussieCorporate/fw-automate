@@ -423,3 +423,62 @@ def test_get_topic_detail_override_into_empty_paragraph(tmp_path, monkeypatch):
     assert [s["file"] for s in detail["paragraphs"][2]["screenshots"]] == [
         "p2_1_IMG_7955.jpg"
     ]
+
+
+def test_resolve_asset_path_serves_file_inside_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
+    assets = tmp_path / "Kids in the Office" / bcb.ASSETS_DIRNAME
+    assets.mkdir(parents=True)
+    img = assets / "p1_1_Katie_Moloney.png"
+    img.write_bytes(b"fake-png-bytes")
+
+    resolved = bcb.resolve_asset_path("Kids in the Office/_BIG_CONVERSATION_assets/p1_1_Katie_Moloney.png")
+    assert resolved == img.resolve()
+
+
+def test_resolve_asset_path_rejects_traversal(tmp_path, monkeypatch):
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
+    (tmp_path / "topic").mkdir()
+    outside = tmp_path.parent / "secret.png"
+    outside.write_bytes(b"nope")
+    assert bcb.resolve_asset_path("../secret.png") is None
+    assert bcb.resolve_asset_path("topic/../../secret.png") is None
+
+
+def test_resolve_asset_path_rejects_absolute_path(tmp_path, monkeypatch):
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
+    assert bcb.resolve_asset_path("/etc/passwd") is None
+
+
+def test_resolve_asset_path_rejects_non_image_extension(tmp_path, monkeypatch):
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
+    (tmp_path / "topic.md").write_text("not an image")
+    assert bcb.resolve_asset_path("topic.md") is None
+
+
+def test_resolve_asset_path_rejects_missing_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
+    assert bcb.resolve_asset_path("topic/_BIG_CONVERSATION_assets/missing.png") is None
+
+
+def test_resolve_asset_path_soft_fails_when_root_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path / "nope")
+    assert bcb.resolve_asset_path("topic/x.png") is None
+
+
+def test_resolve_asset_path_rejects_symlink_escaping_root(tmp_path, monkeypatch):
+    # Beyond the brief's literal `..`-segment cases: a symlink that LOOKS like
+    # it lives inside the root but resolves (via `Path.resolve()` following
+    # the link) to a real file outside it. This is the classic path-traversal
+    # bypass that literal `..` string checks miss entirely - it's the reason
+    # the resolver must compare the fully RESOLVED candidate against the
+    # fully RESOLVED root, not just reject strings containing "..".
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
+    assets = tmp_path / "topic" / bcb.ASSETS_DIRNAME
+    assets.mkdir(parents=True)
+    outside = tmp_path.parent / "secret_outside.png"
+    outside.write_bytes(b"nope")
+    symlink = assets / "evil.png"
+    symlink.symlink_to(outside)
+
+    assert bcb.resolve_asset_path("topic/_BIG_CONVERSATION_assets/evil.png") is None
