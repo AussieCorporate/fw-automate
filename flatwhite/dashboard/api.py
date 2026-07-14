@@ -57,6 +57,12 @@ def _safe_override(model: str | None) -> str | None:
 
 
 _STATIC_DIR = Path(__file__).parent / "static"
+_SCREENSHOTTER_OUTPUT_DIR = Path(
+    os.environ.get(
+        "FW_SCREENSHOTTER_OUTPUT_DIR",
+        str(Path.home() / "Documents" / "MISC" / "instagram-dm-screenshotter" / "output"),
+    )
+)
 _AUTH_PASSWORD = os.environ.get("FLATWHITE_PASSWORD", "")
 _AUTH_TOKEN = hashlib.sha256((_AUTH_PASSWORD + "flatwhite").encode()).hexdigest()[:32] if _AUTH_PASSWORD else ""
 
@@ -287,6 +293,47 @@ def api_off_the_clock() -> JSONResponse:
         "week_iso": week_iso,
         "last_scraped_at": last_scraped_at,
     })
+
+
+@app.get("/api/inside-track")
+def api_inside_track() -> JSONResponse:
+    """List this week's Inside Track (gossip/redundancy) screenshot submissions.
+
+    Reads the Instagram DM screenshotter's output folder READ-ONLY (never
+    writes to it). Fails soft: if the screenshotter output dir or the
+    Inside Track folder inside it doesn't exist yet, returns an empty list
+    rather than erroring, so the page still renders.
+    """
+    from flatwhite.dashboard.inside_track import find_inside_track_folder, list_inside_track_submissions
+
+    folder = find_inside_track_folder(_SCREENSHOTTER_OUTPUT_DIR)
+    submissions = list_inside_track_submissions(_SCREENSHOTTER_OUTPUT_DIR)
+    return JSONResponse({
+        "folder_found": folder is not None,
+        "folder_name": folder.name if folder else None,
+        "submissions": [
+            {"filename": s["filename"], "thumb_url": "/api/inside-track/image/" + s["filename"]}
+            for s in submissions
+        ],
+        "week_iso": get_current_week_iso(),
+    })
+
+
+@app.get("/api/inside-track/image/{filename}", response_model=None)
+def api_inside_track_image(filename: str) -> FileResponse | JSONResponse:
+    """Serve one Inside Track screenshot, read-only and path-traversal-safe.
+
+    `filename` is validated by resolve_inside_track_image against the
+    Inside Track folder (resolve + is_relative_to check) before anything is
+    read off disk; any traversal attempt or missing file returns a 404.
+    """
+    from flatwhite.dashboard.inside_track import resolve_inside_track_image
+
+    path = resolve_inside_track_image(_SCREENSHOTTER_OUTPUT_DIR, filename)
+    if path is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    media_type = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
+    return FileResponse(path, media_type=media_type)
 
 
 @app.get("/api/draft")
