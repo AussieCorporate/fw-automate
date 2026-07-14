@@ -413,6 +413,27 @@ def test_get_topic_detail_falls_back_on_out_of_range_override(tmp_path, monkeypa
     assert len(all_files) == 2
 
 
+def test_get_topic_detail_unassigns_shot_on_explicit_zero_override(tmp_path, monkeypatch):
+    # Reviewer-found bug: the drag-drop UI sends paragraph_index 0 when a
+    # shot is dropped on the "viral extreme" pool row, meaning "pull this
+    # shot out of its paragraph entirely" (the safety-net bucket). Unlike
+    # a genuinely out-of-range index (99, negative, etc.), 0 must NOT fall
+    # back to the shot's original paragraph - it must be removed from
+    # every paragraph's screenshots list.
+    _seed_processed_topic(tmp_path, monkeypatch)
+    overrides = {"p1_1_Katie_Moloney.png": 0}
+    detail = bcb.get_topic_detail("Kids in the Office", pairing_overrides=overrides)
+
+    all_files = [
+        s["file"] for p in detail["paragraphs"] for s in p["screenshots"]
+    ]
+    assert "p1_1_Katie_Moloney.png" not in all_files
+    # The untouched shot is unaffected.
+    assert [s["file"] for s in detail["paragraphs"][1]["screenshots"]] == [
+        "p2_1_IMG_7955.jpg"
+    ]
+
+
 def test_get_topic_detail_override_into_empty_paragraph(tmp_path, monkeypatch):
     # Confirmed working already via the `setdefault` fallback, but untested
     # before this fix pass - lock it in now that the pre-seeding line

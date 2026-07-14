@@ -318,7 +318,19 @@ def get_topic_detail(topic: str, pairing_overrides: dict[str, int] | None = None
         regrouped: dict[int, list[dict]] = {}
         for paragraph, shots in by_paragraph.items():
             for shot in shots:
-                target = pairing_overrides.get(shot["file"], paragraph)
+                if shot["file"] not in pairing_overrides:
+                    regrouped.setdefault(paragraph, []).append(shot)
+                    continue
+                target = pairing_overrides[shot["file"]]
+                if target == 0:
+                    # Explicit "unassign" - the drag-drop UI sends 0 when a
+                    # shot is dropped on the viral-extreme pool row (the
+                    # reserved safety-net bucket), meaning "pull this shot
+                    # out of its paragraph entirely". Unlike a genuinely
+                    # invalid target, this is deliberate: drop the shot from
+                    # every paragraph's screenshots list rather than falling
+                    # back to its original paragraph.
+                    continue
                 if not (1 <= target <= paragraph_count):
                     # Stale or out-of-range override (piece reprocessed with a
                     # different paragraph count, or a bad index from the
