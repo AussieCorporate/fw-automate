@@ -1487,6 +1487,82 @@ async def api_save_section_output(section: str, request: Request) -> JSONRespons
     return JSONResponse({"saved": True, "section": section})
 
 
+# ── Content bank ─────────────────────────────────────────────────────────────
+# Pieces produced ahead of time (Big Conversation, Brains Trust), decoupled from
+# any specific week. Pulling an item writes it into THIS week's section_outputs
+# for a chosen target section, via the same save_section_output() every segment
+# page already uses — so it shows up in that page's output box unchanged.
+
+@app.post("/api/content-bank")
+async def api_add_bank_item(request: Request) -> JSONResponse:
+    """Add a piece to the content bank.
+
+    Body: {"segment_type": str, "title": str, "body_text": str, "source_note": str?}
+    """
+    from flatwhite.db import save_bank_item
+
+    body = await request.json()
+    segment_type = (body.get("segment_type") or "").strip()
+    title = (body.get("title") or "").strip()
+    body_text = (body.get("body_text") or "").strip()
+    if not segment_type or not title or not body_text:
+        return JSONResponse(
+            {"error": "segment_type, title, and body_text are required"}, status_code=400
+        )
+    bank_id = save_bank_item(
+        segment_type=segment_type,
+        title=title,
+        body_text=body_text,
+        source_note=body.get("source_note"),
+    )
+    return JSONResponse({"id": bank_id})
+
+
+@app.get("/api/content-bank")
+def api_list_bank_items(segment_type: str | None = None, status: str = "active") -> JSONResponse:
+    """List content bank items. Optional ?segment_type=... filter. status defaults to 'active'."""
+    from flatwhite.db import list_bank_items
+
+    items = list_bank_items(segment_type=segment_type, status=status)
+    return JSONResponse({"items": items})
+
+
+@app.post("/api/content-bank/{bank_id}/archive")
+def api_archive_bank_item(bank_id: int) -> JSONResponse:
+    """Archive a bank item (mark done/published) without deleting it."""
+    from flatwhite.db import archive_bank_item, get_bank_item
+
+    if get_bank_item(bank_id) is None:
+        return JSONResponse({"error": "Bank item not found"}, status_code=404)
+    archive_bank_item(bank_id)
+    return JSONResponse({"archived": True, "id": bank_id})
+
+
+@app.post("/api/content-bank/{bank_id}/pull")
+async def api_pull_bank_item(bank_id: int, request: Request) -> JSONResponse:
+    """Pull a bank item into the current week's running order.
+
+    Body: {"target_section": str}  — one of the running-order segment ids
+    (e.g. "big_conversation", "brains"). Writes body_text into section_outputs
+    for THIS week under target_section, exactly as if that segment had just
+    generated it, so the segment's own page (and its Mark Ready flow) sees it.
+    """
+    from flatwhite.db import get_bank_item, save_section_output
+
+    item = get_bank_item(bank_id)
+    if item is None:
+        return JSONResponse({"error": "Bank item not found"}, status_code=404)
+
+    body = await request.json()
+    target_section = (body.get("target_section") or "").strip()
+    if not target_section:
+        return JSONResponse({"error": "target_section is required"}, status_code=400)
+
+    week_iso = get_current_week_iso()
+    save_section_output(week_iso, target_section, item["body_text"], "content_bank")
+    return JSONResponse({"pulled": True, "target_section": target_section, "week_iso": week_iso})
+
+
 # ── Brains Trust angle pool (read-only Trading Strategy research bank) ──────
 
 @app.get("/api/brains-trust/angles")
