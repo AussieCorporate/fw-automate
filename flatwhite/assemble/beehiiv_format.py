@@ -27,6 +27,42 @@ _HEADING4 = re.compile(r"^####\s+(.*)$")
 
 _LINK_PLACEHOLDER = "\x00LINK{0}\x00"
 
+# Schemes a real <a href="..."> anchor is allowed to point at. Everything
+# else -- javascript:, data:, vbscript:, file:, or any unrecognised scheme --
+# is rejected. This is an allowlist rather than a denylist on purpose: FW
+# segments only ever need to link out to the web (http/https) or to an email
+# address (mailto). A denylist would have to keep enumerating every current
+# and future dangerous/executable scheme (javascript, vbscript, data, file,
+# blob, custom app schemes, ...) to stay safe, which is an open-ended,
+# whack-a-mole list. An allowlist of the three schemes FW actually uses is
+# small, closed, and can't be bypassed by a scheme nobody thought to block.
+_SAFE_SCHEMES = frozenset({"http", "https", "mailto"})
+_SCHEME = re.compile(r"^([a-zA-Z][a-zA-Z0-9+.-]*):")
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]+")
+
+
+def _is_safe_href(href: str) -> bool:
+    """True if href is safe to render as a real <a href="..."> target.
+
+    A schemeless, same-site-relative URL (e.g. "/some/path" or "some/path",
+    with no "scheme:" prefix at all) is allowed through as-is -- it can't
+    execute code, it just points somewhere on the same site. A URL with an
+    explicit scheme must be http, https or mailto. Control characters are
+    stripped before the scheme check because browsers ignore stray
+    tabs/newlines inside a scheme when resolving a URI, so "java\tscript:"
+    is still an attempt at the javascript: scheme and must be blocked.
+    A scheme-relative URL ("//host/path") has no "scheme:" prefix either,
+    but silently sends the reader to a different, unvalidated host, so it
+    is rejected too rather than treated as a safe relative link.
+    """
+    candidate = _CONTROL_CHARS.sub("", href).strip()
+    if candidate.startswith("//"):
+        return False
+    match = _SCHEME.match(candidate)
+    if not match:
+        return True
+    return match.group(1).lower() in _SAFE_SCHEMES
+
 
 def _process_marks(escaped: str) -> str:
     """Apply inline marks (links, bold-italic, bold, italic) to already
@@ -46,8 +82,14 @@ def _process_marks(escaped: str) -> str:
     placeholders: list[str] = []
 
     def _link_sub(m: re.Match) -> str:
-        display = _process_marks(m.group(1))
         href = m.group(2)
+        if not _is_safe_href(href):
+            # Unsafe scheme (javascript:, data:, vbscript:, scheme-relative,
+            # etc.) -- don't turn it into a clickable anchor. Fall back to
+            # the original bracketed markdown as plain (already-escaped)
+            # text so nothing executes and nothing silently disappears.
+            return m.group(0)
+        display = _process_marks(m.group(1))
         anchor = f'<a href="{href}">{display}</a>'
         placeholders.append(anchor)
         return _LINK_PLACEHOLDER.format(len(placeholders) - 1)

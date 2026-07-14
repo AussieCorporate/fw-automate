@@ -89,3 +89,47 @@ def test_url_with_quote_char_prevents_attribute_injection():
     # If the injection worked, we'd see: href="short_url" onmouseover="alert(1)">
     # That pattern is ABSENT, proving the quotes are escaped and contained.
     assert 'href="https://reddit.com/x" ' not in html  # Would indicate breakout
+
+
+def test_javascript_scheme_link_is_not_clickable():
+    """A saved segment containing [here](javascript:alert(1)) must not produce
+    a live javascript: anchor -- this HTML gets injected raw into the
+    dashboard's DOM via innerHTML, so a javascript: href would actually fire
+    on click. The dangerous scheme must never reach an href attribute; the
+    bracketed markdown should render as plain escaped text instead."""
+    html = md_to_editor_html("[here](javascript:alert(1))")
+    assert "href=" not in html
+    # The original markdown survives as visible plain text (nothing silently
+    # disappears), just not as a clickable link.
+    assert "here" in html
+    assert "javascript:alert(1)" in html
+
+
+def test_data_scheme_link_is_not_clickable():
+    """data: URLs are another common XSS vector for anchor/href attacks
+    (e.g. data:text/html,<script>...). Must not become a real href."""
+    html = md_to_editor_html("[here](data:text/html,<script>alert(1)</script>)")
+    assert "href=" not in html
+
+
+def test_https_link_still_works_after_scheme_validation():
+    """Regression guard: a normal https:// link must still convert to a real,
+    clickable anchor after the scheme allowlist is added."""
+    html = md_to_editor_html("Read the thread [here](https://reddit.com/r/auscorp/x)")
+    assert '<a href="https://reddit.com/r/auscorp/x">here</a>' in html
+
+
+def test_relative_link_still_allowed():
+    """A schemeless, same-site-relative URL isn't dangerous (no scheme to
+    execute) and should still render as a real link, not be over-restricted
+    to only http/https/mailto."""
+    html = md_to_editor_html("See [the archive](/archive/2026-07-10)")
+    assert '<a href="/archive/2026-07-10">the archive</a>' in html
+
+
+def test_scheme_relative_link_is_not_clickable():
+    """A protocol-relative URL ("//host/path") has no explicit scheme but
+    silently sends the reader to a different, unvalidated host -- treated
+    as unsafe, same as an explicit dangerous scheme."""
+    html = md_to_editor_html("[here](//evil.example.com/phish)")
+    assert "href=" not in html

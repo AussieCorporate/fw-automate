@@ -1543,7 +1543,7 @@ async def api_pull_bank_item(bank_id: int, request: Request) -> JSONResponse:
     """Pull a bank item into the current week's running order.
 
     Body: {"target_section": str}  — one of the running-order segment ids
-    (e.g. "big_conversation", "brains"). Writes body_text into section_outputs
+    (e.g. "big_conversation", "brains_trust"). Writes body_text into section_outputs
     for THIS week under target_section, exactly as if that segment had just
     generated it, so the segment's own page (and its Mark Ready flow) sees it.
     """
