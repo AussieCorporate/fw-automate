@@ -228,27 +228,38 @@ def parse_piece_markdown(text: str) -> dict:
     return {"headline": headline, "paragraphs": paragraphs}
 
 
-_ASSET_NAME_RE = re.compile(r"^p(\d+)_(1|alt\d*)_.+\.(?:png|jpg|jpeg)$", re.IGNORECASE)
+_ASSET_NAME_RE = re.compile(r"^p(\d+)_(\d+|alt\d*)_.+\.(?:png|jpg|jpeg)$", re.IGNORECASE)
 
 
 def _asset_rank(token: str) -> int:
-    """Sort key for a screenshot's rank token: "1" (primary) sorts first,
-    then "alt", then "alt2", "alt3", ... in order."""
+    """Sort key for a screenshot's rank token. The skill's canonical
+    convention is a plain numeric rank ("1", "2", "3", ... - see SKILL.md's
+    "Emit outputs" example `p3_2_zucchinislice.png`), used by real topics
+    like "PIP Term Length" and "Conference Room Sharing". An older/alternate
+    convention ("1", "alt", "alt2", "alt3", ...) is already on disk for
+    "Kids in the Office" and must keep working unchanged. Plain-numeric
+    tokens sort by their own integer value (1, 2, 3, ...); "alt"-style
+    tokens sort after all plain-numeric ranks, since "alt" denotes
+    supplementary/backup picks in the topics that use it. "1" is shared by
+    both conventions and always sorts first."""
     token = token.lower()
-    if token == "1":
-        return 0
+    if token.isdigit():
+        return int(token)
     if token == "alt":
-        return 1
-    return int(token[3:])  # "alt2" -> 2, "alt3" -> 3
+        return 1_000_000
+    return 1_000_000 + int(token[3:])  # "alt2" -> 1_000_002, "alt3" -> 1_000_003
 
 
 def list_paragraph_screenshots(topic: str) -> dict[int, list[dict]]:
     """Group `<topic>/_BIG_CONVERSATION_assets/*.png` files by paragraph
     number, using the skill's own naming convention
-    `p<paragraph>_<rank>_<handle>.png` (rank is "1" for the primary pick,
-    "alt"/"alt2"/"alt3" for ranked alternates — see SKILL.md's "Emit
-    outputs" step). Returns {} if the assets folder is absent (topic not
-    processed yet) or the Instagram output root is absent.
+    `p<paragraph>_<rank>_<handle>.png`. Rank is either plain numeric
+    ("1", "2", "3", ... - the skill's documented convention, see SKILL.md's
+    "Emit outputs" step) or the older "1"/"alt"/"alt2"/"alt3" convention
+    already on disk for some topics. Both are accepted since real topic
+    folders on disk use either one and neither can be renamed. Returns {}
+    if the assets folder is absent (topic not processed yet) or the
+    Instagram output root is absent.
     """
     assets_dir = INSTAGRAM_OUTPUT_DIR / topic / ASSETS_DIRNAME
     if not assets_dir.is_dir():

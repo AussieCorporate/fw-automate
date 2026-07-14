@@ -306,6 +306,27 @@ def test_list_paragraph_screenshots_groups_and_ranks(tmp_path, monkeypatch):
     assert [s["file"] for s in grouped[2]] == ["p2_1_IMG_7955.jpg"]
 
 
+def test_list_paragraph_screenshots_groups_plain_numeric_ranks(tmp_path, monkeypatch):
+    # Real shape seen on disk for "PIP Term Length" and "Conference Room
+    # Sharing": the skill's documented convention uses plain numeric rank
+    # tokens ("1", "2", ...), not "alt"/"altN". None of these may be
+    # silently dropped, and "_1" must sort before "_2" within a paragraph.
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
+    assets = tmp_path / "PIP Term Length" / bcb.ASSETS_DIRNAME
+    assets.mkdir(parents=True)
+    for fname in [
+        "p1_1_Mark_H.png", "p1_2_Scotty.png",
+        "p2_1_glp79.png", "p2_2_Chris_Atkins.png",
+    ]:
+        (assets / fname).write_bytes(b"x")
+
+    grouped = bcb.list_paragraph_screenshots("PIP Term Length")
+    assert [s["file"] for s in grouped[1]] == ["p1_1_Mark_H.png", "p1_2_Scotty.png"]
+    assert [s["file"] for s in grouped[2]] == ["p2_1_glp79.png", "p2_2_Chris_Atkins.png"]
+    # All four real files must be accounted for - none silently dropped.
+    assert sum(len(shots) for shots in grouped.values()) == 4
+
+
 def test_list_paragraph_screenshots_ignores_non_matching_files(tmp_path, monkeypatch):
     monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
     assets = tmp_path / "Kids in the Office" / bcb.ASSETS_DIRNAME
