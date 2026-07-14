@@ -198,6 +198,17 @@ CREATE TABLE IF NOT EXISTS drafts (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS content_bank (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    segment_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body_text TEXT NOT NULL,
+    source_note TEXT,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 
@@ -478,6 +489,69 @@ def load_all_section_outputs(week_iso: str) -> dict[str, dict]:
         }
         for r in rows
     }
+
+
+def save_bank_item(
+    segment_type: str,
+    title: str,
+    body_text: str,
+    source_note: str | None = None,
+) -> int:
+    """Add a piece to the content bank (produced ahead of time, not yet used).
+
+    Unlike save_section_output, this is NOT keyed by week_iso — bank items are
+    produced ahead of a specific week and pulled in later via pull semantics
+    in api.py (which copies body_text into that week's section_outputs row).
+    """
+    conn = get_connection()
+    cursor = conn.execute(
+        """INSERT INTO content_bank (segment_type, title, body_text, source_note, updated_at)
+           VALUES (?, ?, ?, ?, datetime('now'))""",
+        (segment_type, title, body_text, source_note),
+    )
+    conn.commit()
+    bank_id = cursor.lastrowid
+    conn.close()
+    return bank_id
+
+
+def list_bank_items(segment_type: str | None = None, status: str = "active") -> list[dict]:
+    """Return content_bank rows, newest first. Filters by segment_type if given.
+
+    status: 'active' (default) or 'archived'. Pass status=None for both.
+    """
+    conn = get_connection()
+    query = "SELECT * FROM content_bank WHERE 1=1"
+    params: list = []
+    if segment_type is not None:
+        query += " AND segment_type = ?"
+        params.append(segment_type)
+    if status is not None:
+        query += " AND status = ?"
+        params.append(status)
+    query += " ORDER BY created_at DESC"
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def archive_bank_item(bank_id: int) -> None:
+    """Mark a bank item archived (done/published) without deleting it."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE content_bank SET status = 'archived', updated_at = datetime('now') WHERE id = ?",
+        (bank_id,),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_bank_item(bank_id: int) -> dict | None:
+    """Return a single content_bank row by id, or None if it doesn't exist."""
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM content_bank WHERE id = ?", (bank_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 
 def init_db() -> None:
