@@ -253,6 +253,11 @@ select.form-input { appearance: auto; }
 .navdiv{height:1px;background:var(--sep);margin:14px 6px}
 .nav-lite{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:10px;cursor:pointer;color:var(--label2);font-size:14px}
 .nav-lite:hover{background:rgba(0,0,0,.035)}.nav-lite.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.bc-bank{display:flex;flex-direction:column;gap:10px}
+.bc-topic-card{border:1px solid var(--sep);border-radius:var(--r-card);padding:12px 14px;display:flex;align-items:center;gap:14px}
+.bc-topic-name{font-weight:600;flex:1}
+.bc-topic-meta{color:var(--label2);font-size:12px}
+.bc-topic-actions{display:flex;gap:8px}
 </style>
 </head>
 <body>
@@ -291,6 +296,12 @@ var S = {
   lobby: null,
   otcData: null,
   bigConvCandidates: null,
+  bigConvTopics: null,
+  bigConvRootExists: true,
+  bigConvSelectedTopic: null,
+  bigConvDetail: null,
+  bigConvPrepare: null,
+  bigConvShowTierPool: false,
   ampFinest: null,
   events: null,
   sectionOutputs: {},
@@ -384,6 +395,14 @@ function esc(s) {
   var d = document.createElement("div");
   d.appendChild(document.createTextNode(String(s)));
   return d.innerHTML;
+}
+
+function jsq(s) {
+  // A JS single-quoted string literal, safe to embed inside a
+  // double-quoted HTML attribute (e.g. onclick="fn(' + jsq(x) + ')").
+  // Topic names can contain colons/spaces (e.g. "Teams:Slack Monitoring")
+  // so plain concatenation is not safe here.
+  return "'" + String(s).replace(/\\/g, "\\\\").replace(/'/g, "\\'") + "'";
 }
 
 // esc() round-trips through a text node, so it escapes & < > but leaves a
@@ -540,20 +559,10 @@ function loadPageData(page) {
         S.trends = r[1] || null;
       });
     case "big_conversation":
-      // Load topic heat in background (no scrape needed — reads from DB)
-      if (!S.topicHeat) {
-        api("/api/topic-heat").then(function(d) { S.topicHeat = d; render(); }).catch(function() {});
-      }
-      // Load candidates if they exist (e.g. after Scrape All)
-      if (!S.bigConvCandidates) {
-        return api("/api/big-conversation-candidates").then(function(d) {
-          if (d.candidates && d.candidates.length) {
-            S.bigConvCandidates = d.candidates;
-            S.lastScraped.big_conversation = d.last_scraped_at || null;
-          }
-        }).catch(function() {});
-      }
-      return Promise.resolve();
+      return api("/api/big-conversation/topics").then(function(d) {
+        S.bigConvTopics = d.topics || [];
+        S.bigConvRootExists = d.root_exists;
+      });
     case "finds":
       if (S.items) return Promise.resolve();
       return api("/api/items").then(function(d) { S.items = d.items || {}; S.weekIso = d.week_iso; S.lastScraped.finds = d.last_scraped_at || null; S.lastScraped.editorial = d.last_scraped_at || null; });
@@ -1224,158 +1233,73 @@ function fetchRisingTrends() {
     });
 }
 
-function renderBigConvBody() {
-  var h = '';
-  // Topic Heat panel
-  h += renderTopicHeatPanel();
-  // Candidates
-  h += '<div class="cand-list mb20">';
-  if (S.bigConvCandidates && S.bigConvCandidates.length) {
-    S.bigConvCandidates.forEach(function(c, i) {
-      var sel = S.selectedBigConv === c.id;
-      h += '<div class="card hov' + (sel ? " sel" : "") + ' cand-card" onclick="selectBigConv(' + c.id + ')">';
-      h += '<div class="radio' + (sel ? " on" : "") + '">' + (sel ? "\u2713" : "") + '</div>';
-      h += '<div class="cand-body">';
-      h += '<div class="cand-title">' + esc(c.title || c.summary) + '</div>';
-      h += '<div class="cand-meta">' + esc(c.source || "") + ' &middot; Score: ' + esc(c.weighted_composite != null ? c.weighted_composite.toFixed(1) : "—") + '</div>';
-      h += '<div class="cand-summary">' + esc(c.summary || "") + '</div>';
-      h += '</div></div>';
-    });
+function renderBigConv(el) {
+  var h = '<div class="sh"><div><h2>Big Conversation</h2><div class="sub">Topic bank sorted from the Instagram DM campaign</div></div></div>';
+  if (!S.bigConvRootExists) {
+    h += '<div class="card"><p style="color:var(--label2);font-size:13px;">Instagram screenshotter output folder not found on this machine. Nothing to show yet.</p></div>';
+    el.innerHTML = h;
+    return;
+  }
+  if (S.bigConvSelectedTopic) {
+    h += renderBigConvTopicDetail();
   } else {
-    h += '<div class="card"><p style="color:var(--text-3);font-size:13px;">No candidates yet. Click RUN to pull editorial data.</p></div>';
+    h += renderBigConvBank();
   }
-  h += '</div>';
+  el.innerHTML = h;
+}
 
-  // Add custom
-  h += '<div class="card mb20">';
-  h += '<div class="fb mb8"><span style="font-weight:600;">Add Custom Topic</span>';
-  h += '<button class="btn btn-sm btn-secondary" onclick="toggleCustomBigConv()">+ Add Custom</button></div>';
-  if (S.customBigConv) {
-    h += '<div class="form-group"><label>Headline</label><input class="form-input" id="bc-custom-headline" value="' + escAttr(S.customBigConv.headline || "") + '" placeholder="Topic headline"></div>';
-    h += '<div class="form-group"><label>Pitch</label><input class="form-input" id="bc-custom-pitch" value="' + escAttr(S.customBigConv.pitch || "") + '" placeholder="Why this matters"></div>';
-    h += '<div class="form-group"><label>Supporting Data</label><textarea class="form-input" id="bc-custom-data" placeholder="Key data points, links, context...">' + esc(S.customBigConv.data || "") + '</textarea></div>';
-    h += '<button class="btn btn-sm btn-primary" onclick="useCustomBigConv()">Use This Topic</button>';
-  }
+function renderBigConvBank() {
+  var topics = (S.bigConvTopics || []).filter(function(t) { return !t.archived; });
+  if (!topics.length) return '<div class="card"><p style="color:var(--label2);font-size:13px;">No unarchived topics in the bank.</p></div>';
+  var h = '<div class="bc-bank">';
+  topics.forEach(function(t) {
+    h += '<div class="bc-topic-card">';
+    h += '<div class="bc-topic-name">' + esc(t.topic) + '</div>';
+    h += '<div class="bc-topic-meta">' + t.reply_count + ' submissions' + (t.processed ? ' &middot; piece drafted' : '') + '</div>';
+    h += '<div class="bc-topic-actions">';
+    h += '<button class="btn btn-sm btn-primary" onclick="openBigConvTopic(' + jsq(t.topic) + ')">Open</button>';
+    h += '<button class="btn btn-sm btn-secondary" onclick="archiveBigConvTopic(' + jsq(t.topic) + ')">Archive</button>';
+    h += '</div></div>';
+  });
   h += '</div>';
   return h;
 }
 
-function renderBigConv(el) {
-  var hasScrapeData = !!(S.bigConvCandidates && S.bigConvCandidates.length);
-  var hasOutput = !!(S.sectionOutputs.big_conversation && S.sectionOutputs.big_conversation.output_text);
-  if (!S.sectionPhase.big_conversation) S.sectionPhase.big_conversation = hasOutput ? 3 : (hasScrapeData ? 2 : 1);
-
-  // Phase 1: Scrape
-  var p1 = '';
-  p1 += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">';
-  p1 += '<button class="btn btn-primary" onclick="runBigConv()">SCRAPE</button>';
-  if (S.loading.big_conversation) p1 += renderSectionProgress('big_conversation');
-  var _ps = formatScrapedDate(S.lastScraped.big_conversation);
-  if (_ps) p1 += '<span class="scraped-badge">Scraped ' + _ps + '</span>';
-  p1 += '</div>';
-
-  // Phase 2: Review & Pick
-  var p2 = hasScrapeData ? renderBigConvBody() : '';
-
-  // Phase 3: Generate
-  var p3 = '';
-  p3 += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
-  p3 += modelSelect('model-bigconv');
-  p3 += '<button class="btn btn-success" onclick="proceedBigConv()">PROCEED</button>';
-  p3 += '</div>';
-  p3 += outputBox('big_conversation');
-
-  var h = '<div class="sh"><div><h2>Big Conversation</h2><div class="sub">Top 5 candidates for this week\'s deep dive</div></div></div>';
-  h += phasePanel('big_conversation', 1, 'Scrape', true, hasScrapeData, p1);
-  h += phasePanel('big_conversation', 2, 'Review & Pick', hasScrapeData, false, p2);
-  h += phasePanel('big_conversation', 3, 'Generate', hasScrapeData, hasOutput, p3);
-
-  el.innerHTML = h;
-  fillOutput('big_conversation');
+function openBigConvTopic(topic) {
+  S.bigConvSelectedTopic = topic;
+  S.bigConvDetail = null;
+  S.bigConvPrepare = null;
+  S.bigConvShowTierPool = false;
+  render();
+  loadBigConvTopicDetail(topic);
 }
 
-function selectBigConv(id) { S.selectedBigConv = id; S.customBigConv = null; render(); }
-
-function toggleCustomBigConv() {
-  S.customBigConv = S.customBigConv ? null : { headline: "", pitch: "", data: "" };
-  S.selectedBigConv = null;
+function closeBigConvTopic() {
+  S.bigConvSelectedTopic = null;
+  S.bigConvDetail = null;
   render();
 }
 
-function useCustomBigConv() {
-  S.customBigConv.headline = ($("bc-custom-headline") || {}).value || "";
-  S.customBigConv.pitch = ($("bc-custom-pitch") || {}).value || "";
-  S.customBigConv.data = ($("bc-custom-data") || {}).value || "";
-  S.selectedBigConv = null;
-  render();
-  showToast("Custom topic set");
+function renderBigConvTopicDetail() {
+  // Replaced with the full paragraph/screenshot detail view in Task 11.
+  return '<div class="card"><p>Loading topic detail…</p></div>';
 }
 
-function runBigConv() {
-  S.loading.big_conversation = true;
-  S.bigConvCandidates = null; // Clear old candidates so we don't show stale data
-  render();
-  api("/api/run-section", { method: "POST", body: { section: "big_conversation" } })
-    .then(function(d) {
-      if (!d.started) { S.loading.big_conversation = false; render(); showToast(d.message || "Already running"); return; }
-      showToast("Pulling Big Conversation sources (incl. top AU news)...");
-      // Wait a moment for the backend to set running=true, then poll
-      var seenRunning = false;
-      var poll = setInterval(function() {
-        fetch("/api/section-status/big_conversation").then(function(r) { return r.json(); }).then(function(st) {
-          if (st.running) seenRunning = true;
-          // Only treat as done if we saw it running first (avoids stale done=true race)
-          if (seenRunning && !st.running && st.done) {
-            clearInterval(poll);
-            if (st.error) {
-              S.loading.big_conversation = false; render();
-              showToast("Error pulling sources: " + st.error, "error");
-              return;
-            }
-            // Now load candidates
-            api("/api/big-conversation-candidates").then(function(d) {
-              S.bigConvCandidates = d.candidates || [];
-              S.lastScraped.big_conversation = d.last_scraped_at || null;
-              S.items = null; // invalidate items cache
-              S.loading.big_conversation = false;
-              render();
-              showToast("Big Conversation candidates loaded (" + S.bigConvCandidates.length + ")");
-            });
-          }
-        }).catch(function() {});
-      }, 2000);
+function loadBigConvTopicDetail(topic) {
+  api("/api/big-conversation/topic/" + encodeURIComponent(topic)).then(function(d) {
+    S.bigConvDetail = d;
+    render();
+  });
+}
+
+function archiveBigConvTopic(topic) {
+  api("/api/big-conversation/archive", { method: "POST", body: { topic: topic, archived: true } })
+    .then(function() {
+      (S.bigConvTopics || []).forEach(function(t) { if (t.topic === topic) t.archived = true; });
+      render();
+      showToast("Archived");
     })
-    .catch(function(e) {
-      S.loading.big_conversation = false; render();
-      showToast("Error: " + e.message, "error");
-    });
-}
-
-function proceedBigConv() {
-  var model = getModel("model-bigconv");
-  var data = {};
-  if (S.customBigConv && S.customBigConv.headline) {
-    data = { headline: S.customBigConv.headline, pitch: S.customBigConv.pitch, supporting_data: S.customBigConv.data };
-  } else if (S.selectedBigConv) {
-    var c = (S.bigConvCandidates || []).find(function(x) { return x.id === S.selectedBigConv; });
-    if (c) {
-      // Pass the selected candidate as the anchor item, plus all other candidates as supporting evidence
-      var others = (S.bigConvCandidates || []).filter(function(x) { return x.id !== S.selectedBigConv; });
-      var supporting = others.map(function(o) {
-        return o.title + " (" + (o.source || "") + "): " + (o.summary || "");
-      });
-      data = {
-        headline: c.title,
-        pitch: c.summary,
-        supporting_summaries: supporting,
-        supporting_item_ids: others.map(function(o) { return o.id; }),
-      };
-    }
-  } else {
-    showToast("Select a candidate or add a custom topic", "error"); return;
-  }
-  S.proceedData.big_conversation = { section: "big_conversation", model: model, data: data };
-  openProceedModal("big_conversation");
+    .catch(function(e) { showToast("Error: " + e.message, "error"); });
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
