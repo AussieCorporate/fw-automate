@@ -27,6 +27,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 
 from flatwhite.db import init_db, get_connection, get_current_week_iso
 from flatwhite.model_router import route, list_available_models
+from flatwhite.utils.text_clean import strip_reader_dashes
 from flatwhite.pulse.anomaly import detect_all_anomalies
 from flatwhite.dashboard.state import (
     load_pulse_state,
@@ -2255,6 +2256,7 @@ async def api_proceed_section(request: Request) -> JSONResponse:
         output = await loop.run_in_executor(
             None, proceed_fns[section], data, model, custom_prompt
         )
+        output = strip_reader_dashes(output)
         return JSONResponse({"section": section, "output": output, "model": model, "week_iso": week_iso})
     except Exception as e:
         return JSONResponse({"section": section, "error": str(e)}, status_code=500)
@@ -2289,6 +2291,7 @@ async def api_otc_custom_summary(request: Request) -> JSONResponse:
         output = await loop.run_in_executor(
             None, _generate_otc_custom_summary, category, url, content, model
         )
+        output = strip_reader_dashes(output)
         return JSONResponse({"output": output})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)

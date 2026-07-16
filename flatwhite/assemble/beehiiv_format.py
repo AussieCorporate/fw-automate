@@ -19,6 +19,8 @@ from __future__ import annotations
 import html
 import re
 
+from flatwhite.utils.text_clean import strip_reader_dashes
+
 _BOLD_ITALIC = re.compile(r"\*\*_(.+?)_\*\*|_\*\*(.+?)\*\*_")
 _BOLD = re.compile(r"\*\*(.+?)\*\*")
 _ITALIC = re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)|_(.+?)_")
@@ -127,7 +129,7 @@ def md_to_editor_html(text: str) -> str:
     (Thread of the Week's real published title format). Everything else is
     wrapped in <p>. Returns "" for empty/whitespace-only input.
     """
-    text = text.strip()
+    text = strip_reader_dashes(text.strip())
     if not text:
         return ""
 
