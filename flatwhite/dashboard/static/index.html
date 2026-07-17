@@ -338,6 +338,7 @@ var S = {
   bigConvSelectedTopic: null,
   bigConvDetail: null,
   bigConvRun: null,
+  sortRun: null,
   bhInsert: null,
   bigConvShowTierPool: false,
   ampFinest: null,
@@ -1452,9 +1453,28 @@ function renderBigConv(el) {
   if (S.bigConvSelectedTopic) {
     h += renderBigConvTopicDetail();
   } else {
+    h += renderBigConvSortBar();
     h += renderBigConvBank();
   }
   el.innerHTML = h;
+}
+
+function renderBigConvSortBar() {
+  // Sort freshly-scraped DM screenshots into topic/tier + Inside Track folders.
+  // This is the prerequisite that fills the topic bank below.
+  var run = S.sortRun;
+  var h = '<div class="card" style="margin-bottom:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">';
+  h += '<div style="flex:1;min-width:200px;"><strong>New submissions?</strong> <span style="color:var(--label2);font-size:13px;">Sort the freshly-scraped screenshots into topics and the Inside Track before drafting.</span></div>';
+  if (run && (run.status === 'queued' || run.status === 'running')) {
+    h += '<button class="btn btn-primary" disabled>Sorting... (a few minutes)</button>';
+  } else {
+    h += '<button class="btn btn-primary" onclick="runScreenshotSort()">Sort new submissions</button>';
+  }
+  h += '</div>';
+  if (run && run.status === 'failed') {
+    h += '<div class="card" style="margin-bottom:12px;color:var(--danger,#c0392b);font-size:13px;">Sort failed: ' + esc(run.error || 'unknown error') + '</div>';
+  }
+  return h;
 }
 
 function renderBigConvBank() {
@@ -1563,6 +1583,38 @@ function renderBigConvTierPools(pools) {
 
 function refreshBigConvTopic() {
   if (S.bigConvSelectedTopic) loadBigConvTopicDetail(S.bigConvSelectedTopic);
+}
+
+// ── Screenshot sort (headless skill) ────────────────────────────────
+function runScreenshotSort() {
+  S.sortRun = { status: "queued", run_id: null, error: null };
+  render();
+  api("/api/skill-run/sort", { method: "POST" })
+    .then(function(d) {
+      S.sortRun = { status: "running", run_id: d.run_id, error: null };
+      render();
+      pollSortRun(d.run_id);
+    })
+    .catch(function(e) { S.sortRun = { status: "failed", error: e.message }; render(); });
+}
+
+function pollSortRun(runId) {
+  api("/api/skill-run/" + encodeURIComponent(runId))
+    .then(function(r) {
+      if (!S.sortRun) return;
+      if (r.status === "done") {
+        S.sortRun = null;
+        showToast("Submissions sorted", "success");
+        S.bigConvTopics = null;  // reload the topic bank the sort just refreshed
+        loadPageData("big_conversation").then(render);
+      } else if (r.status === "failed") {
+        S.sortRun = { status: "failed", error: r.error };
+        render();
+      } else {
+        setTimeout(function() { pollSortRun(runId); }, 3000);
+      }
+    })
+    .catch(function() { setTimeout(function() { pollSortRun(runId); }, 4000); });
 }
 
 function runBigConvTopic(topic) {

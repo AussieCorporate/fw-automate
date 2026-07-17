@@ -2777,6 +2777,37 @@ def api_run_big_conversation(topic: str) -> JSONResponse:
     return JSONResponse({"run_id": run_id, "started": started, "topic": topic})
 
 
+@app.post("/api/skill-run/sort")
+def api_run_screenshot_sort() -> JSONResponse:
+    """Run the screenshot-sort skill on the freshly-scraped DM screenshots headless.
+
+    Sorts the loose screenshots at the Instagram output root into the Big
+    Conversation topic/tier folders and the Inside Track folder - the prerequisite
+    for Big Conversation. Same headless engine as the Big Conversation run.
+    """
+    if not _claude_available():
+        return JSONResponse(
+            {"error": "Claude Code isn't installed on this machine, so the "
+                      "dashboard can't run the sort. Run it in a Claude session "
+                      "instead."}, status_code=503)
+    out_dir = str(_bcb.INSTAGRAM_OUTPUT_DIR)
+    prompt = (
+        "Use the screenshot-sort skill to sort the freshly-scraped Instagram DM "
+        f"screenshots sitting loose at the output root ({out_dir}, the current "
+        "directory). Follow the skill exactly from start to finish: gather the new "
+        "screenshots, classify them (fan out subagents for volume), verify the RED "
+        "HOT picks verbatim, move each screenshot into its topic/tier or Inside "
+        "Track folder, and write the _SORT_SESSION report. Do not ask me any "
+        "questions; complete the whole sort and finish."
+    )
+    try:
+        run_id, started = _skill_runner.start_run(
+            "screenshot-sort", "sort", _skill_argv(prompt, out_dir), cwd=out_dir)
+    except RuntimeError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=429)
+    return JSONResponse({"run_id": run_id, "started": started})
+
+
 @app.get("/api/skill-run/{run_id}")
 def api_skill_run_status(run_id: str) -> JSONResponse:
     """Poll a headless skill run's status."""
