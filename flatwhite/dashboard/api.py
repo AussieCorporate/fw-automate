@@ -2794,18 +2794,33 @@ _FW_PUBLICATION_ID = "pub_6210ff81-d440-4e09-916d-42fe436f0d05"
 
 
 def _parse_draft_id(output: str) -> str | None:
-    """Pull the 'FW_DRAFT_ID: post_...' marker a duplicate-then-insert run prints."""
+    """Pull the 'FW_DRAFT_ID: post_...' marker every insert run prints."""
     m = re.search(r"FW_DRAFT_ID:\s*(post_[0-9a-f-]+)", output or "")
     return m.group(1) if m else None
 
 
+def _wip_draft_title(today: "_dt.date | None" = None) -> str:
+    """The consistent name of this edition's work-in-progress beehiiv draft.
+
+    Named by the Monday of the current week so it's obvious to the team which
+    draft is live ("[WIP] Flat White - w/c 20 Jul") and, crucially, so the
+    insert run can find the SAME draft every time by name and never duplicate
+    twice. Plain hyphen, not an em dash (house rule), even on this internal label.
+    """
+    d = today or _dt.date.today()
+    monday = d - _dt.timedelta(days=d.weekday())
+    return f"[WIP] Flat White - w/c {monday.day} {monday.strftime('%b')}"
+
+
 @app.post("/api/section/{section}/insert-beehiiv")
 def api_insert_section_beehiiv(section: str) -> JSONResponse:
-    """Insert one ready section into this edition's beehiiv draft, headless.
+    """Insert one ready section into this edition's beehiiv WIP draft, headless.
 
-    First insert of the week duplicates the latest PUBLISHED Flat White edition
-    into a fresh draft (so layout/furniture carry over) and records it; later
-    inserts reuse that draft. Re-inserting a section REPLACES its block.
+    The draft is identified by a CONSISTENT NAME (_wip_draft_title). The run
+    finds that draft by name and inserts; only if no draft with that name exists
+    does it duplicate last week's edition and rename the copy to that name. So it
+    is impossible to duplicate twice for one edition, and the team can see at a
+    glance which draft is live. Re-inserting a section REPLACES its block.
     """
     if section not in _REAL_SEGMENT_HEADINGS:
         return JSONResponse({"error": f"Unknown section: {section}"}, status_code=400)
@@ -2826,34 +2841,32 @@ def api_insert_section_beehiiv(section: str) -> JSONResponse:
     from flatwhite.assemble.beehiiv_format import format_segment_block
     heading = _REAL_SEGMENT_HEADINGS[section]
     html = format_segment_block(heading, text)
+    wip_title = _wip_draft_title()
 
-    draft_id = get_edition_draft(week_iso)
-    if draft_id:
-        prompt = (
-            f"Use the beehiiv MCP for the Flat White publication "
-            f"({_FW_PUBLICATION_ID}). In the existing draft {draft_id}, read it "
-            f"with get_post_content (format editor_html), find the section whose "
-            f"heading is \"{heading}\", and REPLACE that heading and everything "
-            f"under it up to the next section heading with exactly this HTML "
-            f"block (it already contains the heading):\n\n{html}\n\n"
-            f"Use edit_post_content. Change nothing else. Print INSERT_OK when done."
-        )
-    else:
-        prompt = (
-            f"Use the beehiiv MCP for the Flat White publication "
-            f"({_FW_PUBLICATION_ID}). First, duplicate the most recent PUBLISHED "
-            f"edition into a new draft (duplicate_post). Print one line exactly: "
-            f"FW_DRAFT_ID: <the new draft's post id>. Then in that new draft, read "
-            f"it with get_post_content (format editor_html), find the section "
-            f"whose heading is \"{heading}\", and REPLACE that heading and "
-            f"everything under it up to the next section heading with exactly this "
-            f"HTML block (it already contains the heading):\n\n{html}\n\n"
-            f"Use edit_post_content. Change nothing else. Print INSERT_OK when done."
-        )
+    prompt = (
+        f"Use the beehiiv MCP for the Flat White publication "
+        f"({_FW_PUBLICATION_ID}). We build this week's edition in ONE draft named "
+        f"exactly \"{wip_title}\".\n"
+        f"STEP 1 - find or create that draft, do NOT create a second copy:\n"
+        f"  - List the publication's draft posts and look for one titled EXACTLY "
+        f"\"{wip_title}\".\n"
+        f"  - If it already exists, use it as the target. Do NOT duplicate.\n"
+        f"  - If and ONLY if none exists, duplicate the most recent PUBLISHED "
+        f"edition into a new draft and set the new draft's title to EXACTLY "
+        f"\"{wip_title}\".\n"
+        f"Print one line exactly: FW_DRAFT_ID: <the target draft's post id>\n"
+        f"STEP 2 - insert the section: in that target draft, read it with "
+        f"get_post_content (format editor_html), find the section whose heading is "
+        f"\"{heading}\", and REPLACE that heading and everything under it up to the "
+        f"next section heading with exactly this HTML block (it already contains "
+        f"the heading):\n\n{html}\n\n"
+        f"Use edit_post_content. Change nothing else. Print INSERT_OK when done."
+    )
 
     def _on_done(record):
-        # First insert: capture and store the draft the run created.
-        if record and record.get("status") == "done" and not get_edition_draft(week_iso):
+        # Record which draft is current for this edition (the name is the real
+        # guard; this is a convenience record for the dashboard).
+        if record and record.get("status") == "done":
             new_id = _parse_draft_id(record.get("output", ""))
             if new_id:
                 set_edition_draft(week_iso, new_id)
