@@ -29,10 +29,24 @@ Skill-handoffs that exist today:
    Conversation (sorts the DM screenshots into tiers/paragraph pools). Currently
    assumed already done by hand. IN (so the whole chain is one-click).
 
-NOT a skill-handoff (different mechanism, noted for completeness, NOT in this
-build): **beehiiv insertion** uses the beehiiv MCP in a Claude session, not a
-skill. A headless run could do it too, but it is a separate pattern; leave the
-current Design-B assemble/copy flow as-is for now.
+3. **Beehiiv insertion** - IN (feasibility CONFIRMED 17 Jul). Not a file skill
+   but a beehiiv-MCP action. Concern was that claude.ai MCP integrations may be
+   absent in headless runs; tested and they are NOT: `claude -p "list my beehiiv
+   publications"` returned all 4 pubs headless. So the same runner can drive the
+   beehiiv MCP to insert an assembled edition into the target draft
+   (duplicate-latest / get_post_content + edit_post_content), replacing the
+   manual "open the beehiiv MCP in a Claude session" Design-B step.
+
+The sort skill (2) unblocks BOTH Big Conversation AND Inside Track (the dash
+shows "Run the sort skill first" on Inside Track too), so integrating it is
+double value.
+
+### Deployment caveat
+The headless runner only works where the `claude` CLI is installed AND logged in
+- true on Victor's Mac (where he runs FW), NOT on the GCP VM prod. This feature
+is local-first. If FW ever moves to the VM, Claude Code must be installed+authed
+there for these buttons to work; otherwise they should degrade to the old
+handoff instruction rather than error.
 
 ## Design: a shared headless-skill runner
 
@@ -93,12 +107,18 @@ Frontend:
 4. Harden: concurrency cap, timeout, auth-failure and permission-failure
    messages, double-click guard.
 
+5. Wire beehiiv insertion: the assemble screen's 'send to beehiiv' runs a
+   headless Claude that inserts the assembled HTML into the target draft via the
+   beehiiv MCP. Verify LIVE against a throwaway/test draft first.
+
 ## Out of scope
-- Beehiiv insertion (separate MCP pattern).
 - Porting any skill's logic into FW (we run the real skill, never a copy).
 - Changing the skills themselves.
+- Cloud (GCP VM) deployment of this feature (local-first; see caveat above).
 
 ## Success criteria
-Victor clicks Process in the FW dashboard, waits, and the finished Big
-Conversation piece + paragraph screenshots appear - without opening a separate
-Claude session. Same for sorting. Failures are explained in plain English.
+Victor clicks Process/Sort/Send-to-beehiiv in the FW dashboard, waits, and the
+work happens - the Big Conversation piece + screenshots appear, submissions get
+sorted, or the edition lands in the beehiiv draft - all without opening a
+separate Claude session. Failures are explained in plain English and, where
+possible, fall back to the old handoff instruction rather than a dead end.
