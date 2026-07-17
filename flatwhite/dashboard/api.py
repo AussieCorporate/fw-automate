@@ -135,8 +135,17 @@ def _startup() -> None:
 
 @app.get("/")
 def serve_index() -> FileResponse:
-    """Serve the single-page frontend."""
-    return FileResponse(_STATIC_DIR / "index.html", media_type="text/html")
+    """Serve the single-page frontend.
+
+    No-cache headers so a browser (or the PS Dash iframe embedding this page)
+    never shows a stale copy after a deploy - the recurring "I still see the old
+    version" confusion. The page is tiny; always fetching fresh costs nothing.
+    """
+    return FileResponse(
+        _STATIC_DIR / "index.html", media_type="text/html",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate",
+                 "Pragma": "no-cache", "Expires": "0"},
+    )
 
 
 # ── READ endpoints (GET) ────────────────────────────────────────────────────
