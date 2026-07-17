@@ -338,6 +338,7 @@ var S = {
   bigConvSelectedTopic: null,
   bigConvDetail: null,
   bigConvRun: null,
+  bhInsert: null,
   bigConvShowTierPool: false,
   ampFinest: null,
   events: null,
@@ -848,8 +849,22 @@ function _pageHeaderHtml(id) {
     return '<h2>' + esc(title) + '</h2>';
   }
   var status = _segmentStatus(seg);
-  return '<h2>' + esc(seg.name) + '</h2>'
+  var h = '<h2>' + esc(seg.name) + '</h2>'
     + '<span class="stat s-' + status + '" onclick="toggleReady(\'' + esc(id) + '\')">' + esc(_statusLabel(status)) + '</span>';
+  // Insert-into-beehiiv: available once the section is ready. First insert of the
+  // week duplicates last week's edition; each section replaces its own block.
+  var ins = (S.bhInsert && S.bhInsert.section === id) ? S.bhInsert : null;
+  if (status === "ready") {
+    if (ins && ins.status === "running") {
+      h += ' <button class="btn btn-sm btn-secondary" disabled>Inserting into beehiiv...</button>';
+    } else {
+      h += ' <button class="btn btn-sm btn-primary" onclick="insertSectionBeehiiv(\'' + esc(id) + '\')">Insert into beehiiv</button>';
+    }
+    if (ins && ins.status === "failed") {
+      h += ' <span style="font-size:12px;color:var(--danger,#c0392b)">' + esc(ins.error || 'insert failed') + '</span>';
+    }
+  }
+  return h;
 }
 
 function _refreshPageHeader() {
@@ -870,6 +885,38 @@ function toggleReady(id) {
   seg.status = (_segmentStatus(seg) === "ready") ? "notready" : "ready";
   renderSidebar();
   _refreshPageHeader();
+}
+
+function insertSectionBeehiiv(section) {
+  S.bhInsert = { section: section, status: "running", error: null };
+  _refreshPageHeader();
+  showToast("Inserting " + section.replace(/_/g, " ") + " into beehiiv...");
+  api("/api/section/" + encodeURIComponent(section) + "/insert-beehiiv", { method: "POST" })
+    .then(function(d) { pollSectionInsert(section, d.run_id); })
+    .catch(function(e) {
+      S.bhInsert = { section: section, status: "failed", error: e.message };
+      _refreshPageHeader();
+      showToast("Insert failed: " + e.message, "error");
+    });
+}
+
+function pollSectionInsert(section, runId) {
+  api("/api/skill-run/" + encodeURIComponent(runId))
+    .then(function(r) {
+      if (!S.bhInsert || S.bhInsert.section !== section) return;
+      if (r.status === "done") {
+        S.bhInsert = null;
+        _refreshPageHeader();
+        showToast(section.replace(/_/g, " ") + " inserted into next week's beehiiv draft", "success");
+      } else if (r.status === "failed") {
+        S.bhInsert = { section: section, status: "failed", error: r.error };
+        _refreshPageHeader();
+        showToast("Insert failed: " + (r.error || "unknown"), "error");
+      } else {
+        setTimeout(function() { pollSectionInsert(section, runId); }, 3000);
+      }
+    })
+    .catch(function() { setTimeout(function() { pollSectionInsert(section, runId); }, 4000); });
 }
 
 function markReady(section) {

@@ -390,6 +390,17 @@ def migrate_db() -> None:
         )
     """)
 
+    # The beehiiv draft this week's sections insert into. Created once per
+    # edition by duplicating the latest published edition; every section's
+    # "Insert into beehiiv" then targets this same draft.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS edition_beehiiv_draft (
+            week_iso TEXT PRIMARY KEY,
+            post_id TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+    """)
+
     # v6 polarity flip: convert pulse signal + composite scores from
     # health convention (high = healthy) to stress convention (high = stressed).
     # Gated by PRAGMA user_version so it only runs once.
@@ -468,6 +479,29 @@ def save_section_output(
         """INSERT OR REPLACE INTO section_outputs (week_iso, section, output_text, model_used, saved_at)
            VALUES (?, ?, ?, ?, datetime('now'))""",
         (week_iso, section, output_text, model_used),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_edition_draft(week_iso: str) -> str | None:
+    """The beehiiv draft post_id this week's sections insert into, or None."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT post_id FROM edition_beehiiv_draft WHERE week_iso = ?",
+        (week_iso,),
+    ).fetchone()
+    conn.close()
+    return row["post_id"] if row else None
+
+
+def set_edition_draft(week_iso: str, post_id: str) -> None:
+    """Record the beehiiv draft for this edition (first section insert of the week)."""
+    conn = get_connection()
+    conn.execute(
+        """INSERT OR REPLACE INTO edition_beehiiv_draft (week_iso, post_id, created_at)
+           VALUES (?, ?, datetime('now'))""",
+        (week_iso, post_id),
     )
     conn.commit()
     conn.close()

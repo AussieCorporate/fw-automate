@@ -51,12 +51,15 @@ def _find_active_for_key_locked(key: str) -> str | None:
 
 def start_run(kind: str, key: str, argv: list[str], cwd: str,
               *, timeout: int = _DEFAULT_TIMEOUT_SEC, env: dict | None = None,
-              now: float | None = None) -> tuple[str, bool]:
+              on_complete=None, now: float | None = None) -> tuple[str, bool]:
     """Start a background run. Returns (run_id, started_new).
 
     - Dedupes by ``key``: if a run for this key is already active, returns that
       run's id with started_new=False (a double-click just re-attaches).
     - Raises RuntimeError if the global concurrency cap is hit.
+    - ``on_complete(record)`` (optional) is called with the final run record once
+      the run finishes (done or failed), so a caller can react to the output
+      (e.g. parse a printed draft id). Never raises into the run thread.
     """
     now = now if now is not None else time.time()
     with _lock:
@@ -75,7 +78,8 @@ def start_run(kind: str, key: str, argv: list[str], cwd: str,
             "error": None, "returncode": None,
         }
     thread = threading.Thread(
-        target=_execute, args=(run_id, argv, cwd, timeout, env), daemon=True)
+        target=_execute, args=(run_id, argv, cwd, timeout, env, on_complete),
+        daemon=True)
     thread.start()
     return run_id, True
 
@@ -86,7 +90,20 @@ def _set(run_id: str, **fields) -> None:
             _runs[run_id].update(fields)
 
 
-def _execute(run_id: str, argv: list[str], cwd: str, timeout: int, env: dict | None) -> None:
+def _execute(run_id: str, argv: list[str], cwd: str, timeout: int,
+             env: dict | None, on_complete=None) -> None:
+    try:
+        _execute_inner(run_id, argv, cwd, timeout, env)
+    finally:
+        if on_complete is not None:
+            try:
+                on_complete(get_run(run_id))
+            except Exception:  # noqa: BLE001 - a callback must never break the run thread
+                pass
+
+
+def _execute_inner(run_id: str, argv: list[str], cwd: str, timeout: int,
+                   env: dict | None) -> None:
     _set(run_id, status="running")
     run_env = {**os.environ, **(env or {})}
     try:

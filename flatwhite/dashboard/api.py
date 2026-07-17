@@ -25,7 +25,10 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 
-from flatwhite.db import init_db, get_connection, get_current_week_iso
+from flatwhite.db import (
+    init_db, get_connection, get_current_week_iso,
+    load_all_section_outputs, get_edition_draft, set_edition_draft,
+)
 from flatwhite.model_router import route, list_available_models
 from flatwhite.utils.text_clean import strip_reader_dashes
 from flatwhite.pulse.anomaly import detect_all_anomalies
@@ -2784,6 +2787,85 @@ def api_skill_run_status(run_id: str) -> JSONResponse:
         "id": r["id"], "kind": r["kind"], "status": r["status"],
         "error": r["error"], "output_tail": (r["output"] or "")[-1500:],
     })
+
+
+# ── Per-section insert into the beehiiv edition draft ─────────────────────────
+_FW_PUBLICATION_ID = "pub_6210ff81-d440-4e09-916d-42fe436f0d05"
+
+
+def _parse_draft_id(output: str) -> str | None:
+    """Pull the 'FW_DRAFT_ID: post_...' marker a duplicate-then-insert run prints."""
+    m = re.search(r"FW_DRAFT_ID:\s*(post_[0-9a-f-]+)", output or "")
+    return m.group(1) if m else None
+
+
+@app.post("/api/section/{section}/insert-beehiiv")
+def api_insert_section_beehiiv(section: str) -> JSONResponse:
+    """Insert one ready section into this edition's beehiiv draft, headless.
+
+    First insert of the week duplicates the latest PUBLISHED Flat White edition
+    into a fresh draft (so layout/furniture carry over) and records it; later
+    inserts reuse that draft. Re-inserting a section REPLACES its block.
+    """
+    if section not in _REAL_SEGMENT_HEADINGS:
+        return JSONResponse({"error": f"Unknown section: {section}"}, status_code=400)
+    if not _claude_available():
+        return JSONResponse(
+            {"error": "Claude Code isn't installed on this machine, so the "
+                      "dashboard can't insert into beehiiv. Do it in a Claude "
+                      "session instead."}, status_code=503)
+
+    week_iso = get_current_week_iso()
+    saved = load_all_section_outputs(week_iso).get(section) or {}
+    text = (saved.get("output_text") or "").strip()
+    if not text:
+        return JSONResponse(
+            {"error": "This section has no saved content yet. Generate and mark "
+                      "it ready first."}, status_code=400)
+
+    from flatwhite.assemble.beehiiv_format import format_segment_block
+    heading = _REAL_SEGMENT_HEADINGS[section]
+    html = format_segment_block(heading, text)
+
+    draft_id = get_edition_draft(week_iso)
+    if draft_id:
+        prompt = (
+            f"Use the beehiiv MCP for the Flat White publication "
+            f"({_FW_PUBLICATION_ID}). In the existing draft {draft_id}, read it "
+            f"with get_post_content (format editor_html), find the section whose "
+            f"heading is \"{heading}\", and REPLACE that heading and everything "
+            f"under it up to the next section heading with exactly this HTML "
+            f"block (it already contains the heading):\n\n{html}\n\n"
+            f"Use edit_post_content. Change nothing else. Print INSERT_OK when done."
+        )
+    else:
+        prompt = (
+            f"Use the beehiiv MCP for the Flat White publication "
+            f"({_FW_PUBLICATION_ID}). First, duplicate the most recent PUBLISHED "
+            f"edition into a new draft (duplicate_post). Print one line exactly: "
+            f"FW_DRAFT_ID: <the new draft's post id>. Then in that new draft, read "
+            f"it with get_post_content (format editor_html), find the section "
+            f"whose heading is \"{heading}\", and REPLACE that heading and "
+            f"everything under it up to the next section heading with exactly this "
+            f"HTML block (it already contains the heading):\n\n{html}\n\n"
+            f"Use edit_post_content. Change nothing else. Print INSERT_OK when done."
+        )
+
+    def _on_done(record):
+        # First insert: capture and store the draft the run created.
+        if record and record.get("status") == "done" and not get_edition_draft(week_iso):
+            new_id = _parse_draft_id(record.get("output", ""))
+            if new_id:
+                set_edition_draft(week_iso, new_id)
+
+    argv = [_claude_bin(), "-p", prompt, "--permission-mode", "bypassPermissions"]
+    try:
+        run_id, started = _skill_runner.start_run(
+            "beehiiv-insert", f"insert:{week_iso}:{section}", argv,
+            cwd=str(Path.cwd()), on_complete=_on_done)
+    except RuntimeError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=429)
+    return JSONResponse({"run_id": run_id, "started": started, "section": section})
 
 
 @app.post("/api/big-conversation/topic/{topic}/pairing")
