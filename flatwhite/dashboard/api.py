@@ -2635,6 +2635,7 @@ def api_top_picks_recent_posts() -> JSONResponse:
 # flatwhite/dashboard/big_conversation_bank.py for the filesystem logic.
 
 from flatwhite.dashboard import big_conversation_bank as _bcb
+from flatwhite.dashboard import skill_runner as _skill_runner
 from flatwhite.dashboard.state import (
     load_topic_archive_state,
     set_topic_archived,
@@ -2713,6 +2714,76 @@ def api_big_conversation_prepare(topic: str) -> JSONResponse:
         f'DM screenshotter project), then come back here and click Refresh.'
     )
     return JSONResponse({"topic": topic, "folder_path": str(folder), "instruction": instruction})
+
+
+# ── Run skills headless from the dashboard (no separate Claude session) ───────
+# The dashboard launches the REAL skill via `claude -p` in the Instagram DM
+# screenshotter project, tracks it as a background job, and reads back the files
+# the skill writes. See docs/superpowers/specs/2026-07-17-dashboard-runs-skills-
+# headless.md. The claude CLI must be installed + logged in on this machine
+# (local-first; degrades to the old handoff instruction if it isn't).
+
+def _claude_bin() -> str:
+    import shutil
+    return shutil.which("claude") or str(Path.home() / ".local" / "bin" / "claude")
+
+
+def _claude_available() -> bool:
+    return Path(_claude_bin()).exists()
+
+
+# The skill run uses bypassPermissions: a headless agent that stops to ask about
+# every file write and screenshot copy would just hang. This is a deliberate,
+# documented escalation - it runs Victor's OWN trusted skill, cwd'd into his own
+# Instagram output folder, only on an explicit button click. Originals are never
+# moved (the skill copies, per its own contract).
+def _skill_argv(prompt: str, add_dir: str) -> list[str]:
+    return [_claude_bin(), "-p", prompt,
+            "--permission-mode", "bypassPermissions",
+            "--add-dir", add_dir]
+
+
+@app.post("/api/skill-run/big-conversation/{topic}")
+def api_run_big_conversation(topic: str) -> JSONResponse:
+    """Run the big-conversation skill on a topic headless; return a run id to poll."""
+    folder = _bcb.INSTAGRAM_OUTPUT_DIR / topic
+    if not folder.is_dir():
+        return JSONResponse({"error": f"Topic folder not found: {topic}"}, status_code=404)
+    if not _claude_available():
+        return JSONResponse(
+            {"error": "Claude Code isn't installed on this machine, so the "
+                      "dashboard can't run the skill. Run it in a Claude session "
+                      "instead."}, status_code=503)
+    out_dir = str(_bcb.INSTAGRAM_OUTPUT_DIR)
+    prompt = (
+        f'Use the big-conversation skill to process the topic "{topic}". '
+        f'The topic folders are in the current directory ({out_dir}). Follow the '
+        f'skill exactly from start to finish: build the deepdive fuel if missing, '
+        f'draft THE BIG CONVERSATION in the house voice, select and map the '
+        f'screenshots, and emit the output files (_{topic.replace(" ", "_")}'
+        f'_BIG_CONVERSATION.md at the output root and the topic\'s '
+        f'_BIG_CONVERSATION_assets folder). Do not ask me any questions; '
+        f'complete the whole skill and finish.'
+    )
+    try:
+        run_id, started = _skill_runner.start_run(
+            "big-conversation", f"bigconv:{topic}",
+            _skill_argv(prompt, out_dir), cwd=out_dir)
+    except RuntimeError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=429)
+    return JSONResponse({"run_id": run_id, "started": started, "topic": topic})
+
+
+@app.get("/api/skill-run/{run_id}")
+def api_skill_run_status(run_id: str) -> JSONResponse:
+    """Poll a headless skill run's status."""
+    r = _skill_runner.get_run(run_id)
+    if not r:
+        return JSONResponse({"error": "Unknown run"}, status_code=404)
+    return JSONResponse({
+        "id": r["id"], "kind": r["kind"], "status": r["status"],
+        "error": r["error"], "output_tail": (r["output"] or "")[-1500:],
+    })
 
 
 @app.post("/api/big-conversation/topic/{topic}/pairing")

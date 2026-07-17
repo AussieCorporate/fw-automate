@@ -337,7 +337,7 @@ var S = {
   bigConvRootExists: true,
   bigConvSelectedTopic: null,
   bigConvDetail: null,
-  bigConvPrepare: null,
+  bigConvRun: null,
   bigConvShowTierPool: false,
   ampFinest: null,
   events: null,
@@ -1430,7 +1430,7 @@ function renderBigConvBank() {
 function openBigConvTopic(topic) {
   S.bigConvSelectedTopic = topic;
   S.bigConvDetail = null;
-  S.bigConvPrepare = null;
+  S.bigConvRun = null;
   S.bigConvShowTierPool = false;
   render();
   loadBigConvTopicDetail(topic);
@@ -1454,11 +1454,17 @@ function renderBigConvTopicDetail() {
 
   if (!d.processed) {
     h += '<div class="card">';
-    h += '<p style="font-size:13px;color:var(--label2);">No piece drafted yet for this topic.</p>';
-    h += '<button class="btn btn-primary" onclick="prepareBigConvTopic(' + jsq(topic) + ')">Process</button>';
-    if (S.bigConvPrepare && S.bigConvPrepare.topic === topic) {
-      h += '<div class="bc-instruction">' + esc(S.bigConvPrepare.instruction) + '</div>';
-      h += '<button class="btn btn-sm btn-secondary" onclick="refreshBigConvTopic()">Refresh</button>';
+    var run = (S.bigConvRun && S.bigConvRun.topic === topic) ? S.bigConvRun : null;
+    if (run && (run.status === 'queued' || run.status === 'running')) {
+      h += '<p style="font-size:13px;color:var(--label2);">Processing this topic... this takes a few minutes (reading the screenshots and drafting the piece). You can keep working, it runs in the background.</p>';
+      h += '<button class="btn btn-primary" disabled>Working...</button>';
+    } else if (run && run.status === 'failed') {
+      h += '<p style="font-size:13px;color:var(--danger,#c0392b);">Couldn\'t process this topic: ' + esc(run.error || 'unknown error') + '</p>';
+      h += '<button class="btn btn-primary" onclick="runBigConvTopic(' + jsq(topic) + ')">Try again</button>';
+      if (run.output_tail) { h += '<details style="margin-top:8px"><summary style="font-size:12px;color:var(--label2);cursor:pointer">Details</summary><pre class="bc-instruction" style="white-space:pre-wrap">' + esc(run.output_tail) + '</pre></details>'; }
+    } else {
+      h += '<p style="font-size:13px;color:var(--label2);">No piece drafted yet for this topic.</p>';
+      h += '<button class="btn btn-primary" onclick="runBigConvTopic(' + jsq(topic) + ')">Process</button>';
     }
     h += '</div>';
     h += renderBigConvViralPool(d.pools);
@@ -1512,13 +1518,40 @@ function refreshBigConvTopic() {
   if (S.bigConvSelectedTopic) loadBigConvTopicDetail(S.bigConvSelectedTopic);
 }
 
-function prepareBigConvTopic(topic) {
-  api("/api/big-conversation/topic/" + encodeURIComponent(topic) + "/prepare", { method: "POST" })
+function runBigConvTopic(topic) {
+  // Kick off the real big-conversation skill headless, then poll to completion.
+  S.bigConvRun = { topic: topic, status: "queued", run_id: null, error: null };
+  render();
+  api("/api/skill-run/big-conversation/" + encodeURIComponent(topic), { method: "POST" })
     .then(function(d) {
-      S.bigConvPrepare = d;
+      S.bigConvRun = { topic: topic, status: "running", run_id: d.run_id, error: null };
       render();
+      pollBigConvRun(topic, d.run_id);
     })
-    .catch(function(e) { showToast("Error: " + e.message, "error"); });
+    .catch(function(e) {
+      S.bigConvRun = { topic: topic, status: "failed", error: e.message };
+      render();
+    });
+}
+
+function pollBigConvRun(topic, runId) {
+  api("/api/skill-run/" + encodeURIComponent(runId))
+    .then(function(r) {
+      if (!S.bigConvRun || S.bigConvRun.topic !== topic) return;  // user moved on
+      if (r.status === "done") {
+        S.bigConvRun = null;
+        showToast("Big Conversation ready", "success");
+        refreshBigConvTopic();  // loads the piece + screenshots the skill wrote
+      } else if (r.status === "failed") {
+        S.bigConvRun = { topic: topic, status: "failed", error: r.error, output_tail: r.output_tail };
+        render();
+      } else {
+        setTimeout(function() { pollBigConvRun(topic, runId); }, 3000);
+      }
+    })
+    .catch(function() {
+      setTimeout(function() { pollBigConvRun(topic, runId); }, 4000);  // transient, keep polling
+    });
 }
 
 function toggleBigConvTierPool() {
