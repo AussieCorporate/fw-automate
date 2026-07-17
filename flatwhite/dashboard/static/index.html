@@ -1501,6 +1501,18 @@ function openBigConvTopic(topic) {
   S.bigConvShowTierPool = false;
   render();
   loadBigConvTopicDetail(topic);
+  // Reconnect to a run already in progress for this topic (e.g. you clicked
+  // Process, navigated away, and came back) so it shows "Working..." and keeps
+  // polling instead of a blank Process button.
+  api("/api/big-conversation/topic/" + encodeURIComponent(topic) + "/run-status")
+    .then(function(r) {
+      if (r.active && S.bigConvSelectedTopic === topic) {
+        S.bigConvRun = { topic: topic, status: "running", run_id: r.run_id, error: null };
+        render();
+        pollBigConvRun(topic, r.run_id);
+      }
+    })
+    .catch(function() {});
 }
 
 function closeBigConvTopic() {

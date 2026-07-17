@@ -154,6 +154,17 @@ def get_run(run_id: str) -> dict | None:
         return dict(r) if r else None
 
 
+def get_active_by_key(key: str) -> dict | None:
+    """The active (queued/running) run for a key, or None. Lets the frontend
+    reconnect to a job still in progress after the user navigated away and back,
+    so it never looks like the run 'disappeared'."""
+    with _lock:
+        for r in _runs.values():
+            if r["key"] == key and r["status"] in ("queued", "running"):
+                return dict(r)
+    return None
+
+
 def _reset_for_tests() -> None:
     with _lock:
         _runs.clear()

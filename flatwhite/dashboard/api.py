@@ -2755,6 +2755,15 @@ def _skill_argv(prompt: str, add_dir: str) -> list[str]:
             "--add-dir", add_dir]
 
 
+@app.get("/api/big-conversation/topic/{topic}/run-status")
+def api_big_conversation_run_status(topic: str) -> JSONResponse:
+    """Is this topic currently being processed? Lets the UI reconnect to a run
+    in progress after navigating away, instead of showing a blank Process button."""
+    r = _skill_runner.get_active_by_key(f"bigconv:{topic}")
+    return JSONResponse({"active": bool(r), "run_id": r["id"] if r else None,
+                         "status": r["status"] if r else None})
+
+
 @app.post("/api/skill-run/big-conversation/{topic}")
 def api_run_big_conversation(topic: str) -> JSONResponse:
     """Run the big-conversation skill on a topic headless; return a run id to poll."""
