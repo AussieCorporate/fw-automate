@@ -149,12 +149,49 @@ def md_to_editor_html(text: str) -> str:
     return "".join(parts)
 
 
-def format_segment_block(label: str, text: str, heading_level: str = "h3") -> str:
-    """Wrap a labelled heading + converted body — one block in the assembled edition.
+# The bordered "card" every Flat White section sits in (a beehiiv node-section).
+# Matches the exact data-* attribute set the published editions use, so an
+# inserted section carries the same border, padding and visibility as the rest
+# of the edition instead of coming out as a bare block. Content goes UNDER the
+# heading, INSIDE this card - the section is never left unwrapped.
+_SECTION_WRAPPER_ATTRS = (
+    'data-border-bottom-left-radius="10" data-border-bottom-right-radius="10" '
+    'data-border-color="#dbdbdb" data-border-style="solid" '
+    'data-border-top-left-radius="10" data-border-top-right-radius="10" '
+    'data-border-width-bottom="1" data-border-width-left="1" '
+    'data-border-width-right="1" data-border-width-top="1" '
+    'data-margin-bottom="10" data-margin-left="10" data-margin-right="10" '
+    'data-margin-top="10" data-padding-bottom="10" data-padding-left="10" '
+    'data-padding-right="10" data-padding-top="10" data-referral-condition="lt" '
+    'data-referral-count-value="0" data-show-in-email="true" '
+    'data-show-on-website="true" data-show-to-free-subscribers="true" '
+    'data-show-to-non-subscribers="true" data-show-to-paid-subscribers="true" '
+    'data-show-to-tiered-subscribers="[]" data-show-with-referral-count="false" '
+    'data-use-individual-border-radius="false" '
+    'data-use-individual-border-width="false" '
+    'data-use-individual-margin="false" data-use-individual-padding="false" '
+    'data-type="section" class="node-section"'
+)
 
-    label is used verbatim as the visible heading text (callers pass the real
-    published header name, e.g. "THE BIG CONVERSATION", not the FW section id).
+# Flat White section headings: brand blue, bold, left-aligned - the exact shape
+# the published editions use for every section title.
+_FW_HEADING_BLUE = "#002b87"
+
+
+def format_segment_block(label: str, text: str, heading_level: str = "h3") -> str:
+    """One Flat White section as a complete bordered card: the styled heading
+    with the section body UNDER it, all wrapped in the node-section card the rest
+    of the edition uses. Replacing an existing section card with this keeps the
+    card intact (the whole point - content sits under the heading, never bare).
+
+    label is the visible heading text (callers pass the real published header
+    name, e.g. "THE BIG CONVERSATION", not the FW section id).
     """
-    heading = f"<{heading_level}>{html.escape(label, quote=True)}</{heading_level}>"
+    safe_label = html.escape(label, quote=True)
+    heading = (
+        f'<{heading_level} style="text-align: left;">'
+        f'<span style="color: {_FW_HEADING_BLUE};"><strong>{safe_label}</strong></span>'
+        f"</{heading_level}>"
+    )
     body = md_to_editor_html(text)
-    return heading + body
+    return f'<div {_SECTION_WRAPPER_ATTRS}>{heading}{body}</div>'

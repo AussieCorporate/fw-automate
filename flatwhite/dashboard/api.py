@@ -2838,9 +2838,9 @@ def api_insert_section_beehiiv(section: str) -> JSONResponse:
             {"error": "This section has no saved content yet. Generate and mark "
                       "it ready first."}, status_code=400)
 
-    from flatwhite.assemble.beehiiv_format import format_segment_block
+    from flatwhite.assemble.beehiiv_format import md_to_editor_html
     heading = _REAL_SEGMENT_HEADINGS[section]
-    html = format_segment_block(heading, text)
+    body_html = md_to_editor_html(text)
     wip_title = _wip_draft_title()
 
     prompt = (
@@ -2855,12 +2855,20 @@ def api_insert_section_beehiiv(section: str) -> JSONResponse:
         f"edition into a new draft and set the new draft's title to EXACTLY "
         f"\"{wip_title}\".\n"
         f"Print one line exactly: FW_DRAFT_ID: <the target draft's post id>\n"
-        f"STEP 2 - insert the section: in that target draft, read it with "
-        f"get_post_content (format editor_html), find the section whose heading is "
-        f"\"{heading}\", and REPLACE that heading and everything under it up to the "
-        f"next section heading with exactly this HTML block (it already contains "
-        f"the heading):\n\n{html}\n\n"
-        f"Use edit_post_content. Change nothing else. Print INSERT_OK when done."
+        f"STEP 2 - fill in the section, KEEPING ITS CARD. Read the draft with "
+        f"get_post_content (format editor_html). Find the bordered section CARD "
+        f"(the node-section block, class=\"node-section\") whose heading is "
+        f"\"{heading}\". Do NOT delete or unwrap that card, and do NOT touch its "
+        f"heading. INSIDE that same card, directly under the heading, place this "
+        f"content:\n\n{body_html}\n\n"
+        f"Keep the card's border and keep any images, buttons, sponsor content or "
+        f"footer that are already inside the card. If the card already holds "
+        f"editorial body content under the heading from an earlier insert (as "
+        f"opposed to the original template furniture), REPLACE that old body "
+        f"content with the new content above so nothing is duplicated. The final "
+        f"card must look like every other section: bordered card, heading, then "
+        f"this content underneath. Use edit_post_content. Change no other section. "
+        f"Print INSERT_OK when done."
     )
 
     def _on_done(record):

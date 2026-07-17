@@ -64,7 +64,7 @@ def test_each_block_has_html_and_benchmark(assemble_client):
     resp = client.post("/api/assemble-edition", json={"segments": _BASE_SEGMENTS})
     blocks = resp.json()["blocks"]
     editorial_block = next(b for b in blocks if b["section"] == "editorial")
-    assert "<h3>INTRO</h3>" in editorial_block["html"] or "<h3>" in editorial_block["html"]
+    assert "<h3" in editorial_block["html"] and "<strong>INTRO</strong>" in editorial_block["html"]
     assert "benchmark" in editorial_block
     assert editorial_block["benchmark"]["status"] in ("short", "within", "long", "no_data")
 

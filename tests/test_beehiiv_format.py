@@ -49,14 +49,19 @@ def test_h4_hyperlinked_thread_title_format():
 
 def test_format_segment_block_wraps_heading_and_body():
     block = format_segment_block("THE BIG CONVERSATION", "**A quiet mutiny.**\n\nMore teams are pushing back.")
-    assert block.startswith("<h3>THE BIG CONVERSATION</h3>")
-    assert "<strong>A quiet mutiny.</strong>" in block
+    # A complete bordered section card (not a bare heading) so an inserted
+    # section matches every other section's card.
+    assert 'class="node-section"' in block and 'data-type="section"' in block
+    assert "<strong>THE BIG CONVERSATION</strong>" in block  # styled heading
+    assert "#002b87" in block                                 # FW brand blue heading
+    assert "<strong>A quiet mutiny.</strong>" in block        # body under the heading
     assert "More teams are pushing back." in block
 
 
 def test_format_segment_block_custom_heading_level():
     block = format_segment_block("Odd Picks", "One quirky link.", heading_level="h4")
-    assert block.startswith("<h4>Odd Picks</h4>")
+    assert "<h4" in block and "<strong>Odd Picks</strong>" in block
+    assert 'class="node-section"' in block
 
 
 def test_link_with_multiple_underscores_in_url_not_corrupted():
