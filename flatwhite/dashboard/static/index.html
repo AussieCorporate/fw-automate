@@ -264,7 +264,12 @@ select.form-input { appearance: auto; }
 .bc-paragraph{border-top:.5px solid var(--sep);padding:14px 0}
 .bc-p-text{font-size:14px;line-height:1.5;margin-bottom:10px}
 .bc-shots{display:flex;gap:8px;flex-wrap:wrap;min-height:64px}
-.bc-shot{width:72px;height:72px;object-fit:cover;border-radius:8px;cursor:grab;border:1px solid var(--sep)}
+.bc-shot{width:72px;height:72px;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid var(--sep);transition:transform .08s}
+.bc-shot:hover{transform:scale(1.06);border-color:var(--accent,#4a7)}
+.bc-lightbox{position:fixed;inset:0;z-index:9999;background:rgba(15,17,20,.88);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;padding:28px;cursor:zoom-out}
+.bc-lightbox img{max-width:min(92vw,520px);max-height:86vh;object-fit:contain;border-radius:10px;box-shadow:0 12px 48px rgba(0,0,0,.5)}
+.bc-lightbox .bc-lb-name{color:#e8e8ea;font-size:12px;opacity:.85}
+.bc-lightbox .bc-lb-close{position:absolute;top:18px;right:22px;color:#fff;font-size:26px;line-height:1;background:none;border:none;cursor:pointer}
 .bc-tier-pools{display:flex;flex-direction:column;gap:16px}
 .bc-pool{margin-top:16px}
 .bc-pool-label{font-size:11px;font-weight:700;color:var(--label3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
@@ -1556,7 +1561,7 @@ function renderBigConvTopicDetail() {
     h += '<div class="bc-p-text">' + esc(p.text) + '</div>';
     h += '<div class="bc-shots">';
     (p.screenshots || []).forEach(function(s) {
-      h += '<img class="bc-shot" src="' + s.url + '" draggable="true" ondragstart="bcDragStart(event,' + jsq(s.file) + ')" title="' + esc(s.file) + '">';
+      h += '<img class="bc-shot" src="' + s.url + '" draggable="true" ondragstart="bcDragStart(event,' + jsq(s.file) + ')" onclick="bcPreview(' + jsq(s.url) + ',' + jsq(s.file) + ')" title="Click to preview: ' + esc(s.file) + '">';
     });
     h += '</div></div>';
   });
@@ -1573,7 +1578,7 @@ function renderBigConvViralPool(pools) {
   var shots = (pools && pools.viral) || [];
   var h = '<div class="bc-pool"><div class="bc-pool-label">Viral extreme (always shown, in case a paragraph pick missed something compelling)</div><div class="bc-shots" ondragover="bcDragOver(event)" ondrop="bcDrop(event,0)">';
   shots.forEach(function(s) {
-    h += '<img class="bc-shot" src="' + s.url + '" draggable="true" ondragstart="bcDragStart(event,' + jsq(s.file) + ')" title="' + esc(s.file) + '">';
+    h += '<img class="bc-shot" src="' + s.url + '" draggable="true" ondragstart="bcDragStart(event,' + jsq(s.file) + ')" onclick="bcPreview(' + jsq(s.url) + ',' + jsq(s.file) + ')" title="Click to preview: ' + esc(s.file) + '">';
   });
   h += '</div></div>';
   return h;
@@ -1585,7 +1590,7 @@ function renderBigConvTierPools(pools) {
     var shots = (pools && pools[tier]) || [];
     h += '<div class="bc-pool"><div class="bc-pool-label">' + tier + '</div><div class="bc-shots">';
     shots.forEach(function(s) {
-      h += '<img class="bc-shot" src="' + s.url + '" draggable="true" ondragstart="bcDragStart(event,' + jsq(s.file) + ')" title="' + esc(s.file) + '">';
+      h += '<img class="bc-shot" src="' + s.url + '" draggable="true" ondragstart="bcDragStart(event,' + jsq(s.file) + ')" onclick="bcPreview(' + jsq(s.url) + ',' + jsq(s.file) + ')" title="Click to preview: ' + esc(s.file) + '">';
     });
     h += '</div></div>';
   });
@@ -1596,6 +1601,28 @@ function renderBigConvTierPools(pools) {
 function refreshBigConvTopic() {
   if (S.bigConvSelectedTopic) loadBigConvTopicDetail(S.bigConvSelectedTopic);
 }
+
+// ── Screenshot preview (click a thumbnail to read it full size) ─────
+function bcPreview(url, name) {
+  var existing = document.getElementById("bcLightbox");
+  if (existing) existing.remove();
+  var box = document.createElement("div");
+  box.id = "bcLightbox";
+  box.className = "bc-lightbox";
+  box.innerHTML =
+    '<button class="bc-lb-close" title="Close" aria-label="Close">&times;</button>' +
+    '<img src="' + encodeURI(url) + '" alt="">' +
+    '<div class="bc-lb-name">' + esc(name || "") + '</div>';
+  box.addEventListener("click", closeBcPreview);
+  document.body.appendChild(box);
+}
+function closeBcPreview() {
+  var b = document.getElementById("bcLightbox");
+  if (b) b.remove();
+}
+document.addEventListener("keydown", function(e) {
+  if (e.key === "Escape") closeBcPreview();
+});
 
 // ── Screenshot sort (headless skill) ────────────────────────────────
 function runScreenshotSort() {
