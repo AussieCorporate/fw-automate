@@ -43,17 +43,32 @@ def list_inside_track_submissions(base_dir: Path) -> list[dict]:
 
     Returns [] (fails soft) if base_dir or the Inside Track folder inside it
     is missing. Only looks at direct children — the folder is flat, one
-    screenshot per submitter, no per-submitter subfolders — sorted
-    case-insensitively by filename for a stable, predictable order.
+    screenshot per submitter, no per-submitter subfolders.
+
+    Ordered NEWEST-FIRST by when the screenshot was captured (file mtime):
+    Inside Track is gossip and redundancy news, which is time-sensitive, so the
+    freshest submissions lead. Ties (same mtime) fall back to filename for a
+    stable order.
     """
     folder = find_inside_track_folder(base_dir)
     if folder is None:
         return []
-    submissions = []
-    for path in sorted(folder.iterdir(), key=lambda p: p.name.lower()):
-        if path.is_file() and path.suffix.lower() in _IMAGE_EXTENSIONS:
-            submissions.append({"filename": path.name, "folder": folder.name})
-    return submissions
+    files = [
+        p for p in folder.iterdir()
+        if p.is_file() and p.suffix.lower() in _IMAGE_EXTENSIONS
+    ]
+
+    def _captured_at(p: Path) -> float:
+        try:
+            return p.stat().st_mtime
+        except OSError:
+            return 0.0
+
+    files.sort(key=lambda p: (-_captured_at(p), p.name.lower()))
+    return [
+        {"filename": p.name, "folder": folder.name, "captured_at": _captured_at(p)}
+        for p in files
+    ]
 
 
 def resolve_inside_track_image(base_dir: Path, filename: str) -> Path | None:

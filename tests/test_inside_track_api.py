@@ -19,8 +19,12 @@ def _touch(path: Path) -> None:
 
 
 def test_api_inside_track_lists_submissions(tmp_path):
+    import os
     _touch(tmp_path / "_INSIDE_TRACK" / "adam_0001.jpg")
     _touch(tmp_path / "_INSIDE_TRACK" / "Zoe_0002.png")
+    # Zoe captured more recently -> should lead (Inside Track is newest-first).
+    os.utime(tmp_path / "_INSIDE_TRACK" / "adam_0001.jpg", (1000, 1000))
+    os.utime(tmp_path / "_INSIDE_TRACK" / "Zoe_0002.png", (2000, 2000))
     with patch.object(api_module, "_SCREENSHOTTER_OUTPUT_DIR", tmp_path):
         with patch("flatwhite.dashboard.api.get_current_week_iso", return_value="2026-W28"):
             result = api_module.api_inside_track()
@@ -29,8 +33,8 @@ def test_api_inside_track_lists_submissions(tmp_path):
     assert data["folder_name"] == "_INSIDE_TRACK"
     assert data["week_iso"] == "2026-W28"
     filenames = [s["filename"] for s in data["submissions"]]
-    assert filenames == ["adam_0001.jpg", "Zoe_0002.png"]
-    assert data["submissions"][0]["thumb_url"] == "/api/inside-track/image/adam_0001.jpg"
+    assert filenames == ["Zoe_0002.png", "adam_0001.jpg"]  # newest capture first
+    assert data["submissions"][0]["thumb_url"] == "/api/inside-track/image/Zoe_0002.png"
 
 
 def test_api_inside_track_fails_soft_when_folder_absent(tmp_path):

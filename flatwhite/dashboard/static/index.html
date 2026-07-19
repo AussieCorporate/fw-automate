@@ -330,6 +330,7 @@ var S = {
   page: "pulse",
   weekIso: "",
   models: [],
+  modelDefaults: {},
   pulse: null,
   signals: [],
   anomalies: [],
@@ -662,11 +663,15 @@ function loadPageData(page) {
 }
 
 /* ── Model dropdown helper ── */
-function modelSelect(id) {
+function modelSelect(id, section) {
   if (!S.models.length) return "";
+  // Pre-select this section's recommended model so an untouched picker drafts on
+  // the right model (was defaulting to the first option, Gemini).
+  var def = (section && S.modelDefaults && S.modelDefaults[section]) || null;
   var h = '<select class="model-select" id="' + id + '">';
   S.models.forEach(function(m) {
-    h += '<option value="' + escAttr(m.id) + '">' + esc(m.label || m.id) + '</option>';
+    var sel = (def && m.id === def) ? ' selected' : '';
+    h += '<option value="' + escAttr(m.id) + '"' + sel + '>' + esc(m.label || m.id) + '</option>';
   });
   h += '</select>';
   return h;
@@ -674,7 +679,10 @@ function modelSelect(id) {
 
 function getModel(id) {
   var el = $(id);
-  return el ? el.value : (S.models.length ? S.models[0].id : null);
+  // If there's no picker for this section, return null so the backend uses that
+  // task's proper default - NOT S.models[0] (which silently forced Gemini on
+  // sections whose picker was never rendered).
+  return el ? el.value : null;
 }
 
 /* sectionStatus() (old icon-nav's done-dot) removed with renderLegacyNav()
@@ -1018,7 +1026,7 @@ function renderEditorial(el) {
     p3 += '<p style="font-size:12px;color:var(--amber-ink);background:var(--amber-soft);padding:8px 12px;border-radius:8px;margin-bottom:12px;">Write is locked until every other segment is marked ready.</p>';
   }
   p3 += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
-  p3 += modelSelect('model-editorial');
+  p3 += modelSelect('model-editorial','editorial');
   p3 += '<button class="btn btn-success" onclick="proceedEditorial()"' + (gated ? ' disabled' : '') + '>Write</button>';
   p3 += '</div>';
   p3 += outputBox('editorial');
@@ -1114,7 +1122,7 @@ function renderBrainsPicker() {
   }
   if (S.brainsChosen) {
     h += '<div style="display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap;">';
-    h += modelSelect('model-brains_trust');
+    h += modelSelect('model-brains_trust','brains_trust');
     h += '<button class="btn btn-primary" onclick="draftBrainsTrust()"' + (S.brainsDrafting ? ' disabled' : '') + '>' + (S.brainsDrafting ? "Drafting…" : "Draft") + '</button>';
     h += '</div>';
   }
@@ -1326,7 +1334,7 @@ function renderPulse(el) {
   // Phase 3: Generate
   var p3 = '';
   p3 += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
-  p3 += modelSelect('model-pulse');
+  p3 += modelSelect('model-pulse','pulse');
   p3 += '<button class="btn btn-success" onclick="proceedPulse()">' + (hasOutput ? 'Regenerate' : 'Generate') + '</button>';
   p3 += '</div>';
   p3 += outputBox('pulse');
@@ -1892,7 +1900,7 @@ function renderOTC(el) {
 
   var p3 = '';
   p3 += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">';
-  p3 += modelSelect("model-otc");
+  p3 += modelSelect("model-otc","off_the_clock");
   p3 += '<button class="btn btn-success" onclick="proceedOTC()">' + (hasOutput ? 'Regenerate' : 'Generate') + '</button>';
   p3 += '</div>';
   p3 += outputBox("off_the_clock");
@@ -1995,7 +2003,7 @@ function renderInsideTrack(el) {
   }
 
   h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">';
-  h += modelSelect("model-insidetrack");
+  h += modelSelect("model-insidetrack","insidetrack");
   h += '<button class="btn btn-success" onclick="proceedInsideTrack()"' + (S.loading.insidetrack ? ' disabled' : '') + '>';
   h += (S.loading.insidetrack ? 'Writing up…' : 'Write up selected (' + pickedCount + ')');
   h += '</button></div>';
@@ -2252,7 +2260,7 @@ function confirmAndGenerate() {
   var section = modal.section;
   var lean = modal.lean.trim();
   var customPrompt = lean ? lean + "\n\n" + modal.prompt : modal.prompt;
-  var model = S.proceedModel[section] || (S.models && S.models.length ? S.models[0].id : null);
+  var model = S.proceedModel[section] || (S.modelDefaults && S.modelDefaults[section]) || null;
   S.proceedModal.open = false;
   S.loading[section] = true;
   render();
@@ -2376,7 +2384,7 @@ function renderProceedModal() {
 
   // ── Model panel ──
   if (activeTab === 'model') {
-    var currentModel = S.proceedModel[section] || (availableModels.length ? availableModels[0].id : "");
+    var currentModel = S.proceedModel[section] || (S.modelDefaults && S.modelDefaults[section]) || (availableModels.length ? availableModels[0].id : "");
     h += '<div style="font-size:13px;color:var(--text-2);margin-bottom:16px;">Select the model for this section\'s generation. Only models with a configured API key are shown.</div>';
 
     var byProvider = {};
@@ -2795,6 +2803,7 @@ function init() {
     api("/api/pulse/trends").catch(function() { return null; }),
   ]).then(function(results) {
     S.models = results[0].models || [];
+    S.modelDefaults = results[0].section_defaults || {};  // recommended model per section
     try { S.proceedModel = JSON.parse(localStorage.getItem("fw_proceedModel") || "{}"); } catch(e) {}
     S.sectionOutputs = results[1].outputs || {};
     S.weekIso = results[1].week_iso || results[2].week_iso || "";

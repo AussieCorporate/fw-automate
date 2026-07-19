@@ -46,16 +46,21 @@ def test_find_inside_track_folder_none_when_base_dir_missing(tmp_path):
     assert find_inside_track_folder(missing) is None
 
 
-def test_list_inside_track_submissions_returns_sorted_images_only(tmp_path):
+def test_list_inside_track_submissions_images_only_newest_first(tmp_path):
+    import os
     folder = tmp_path / "_INSIDE_TRACK"
-    _touch(folder / "Zoe_0002.png")
-    _touch(folder / "adam_0001.jpg")
+    _touch(folder / "old_0001.jpg")
+    _touch(folder / "new_0002.png")
     _touch(folder / "notes.txt")  # not an image — excluded
     (folder / "subdir").mkdir()   # a directory — excluded, not a file
+    # Inside Track is time-sensitive: newest screenshot first, by file mtime.
+    os.utime(folder / "old_0001.jpg", (1000, 1000))
+    os.utime(folder / "new_0002.png", (2000, 2000))
     subs = list_inside_track_submissions(tmp_path)
     filenames = [s["filename"] for s in subs]
-    assert filenames == ["adam_0001.jpg", "Zoe_0002.png"]  # case-insensitive sort
+    assert filenames == ["new_0002.png", "old_0001.jpg"]  # newest capture first
     assert all(s["folder"] == "_INSIDE_TRACK" for s in subs)
+    assert subs[0]["captured_at"] >= subs[1]["captured_at"]
 
 
 def test_list_inside_track_submissions_empty_when_folder_missing(tmp_path):

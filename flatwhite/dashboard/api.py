@@ -819,11 +819,30 @@ async def api_assemble(request: Request) -> JSONResponse:
 
 # ── New endpoints ────────────────────────────────────────────────────────────
 
+# Each drafting section's task_type (matches the route(task_type=...) each
+# _proceed_* uses), so the picker can DEFAULT to that task's recommended model
+# instead of the first option in the list (which was silently Gemini).
+_SECTION_TASK_TYPE = {
+    "pulse": "summary",
+    "finds": "editorial",
+    "off_the_clock": "editorial",
+    "insidetrack": "editorial",
+    "editorial": "editorial",
+    "brains_trust": "brains_trust",
+    "big_conversation": "big_conversation",
+}
+
+
 @app.get("/api/models")
 def api_models() -> JSONResponse:
-    """Return available LLM models based on configured API keys."""
-    from flatwhite.model_router import list_available_models
-    return JSONResponse({"models": list_available_models()})
+    """Available LLM models, plus each section's recommended default model."""
+    from flatwhite.model_router import list_available_models, DEFAULT_MODEL_BY_TASK
+    section_defaults = {
+        sec: DEFAULT_MODEL_BY_TASK.get(tt)
+        for sec, tt in _SECTION_TASK_TYPE.items()
+    }
+    return JSONResponse({"models": list_available_models(),
+                         "section_defaults": section_defaults})
 
 
 
