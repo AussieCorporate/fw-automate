@@ -2594,15 +2594,55 @@ async def api_fetch_rising_trends() -> JSONResponse:
 _top_picks_cache: dict[str, Any] = {"data": None, "scraped_at": None}
 
 
+def _combined_top_picks(days: int = 7) -> dict:
+    """Two lists for FW Top Picks: {'odd': [...], 'business': [...]}.
+
+    Business = the PS feed's business news (each with its one-sentence summary +
+    category + is_feature), joined to beehiiv click counts by URL. Features have
+    no clicks (they ship inline) and are tagged; they sort to the top so Victor
+    sees them first, then clicked news by clicks desc. Odd = the feed's odd picks.
+    Falls back to the click-only list if the PS feed isn't present yet.
+    """
+    from flatwhite.editorial.beehiiv_picks import scrape_top_picks, _strip_utm
+    from flatwhite.editorial import ps_picks_feed
+
+    try:
+        clicked = scrape_top_picks(days, 50)
+    except Exception:  # noqa: BLE001 - click data is best-effort
+        clicked = []
+    clicks_by_url = {_strip_utm(c.get("url", "")): c.get("clicks", 0) for c in clicked}
+
+    feed = ps_picks_feed.read_feed(days=days)
+    business = []
+    for b in feed.get("business", []):
+        business.append({
+            "url": b.get("url", ""), "title": b.get("title", ""),
+            "summary": b.get("summary", ""), "category": b.get("category", "AUS"),
+            "is_feature": bool(b.get("is_feature")),
+            "clicks": clicks_by_url.get(_strip_utm(b.get("url", ""))),
+        })
+    # Features first (no clicks), then clicked news most-clicked first.
+    business.sort(key=lambda x: (not x["is_feature"], -(x["clicks"] or 0)))
+
+    # Fallback: no PS feed yet -> business = today's click-only list, so FW still
+    # works before PS starts writing the feed.
+    if not business and clicked:
+        business = [{
+            "url": c.get("url", ""), "title": c.get("campaign_title", ""),
+            "summary": c.get("summary", ""), "category": "",
+            "is_feature": False, "clicks": c.get("clicks"),
+        } for c in clicked]
+
+    return {"odd": feed.get("odd", []), "business": business}
+
+
 @app.get("/api/top-picks")
 def api_top_picks() -> JSONResponse:
-    """Return cached Top Picks data (Beehiiv click rankings).
-
-    Returns cached results if available, otherwise returns empty list.
-    Frontend must POST /api/top-picks/scrape to trigger a fresh fetch.
-    """
+    """Cached Top Picks: two lists (odd + business). Scrape to refresh."""
+    data = _top_picks_cache["data"] or {"odd": [], "business": []}
     return JSONResponse({
-        "picks": _top_picks_cache["data"] or [],
+        "odd": data.get("odd", []),
+        "business": data.get("business", []),
         "scraped_at": _top_picks_cache["scraped_at"],
         "week_iso": get_current_week_iso(),
     })
@@ -2610,10 +2650,8 @@ def api_top_picks() -> JSONResponse:
 
 @app.post("/api/top-picks/scrape")
 async def api_top_picks_scrape(request: Request) -> JSONResponse:
-    """Scrape last 7 days of Pick & Scroll click data from Beehiiv.
-
-    Body (optional): {"days": int}  — defaults to 7
-    Returns: {"picks": [...], "scraped_at": str}
+    """Build the two Top Picks lists: PS feed (business + odd) joined to beehiiv
+    click data. Body (optional): {"days": int} - defaults to 7.
     """
     import asyncio
 
@@ -2626,18 +2664,16 @@ async def api_top_picks_scrape(request: Request) -> JSONResponse:
 
     loop = asyncio.get_event_loop()
     try:
-        from flatwhite.editorial.beehiiv_picks import scrape_top_picks
-        picks = await loop.run_in_executor(None, scrape_top_picks, days, 20)
+        data = await loop.run_in_executor(None, _combined_top_picks, days)
         now = _dt.datetime.utcnow().isoformat() + "Z"
-        _top_picks_cache["data"] = picks
+        _top_picks_cache["data"] = data
         _top_picks_cache["scraped_at"] = now
         return JSONResponse({
-            "picks": picks,
-            "scraped_at": now,
-            "week_iso": get_current_week_iso(),
+            "odd": data["odd"], "business": data["business"],
+            "scraped_at": now, "week_iso": get_current_week_iso(),
         })
     except Exception as e:
-        return JSONResponse({"picks": [], "error": str(e)}, status_code=500)
+        return JSONResponse({"odd": [], "business": [], "error": str(e)}, status_code=500)
 
 
 @app.get("/api/top-picks/recent-posts")

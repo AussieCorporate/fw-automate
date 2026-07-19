@@ -378,7 +378,9 @@ var S = {
   proceedModel: {},    // { section: model_id } — persisted to localStorage
   proceedData: {},
   topPicks: null,            // Beehiiv click data from Pick & Scroll
-  topPicksChecked: {},       // { index: true }
+  topPicksChecked: {},
+  topPicksBizChecked: {},
+  topPicksOddChecked: {},
   topPicksRecentPosts: null,
   topPicksFeatureDrafts: {},   // { post_id: draftBlurbText }
   topPicksFeatureAdds: {},     // { post_id: {title, url, blurb} } — confirmed features merged into the list
@@ -2493,18 +2495,30 @@ function renderTopPicksFeaturesPanel() {
   return h;
 }
 
+function _pickLine(p) {
+  var s = (p.summary || p.title || "").replace(/\s+/g, " ").trim();
+  if (!s) return null;
+  if (!/[.!?]$/.test(s)) s += ".";
+  return s + " " + (p.url || "");
+}
+
 function buildTopPicksOutput() {
-  var picks = _allTopPicks();
-  var selected = picks.filter(function(p, i) { return S.topPicksChecked && S.topPicksChecked[i]; });
-  if (!selected.length) { showToast("Select at least one pick first", "error"); return; }
-  var lines = selected.map(function(p) {
-    var summary = (p.summary || "").replace(/\s+/g, " ").trim();
-    if (!summary) return null;
-    if (!/[.!?]$/.test(summary)) summary += ".";
-    return summary + " " + (p.url || "");
-  }).filter(function(line) { return line !== null; });
+  var lists = _picksLists();
+  var biz = lists.business.filter(function(p, i) { return S.topPicksBizChecked && S.topPicksBizChecked[i]; });
+  if (!biz.length) { showToast("Select at least one business pick first", "error"); return; }
+  var lines = biz.map(_pickLine).filter(Boolean);
   var ta = $("output-top_picks");
   if (ta) ta.value = lines.join("\n\n");
+  showToast(biz.length + " picks added to the Top Picks block");
+}
+
+function copyOddPicks() {
+  var lists = _picksLists();
+  var odd = lists.odd.filter(function(p, i) { return S.topPicksOddChecked && S.topPicksOddChecked[i]; });
+  if (!odd.length) { showToast("Select at least one odd pick first", "error"); return; }
+  var text = odd.map(_pickLine).filter(Boolean).join("\n\n");
+  navigator.clipboard.writeText(text).then(function() { showToast(odd.length + " odd picks copied"); },
+    function() { showToast("Copy failed", "error"); });
 }
 
 function renderTopPicksBody() {
@@ -2634,30 +2648,70 @@ function scrapeTopPicks() {
     });
 }
 
+function _picksLists() {
+  var d = S.topPicks || {};
+  return { business: d.business || [], odd: d.odd || [] };
+}
+
+// Render one selectable picks list (business or odd). checkedKey is the state
+// bag; kind is "biz" or "odd" for the toggle handler.
+function renderPicksList(items, checkedBag, kind, emptyMsg) {
+  if (!items.length) return '<p style="font-size:13px;color:var(--text-3);">' + emptyMsg + '</p>';
+  var sel = Object.keys(checkedBag || {}).filter(function(k){return checkedBag[k];}).length;
+  var h = '<div style="font-size:12px;color:var(--text-3);margin:0 0 8px;">' + sel + ' selected (pick up to 5)</div>';
+  items.forEach(function(p, i) {
+    var checked = checkedBag && checkedBag[i];
+    var tag = p.is_feature
+      ? '<span class="chip" style="background:var(--amber);color:#fff;font-size:10px;">FEATURE</span>'
+      : (p.clicks != null ? '<span class="chip" style="font-size:10px;">' + p.clicks + ' clicks</span>' : '');
+    var cat = p.category ? '<span class="chip" style="font-size:10px;">' + esc(p.category) + '</span>' : '';
+    h += '<div class="card mb8 hov' + (checked ? ' sel' : '') + '" style="padding:12px 14px;display:flex;gap:10px;align-items:flex-start;">';
+    h += '<input type="checkbox"' + (checked ? ' checked' : '') + ' onchange="toggleTopPick(\'' + kind + '\',' + i + ',this.checked)" style="width:18px;height:18px;accent-color:var(--amber);margin-top:2px;flex-shrink:0;">';
+    h += '<div style="flex:1;min-width:0;">';
+    h += '<div style="margin-bottom:4px;">' + cat + ' ' + tag + '</div>';
+    h += '<div style="font-size:14px;line-height:1.4;">' + esc(p.summary || p.title || "") + '</div>';
+    if (p.url) h += '<a href="' + escAttr(p.url) + '" target="_blank" style="font-size:11px;color:var(--text-3);">' + esc(p.url) + '</a>';
+    h += '</div></div>';
+  });
+  return h;
+}
+
 function renderTopPicks(el) {
-  var hasPicks = !!(S.topPicks && S.topPicks.picks && S.topPicks.picks.length);
+  var lists = _picksLists();
+  var has = !!(lists.business.length || lists.odd.length);
   var hasOutput = !!(S.sectionOutputs.top_picks && S.sectionOutputs.top_picks.output_text);
-  if (!S.sectionPhase.top_picks) S.sectionPhase.top_picks = hasOutput ? 3 : (hasPicks ? 2 : 1);
+  if (!S.sectionPhase.top_picks) S.sectionPhase.top_picks = hasOutput ? 3 : (has ? 2 : 1);
 
-  var p1 = '';
-  p1 += '<div class="card mb20">';
-  p1 += '<p style="font-size:13px;color:var(--text-2);margin:0 0 12px 0;">Fetches the last 7 days of Pick &amp; Scroll editions from Beehiiv and ranks all links by total click count.</p>';
-  p1 += '<button class="btn btn-primary" onclick="scrapeTopPicks()">SCRAPE BEEHIIV</button>';
+  var p1 = '<div class="card mb20">';
+  p1 += '<p style="font-size:13px;color:var(--text-2);margin:0 0 12px 0;">Pulls the last 7 days of Pick &amp; Scroll picks: business news (with click counts) including feature stories\' summaries, and the odd stories. Feature stories are tagged (they have no clicks - the story runs inline).</p>';
+  p1 += '<button class="btn btn-primary" onclick="scrapeTopPicks()">REFRESH PICKS</button>';
   if (S.loading.top_picks) p1 += ' <span class="ingest-spinner"></span>';
-  if (S.lastScraped.top_picks) p1 += '<span style="font-size:11px;color:var(--text-3);margin-left:10px;">Last scraped: ' + esc(S.lastScraped.top_picks) + '</span>';
+  if (S.lastScraped.top_picks) p1 += '<span style="font-size:11px;color:var(--text-3);margin-left:10px;">Last: ' + esc(S.lastScraped.top_picks) + '</span>';
   p1 += '</div>';
-  p1 += renderTopPicksFeaturesPanel();
 
-  var p2 = renderTopPicksBody();
-  p2 += '<div style="margin-top:12px;"><button class="btn btn-sm btn-secondary" onclick="buildTopPicksOutput()">Build block from selected</button></div>';
+  var p2 = '';
+  p2 += '<div class="card mb20"><div style="font-weight:600;margin-bottom:10px;">Business (Top Picks) - pick 5</div>';
+  p2 += renderPicksList(lists.business, S.topPicksBizChecked, 'biz', 'No picks yet. Refresh, or run a PS newsletter so the feed fills.');
+  p2 += '</div>';
+  p2 += '<div class="card mb20"><div style="font-weight:600;margin-bottom:10px;">Odd picks - pick 5</div>';
+  p2 += renderPicksList(lists.odd, S.topPicksOddChecked, 'odd', 'No odd picks in the last 7 days.');
+  p2 += '<div style="margin-top:8px;"><button class="btn btn-sm btn-secondary" onclick="copyOddPicks()">Copy selected odd picks</button></div>';
+  p2 += '</div>';
+  p2 += '<button class="btn btn-sm btn-primary" onclick="buildTopPicksOutput()">Build Top Picks block from business selection</button>';
 
   var h = '';
-  h += phasePanel('top_picks', 1, 'Scrape + flag features', true, hasPicks, p1);
-  h += phasePanel('top_picks', 2, 'Select & Copy', true, false, p2);
+  h += phasePanel('top_picks', 1, 'Refresh picks', true, has, p1);
+  h += phasePanel('top_picks', 2, 'Select (Business + Odd)', true, false, p2);
   h += phasePanel('top_picks', 3, 'Output', true, hasOutput, outputBox('top_picks'));
-
   el.innerHTML = h;
   fillOutput('top_picks');
+}
+
+function toggleTopPick(kind, idx, val) {
+  var bag = kind === 'odd' ? (S.topPicksOddChecked = S.topPicksOddChecked || {})
+                           : (S.topPicksBizChecked = S.topPicksBizChecked || {});
+  bag[idx] = val;
+  render();
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
