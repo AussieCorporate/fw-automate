@@ -344,6 +344,7 @@ var S = {
   bigConvDetail: null,
   bigConvRun: null,
   sortRun: null,
+  sortQuestions: "",
   bhInsert: null,
   bigConvShowTierPool: false,
   ampFinest: null,
@@ -1466,16 +1467,19 @@ function renderBigConv(el) {
 
 function renderBigConvSortBar() {
   // Sort freshly-scraped DM screenshots into topic/tier + Inside Track folders.
-  // This is the prerequisite that fills the topic bank below.
+  // Needs the campaign questions we posted on Instagram - the sort files each
+  // answer against its question. This is the prerequisite that fills the bank.
   var run = S.sortRun;
-  var h = '<div class="card" style="margin-bottom:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">';
-  h += '<div style="flex:1;min-width:200px;"><strong>New submissions?</strong> <span style="color:var(--label2);font-size:13px;">Sort the freshly-scraped screenshots into topics and the Inside Track before drafting.</span></div>';
+  var h = '<div class="card" style="margin-bottom:12px;">';
+  h += '<div style="margin-bottom:8px;"><strong>Sort new submissions</strong> <span style="color:var(--label2);font-size:13px;">Paste the questions/topics you posted on Instagram this week (one per line). The sort files each DM answer against its question.</span></div>';
+  h += '<textarea id="sortQuestions" rows="3" style="width:100%;box-sizing:border-box;font:inherit;font-size:13px;padding:8px;border:1px solid var(--sep);border-radius:8px;resize:vertical;" placeholder="e.g.\nLunch with your team or not?\nShould kids be allowed in the office?\nIs the 3-week PIP a fair go?" oninput="S.sortQuestions=this.value">' + esc(S.sortQuestions || '') + '</textarea>';
+  h += '<div style="margin-top:8px;">';
   if (run && (run.status === 'queued' || run.status === 'running')) {
     h += '<button class="btn btn-primary" disabled>Sorting... (a few minutes)</button>';
   } else {
     h += '<button class="btn btn-primary" onclick="runScreenshotSort()">Sort new submissions</button>';
   }
-  h += '</div>';
+  h += '</div></div>';
   if (run && run.status === 'failed') {
     h += '<div class="card" style="margin-bottom:12px;color:var(--danger,#c0392b);font-size:13px;">Sort failed: ' + esc(run.error || 'unknown error') + '</div>';
   }
@@ -1604,15 +1608,20 @@ function refreshBigConvTopic() {
 
 // ── Screenshot preview (click a thumbnail to read it full size) ─────
 function bcPreview(url, name) {
-  var existing = document.getElementById("bcLightbox");
-  if (existing) existing.remove();
+  closeBcPreview();
+  // The url from asset_url() is already URL-encoded, so set it on the element
+  // directly - do NOT re-encode (that double-encodes %20 -> %2520 and the image
+  // won't load, which looked like "the zoom doesn't work").
   var box = document.createElement("div");
   box.id = "bcLightbox";
   box.className = "bc-lightbox";
-  box.innerHTML =
-    '<button class="bc-lb-close" title="Close" aria-label="Close">&times;</button>' +
-    '<img src="' + encodeURI(url) + '" alt="">' +
-    '<div class="bc-lb-name">' + esc(name || "") + '</div>';
+  var btn = document.createElement("button");
+  btn.className = "bc-lb-close"; btn.title = "Close"; btn.innerHTML = "&times;";
+  var img = document.createElement("img");
+  img.src = url; img.alt = name || "";
+  var cap = document.createElement("div");
+  cap.className = "bc-lb-name"; cap.textContent = name || "";
+  box.appendChild(btn); box.appendChild(img); box.appendChild(cap);
   box.addEventListener("click", closeBcPreview);
   document.body.appendChild(box);
 }
@@ -1626,9 +1635,11 @@ document.addEventListener("keydown", function(e) {
 
 // ── Screenshot sort (headless skill) ────────────────────────────────
 function runScreenshotSort() {
+  var questions = (S.sortQuestions || "").trim();
+  if (!questions) { showToast("Paste this week's Instagram questions first", "error"); return; }
   S.sortRun = { status: "queued", run_id: null, error: null };
   render();
-  api("/api/skill-run/sort", { method: "POST" })
+  api("/api/skill-run/sort", { method: "POST", body: { questions: questions } })
     .then(function(d) {
       S.sortRun = { status: "running", run_id: d.run_id, error: null };
       render();

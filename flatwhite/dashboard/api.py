@@ -2796,27 +2796,42 @@ def api_run_big_conversation(topic: str) -> JSONResponse:
 
 
 @app.post("/api/skill-run/sort")
-def api_run_screenshot_sort() -> JSONResponse:
+async def api_run_screenshot_sort(request: Request) -> JSONResponse:
     """Run the screenshot-sort skill on the freshly-scraped DM screenshots headless.
 
     Sorts the loose screenshots at the Instagram output root into the Big
     Conversation topic/tier folders and the Inside Track folder - the prerequisite
-    for Big Conversation. Same headless engine as the Big Conversation run.
+    for Big Conversation. Requires the week's campaign questions (the topics posted
+    on Instagram to farm the DMs): the skill files each answer against its question,
+    so it can't sort without them.
+    Body: {"questions": str}  (the campaign questions, one per line).
     """
     if not _claude_available():
         return JSONResponse(
             {"error": "Claude Code isn't installed on this machine, so the "
                       "dashboard can't run the sort. Run it in a Claude session "
                       "instead."}, status_code=503)
+    body = await request.json()
+    questions = (body.get("questions") or "").strip()
+    if not questions:
+        return JSONResponse(
+            {"error": "Add the campaign questions you posted on Instagram first - "
+                      "the sort files each answer against its question, so it needs "
+                      "them to work."}, status_code=400)
     out_dir = str(_bcb.INSTAGRAM_OUTPUT_DIR)
     prompt = (
         "Use the screenshot-sort skill to sort the freshly-scraped Instagram DM "
         f"screenshots sitting loose at the output root ({out_dir}, the current "
-        "directory). Follow the skill exactly from start to finish: gather the new "
-        "screenshots, classify them (fan out subagents for volume), verify the RED "
-        "HOT picks verbatim, move each screenshot into its topic/tier or Inside "
-        "Track folder, and write the _SORT_SESSION report. Do not ask me any "
-        "questions; complete the whole sort and finish."
+        "directory).\n\n"
+        "This week's Instagram campaign questions (the topics we posted to farm "
+        "these DMs) are - sort every answer against the question it belongs to, "
+        "one topic folder per question:\n"
+        f"{questions}\n\n"
+        "Follow the skill exactly from start to finish: gather the new screenshots, "
+        "classify each one against the questions above (fan out subagents for "
+        "volume), verify the RED HOT picks verbatim, move each screenshot into its "
+        "topic/tier or Inside Track folder, and write the _SORT_SESSION report. Do "
+        "not ask me any questions; complete the whole sort and finish."
     )
     try:
         run_id, started = _skill_runner.start_run(
