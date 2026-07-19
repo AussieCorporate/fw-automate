@@ -2784,12 +2784,19 @@ def api_run_big_conversation(topic: str) -> JSONResponse:
         f'screenshots, and emit the output files (_{topic.replace(" ", "_")}'
         f'_BIG_CONVERSATION.md at the output root and the topic\'s '
         f'_BIG_CONVERSATION_assets folder). Do not ask me any questions; '
-        f'complete the whole skill and finish.'
+        f'complete the whole skill and finish. When the piece file and its '
+        f'screenshots folder are written, print exactly on its own line: '
+        f'BIG_CONVERSATION_DONE'
     )
     try:
         run_id, started = _skill_runner.start_run(
             "big-conversation", f"bigconv:{topic}",
-            _skill_argv(prompt, out_dir), cwd=out_dir)
+            _skill_argv(prompt, out_dir), cwd=out_dir,
+            success_marker="BIG_CONVERSATION_DONE",
+            marker_fail_error=(
+                "The Big Conversation run ended without finishing the piece (it "
+                "may have errored partway). Nothing was lost - try Process again, "
+                "or run the big-conversation skill in a Claude session."))
     except RuntimeError as exc:
         return JSONResponse({"error": str(exc)}, status_code=429)
     return JSONResponse({"run_id": run_id, "started": started, "topic": topic})
@@ -2831,11 +2838,18 @@ async def api_run_screenshot_sort(request: Request) -> JSONResponse:
         "classify each one against the questions above (fan out subagents for "
         "volume), verify the RED HOT picks verbatim, move each screenshot into its "
         "topic/tier or Inside Track folder, and write the _SORT_SESSION report. Do "
-        "not ask me any questions; complete the whole sort and finish."
+        "not ask me any questions; complete the whole sort and finish. When the "
+        "screenshots are moved and the _SORT_SESSION report is written, print "
+        "exactly on its own line: SORT_DONE"
     )
     try:
         run_id, started = _skill_runner.start_run(
-            "screenshot-sort", "sort", _skill_argv(prompt, out_dir), cwd=out_dir)
+            "screenshot-sort", "sort", _skill_argv(prompt, out_dir), cwd=out_dir,
+            success_marker="SORT_DONE",
+            marker_fail_error=(
+                "The sort ended without finishing (it may have errored partway). "
+                "Nothing was lost - try again, or run the screenshot-sort skill in "
+                "a Claude session."))
     except RuntimeError as exc:
         return JSONResponse({"error": str(exc)}, status_code=429)
     return JSONResponse({"run_id": run_id, "started": started})
@@ -2908,6 +2922,11 @@ def api_insert_section_beehiiv(section: str) -> JSONResponse:
     wip_title = _wip_draft_title()
 
     prompt = (
+        f"FIRST, verify the beehiiv tools are available: try to list the "
+        f"publications. If beehiiv tools are NOT available to you, STOP "
+        f"IMMEDIATELY - do not wait, do not retry, do not use any other route - "
+        f"and print exactly on its own line: INSERT_NO_BEEHIIV. Then finish.\n\n"
+        f"Only if beehiiv IS available, continue:\n"
         f"Use the beehiiv MCP for the Flat White publication "
         f"({_FW_PUBLICATION_ID}). We build this week's edition in ONE draft named "
         f"exactly \"{wip_title}\".\n"
