@@ -2932,7 +2932,16 @@ def api_insert_section_beehiiv(section: str) -> JSONResponse:
     try:
         run_id, started = _skill_runner.start_run(
             "beehiiv-insert", f"insert:{week_iso}:{section}", argv,
-            cwd=str(Path.cwd()), on_complete=_on_done)
+            cwd=str(Path.cwd()), on_complete=_on_done,
+            # beehiiv is a claude.ai connector that doesn't always attach to a
+            # background run. Require the run to actually print INSERT_OK;
+            # otherwise it's a failure, not a silent "done".
+            success_marker="INSERT_OK",
+            marker_fail_error=(
+                "Couldn't insert into beehiiv from the dashboard: the beehiiv "
+                "connection wasn't available to this background run (it's a "
+                "claude.ai connector that doesn't always attach). The section is "
+                "ready. Ask Claude to insert this section for you, or try again."))
     except RuntimeError as exc:
         return JSONResponse({"error": str(exc)}, status_code=429)
     return JSONResponse({"run_id": run_id, "started": started, "section": section})

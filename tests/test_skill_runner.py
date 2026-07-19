@@ -83,3 +83,22 @@ def test_auth_failure_message_is_plain(monkeypatch):
     r = _wait(run_id)
     assert r["status"] == "failed"
     assert "logged in" in r["error"].lower()
+
+
+def test_success_marker_absent_flips_done_to_failed():
+    # Run exits 0 but never prints the required marker -> treated as failed.
+    run_id, _ = sr.start_run("test", "mk1", ["echo", "did some reasoning but no marker"],
+                             cwd=".", success_marker="INSERT_OK",
+                             marker_fail_error="beehiiv not attached; ask Claude")
+    r = _wait(run_id)
+    assert r["status"] == "failed"
+    assert "ask Claude" in r["error"]
+
+
+def test_success_marker_present_stays_done():
+    run_id, _ = sr.start_run("test", "mk2", ["echo", "all good INSERT_OK"],
+                             cwd=".", success_marker="INSERT_OK",
+                             marker_fail_error="should not see this")
+    r = _wait(run_id)
+    assert r["status"] == "done"
+    assert r["error"] is None

@@ -51,7 +51,8 @@ def _find_active_for_key_locked(key: str) -> str | None:
 
 def start_run(kind: str, key: str, argv: list[str], cwd: str,
               *, timeout: int = _DEFAULT_TIMEOUT_SEC, env: dict | None = None,
-              on_complete=None, now: float | None = None) -> tuple[str, bool]:
+              on_complete=None, success_marker: str | None = None,
+              marker_fail_error: str | None = None, now: float | None = None) -> tuple[str, bool]:
     """Start a background run. Returns (run_id, started_new).
 
     - Dedupes by ``key``: if a run for this key is already active, returns that
@@ -78,7 +79,9 @@ def start_run(kind: str, key: str, argv: list[str], cwd: str,
             "error": None, "returncode": None,
         }
     thread = threading.Thread(
-        target=_execute, args=(run_id, argv, cwd, timeout, env, on_complete),
+        target=_execute,
+        args=(run_id, argv, cwd, timeout, env, on_complete,
+              success_marker, marker_fail_error),
         daemon=True)
     thread.start()
     return run_id, True
@@ -91,9 +94,21 @@ def _set(run_id: str, **fields) -> None:
 
 
 def _execute(run_id: str, argv: list[str], cwd: str, timeout: int,
-             env: dict | None, on_complete=None) -> None:
+             env: dict | None, on_complete=None,
+             success_marker: str | None = None,
+             marker_fail_error: str | None = None) -> None:
     try:
         _execute_inner(run_id, argv, cwd, timeout, env)
+        # A run can exit 0 having reasoned to a clean stop WITHOUT doing the
+        # work (e.g. the beehiiv connector wasn't attached, so the insert never
+        # happened). If a success marker is required and it's absent, the run
+        # did NOT succeed - flip it to failed with a plain-English reason so the
+        # dashboard never shows a false "done".
+        if success_marker:
+            r = get_run(run_id)
+            if r and r["status"] == "done" and success_marker not in (r["output"] or ""):
+                _set(run_id, status="failed",
+                     error=marker_fail_error or "The run finished without completing the task.")
     finally:
         if on_complete is not None:
             try:
