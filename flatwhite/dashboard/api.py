@@ -2640,7 +2640,9 @@ def _combined_top_picks(days: int = 7, start=None, end=None) -> dict:
     Odd = the PS feed's odd picks. Window defaults to the last `days`; pass
     timezone-aware start/end datetimes for an explicit calendar range.
     """
-    from flatwhite.editorial.beehiiv_picks import scrape_top_picks, _strip_utm
+    from flatwhite.editorial.beehiiv_picks import (
+        scrape_top_picks, scrape_one_more_scroll, _strip_utm,
+    )
     from flatwhite.editorial import ps_picks_feed
 
     try:
@@ -2729,8 +2731,27 @@ def _combined_top_picks(days: int = 7, start=None, end=None) -> dict:
     except (OSError, ValueError, TypeError):
         pass
 
+    # Odd "one more scroll" picks: read the editor's picks straight out of the
+    # editions in the window (Editor's / Draft / Doctor's Pick). Falls back to
+    # the thin feed if the newsletter parse turns up nothing.
+    try:
+        odd_raw = scrape_one_more_scroll(days, start=start, end=end)
+    except Exception:  # noqa: BLE001 - odd picks are best-effort
+        odd_raw = []
+    odd = [{
+        "url": o.get("url", ""),
+        "title": o.get("label", ""),
+        "summary": o.get("summary", ""),
+        "category": o.get("label", ""),   # the pick label shows as a chip
+        "is_feature": False,
+        "clicks": None,
+        "edition_date": o.get("edition_date", ""),
+    } for o in odd_raw]
+    if not odd:
+        odd = feed.get("odd", [])
+
     return {
-        "odd": feed.get("odd", []),
+        "odd": odd,
         "business": business,
         "business_more": business_more,
     }

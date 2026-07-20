@@ -19,6 +19,7 @@ import os
 import re
 import time
 from datetime import datetime, timedelta, timezone
+from html import unescape
 from html.parser import HTMLParser
 from urllib.parse import urlparse
 
@@ -350,3 +351,56 @@ def scrape_top_picks(days: int = 7, limit: int = 20, start=None, end=None) -> li
     )
 
     return ranked[:limit]
+
+
+# ── ONE MORE SCROLL (odd picks) ──────────────────────────────────────────────
+# The "one more scroll" segment of each PS edition holds the editorial odd picks
+# (Editor's Pick / Draft Pick / Doctor's Pick etc.): a bold label, a summary
+# sentence, and an external link. Unlike click-ranked news these are chosen by
+# the editor, so we read them straight out of the newsletter HTML rather than
+# from click data.
+_OMS_STOPS = ("TRIVIA", "OUR SOCIALS", "ANSWERS", "TOGETHER WITH", "CHART OF THE DAY")
+
+
+def scrape_one_more_scroll(days: int = 7, start=None, end=None) -> list[dict]:
+    """Odd picks from the 'One More Scroll' segment across the editions in the
+    window. [{label, summary, url, edition_date}, ...], newest edition first,
+    deduped. Never raises for a single bad edition."""
+    posts = fetch_recent_posts(days=days, start=start, end=end)
+    out: list[dict] = []
+    seen: set[str] = set()
+    for p in posts:
+        try:
+            html = fetch_post_clicks_and_content(p["id"])["html"]
+        except Exception:  # noqa: BLE001 - one bad edition must not kill the list
+            continue
+        idx = html.upper().find("ONE MORE SCROLL")
+        if idx < 0:
+            continue
+        section = re.sub(r"(?is)<style.*?</style>", " ", html[idx:])  # kill CSS bleed
+        for stop in _OMS_STOPS:
+            j = section.upper().find(stop, 30)
+            if j > 0:
+                section = section[:j]
+                break
+        for m in re.finditer(r"(?is)<b>\s*(.*?)\s*</b>(.*?)(?=<b>|\Z)", section):
+            label = re.sub(r"<[^>]+>", "", m.group(1)).strip().rstrip(":")
+            if "pick" not in label.lower():
+                continue
+            body = m.group(2)
+            um = re.search(r'href="([^"]+)"', body)
+            url = _strip_utm(um.group(1)) if um else ""
+            text = unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", body)).strip())
+            if not text:
+                continue
+            key = url or text[:60]
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({
+                "label": label,
+                "summary": text,
+                "url": url,
+                "edition_date": p["publish_date"][:10],
+            })
+    return out

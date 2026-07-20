@@ -2528,10 +2528,17 @@ function buildTopPicksOutput() {
   var lists = _picksLists();
   var biz = lists.business.filter(function(p, i) { return S.topPicksBizChecked && S.topPicksBizChecked[i]; });
   if (!biz.length) { showToast("Select at least one business pick first", "error"); return; }
-  var lines = biz.map(_pickLine).filter(Boolean);
+  var text = biz.map(_pickLine).filter(Boolean).join("\n\n");
+  // Persist into state + backend so the built block survives re-renders and is
+  // ready to Mark ready / Insert - no separate Save step needed.
+  S.sectionOutputs.top_picks = S.sectionOutputs.top_picks || {};
+  S.sectionOutputs.top_picks.output_text = text;
   var ta = $("output-top_picks");
-  if (ta) ta.value = lines.join("\n\n");
-  showToast(biz.length + " picks added to the Top Picks block");
+  if (ta) ta.value = text;
+  api("/api/section-output/top_picks", { method: "POST", body: { output_text: text } })
+    .then(function() { showToast(biz.length + " picks saved to the Top Picks block"); })
+    .catch(function() { showToast(biz.length + " picks built (auto-save failed - use Copy to be safe)", "error"); });
+  render();
 }
 
 function copyOddPicks() {
