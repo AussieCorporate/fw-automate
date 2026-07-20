@@ -120,7 +120,12 @@ def _execute(run_id: str, argv: list[str], cwd: str, timeout: int,
 def _execute_inner(run_id: str, argv: list[str], cwd: str, timeout: int,
                    env: dict | None) -> None:
     _set(run_id, status="running")
+    # A provided key with value None REMOVES that var from the child's env (you
+    # can't unset via a plain merge). Used to strip the parent Claude Code
+    # session context so a spawned `claude -p` runs as an independent session
+    # and loads claude.ai connectors (e.g. beehiiv).
     run_env = {**os.environ, **(env or {})}
+    run_env = {k: v for k, v in run_env.items() if v is not None}
     try:
         proc = subprocess.Popen(
             argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,

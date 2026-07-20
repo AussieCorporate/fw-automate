@@ -3160,10 +3160,25 @@ def api_insert_section_beehiiv(section: str) -> JSONResponse:
                 set_edition_draft(week_iso, new_id)
 
     argv = [_claude_bin(), "-p", prompt, "--permission-mode", "bypassPermissions"]
+    # Strip the parent Claude Code session context (and any API-key auth) so the
+    # spawned `claude -p` runs as an INDEPENDENT session under the claude.ai
+    # login, which is what loads claude.ai connectors like beehiiv. Without this,
+    # a dashboard launched from inside a Claude session hands the child a
+    # child-session context that disables those connectors. Harmless when the
+    # dashboard was started normally (these vars simply aren't set). Value None
+    # means "remove this var" (see skill_runner._execute_inner).
+    _independent_session_env = {
+        "CLAUDE_CODE_CHILD_SESSION": None,
+        "CLAUDE_CODE_SESSION_ID": None,
+        "CLAUDE_CODE_ENTRYPOINT": None,
+        "CLAUDE_CODE_EXECPATH": None,
+        "ANTHROPIC_API_KEY": None,
+        "ANTHROPIC_AUTH_TOKEN": None,
+    }
     try:
         run_id, started = _skill_runner.start_run(
             "beehiiv-insert", f"insert:{week_iso}:{section}", argv,
-            cwd=str(Path.cwd()), on_complete=_on_done,
+            cwd=str(Path.cwd()), on_complete=_on_done, env=_independent_session_env,
             # beehiiv is a claude.ai connector that doesn't always attach to a
             # background run. Require the run to actually print INSERT_OK;
             # otherwise it's a failure, not a silent "done".
