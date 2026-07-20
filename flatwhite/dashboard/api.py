@@ -1620,6 +1620,9 @@ _REAL_SEGMENT_HEADINGS: dict[str, str] = {
     "editorial": "INTRO",
     "brains_trust": "THE BRAINS TRUST",
     "top_picks": "PICK & SCROLL BY THE AUSSIE CORPORATE | LAST WEEK'S TOP PICKS",
+    # Odd picks ("One More Scroll") is not a running-order row of its own; it's
+    # built + inserted from the Top Picks screen, but it has its own beehiiv card.
+    "odd_picks": "ODD PICKS FROM LAST WEEK",
     "insidetrack": "THE INSIDE TRACK",
     "pulse": "AUSCORP STRESS INDEX",
     "off_the_clock": "OFF THE CLOCK",

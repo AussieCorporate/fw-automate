@@ -2550,6 +2550,20 @@ function copyOddPicks() {
     function() { showToast("Copy failed", "error"); });
 }
 
+function buildOddPicksOutput() {
+  var lists = _picksLists();
+  var odd = lists.odd.filter(function(p, i) { return S.topPicksOddChecked && S.topPicksOddChecked[i]; });
+  if (!odd.length) { showToast("Select at least one odd pick first", "error"); return; }
+  var text = odd.map(_pickLine).filter(Boolean).join("\n\n");
+  // Its own saved block ("ODD PICKS FROM LAST WEEK"), insertable on its own.
+  S.sectionOutputs.odd_picks = S.sectionOutputs.odd_picks || {};
+  S.sectionOutputs.odd_picks.output_text = text;
+  api("/api/section-output/odd_picks", { method: "POST", body: { output_text: text } })
+    .then(function() { showToast(odd.length + " odd picks saved - ready to insert"); })
+    .catch(function() { showToast(odd.length + " odd picks built (auto-save failed - use Copy)", "error"); });
+  render();
+}
+
 function renderTopPicksBody() {
   var picks = _allTopPicks();
   if (!picks.length) return '<div class="card mb20"><p style="color:var(--text-3);font-size:13px;">No data yet. Click SCRAPE to fetch click data from Pick &amp; Scroll.</p></div>';
@@ -2749,11 +2763,26 @@ function renderTopPicks(el) {
     p2 += '<div style="margin-top:8px;"><button class="btn btn-sm btn-secondary" onclick="S.topPicksShowAll=!S.topPicksShowAll;render()">' + (S.topPicksShowAll ? 'Show top 15 only' : ('Show all ' + (15 + lists.moreCount) + ' stories in this window')) + '</button></div>';
   }
   p2 += '</div>';
-  p2 += '<div class="card mb20"><div style="font-weight:600;margin-bottom:10px;">Odd picks - pick 5</div>';
-  p2 += renderPicksList(lists.odd, S.topPicksOddChecked, 'odd', 'No odd picks in the last 7 days.');
-  p2 += '<div style="margin-top:8px;"><button class="btn btn-sm btn-secondary" onclick="copyOddPicks()">Copy selected odd picks</button></div>';
+  p2 += '<div class="card mb20"><div style="font-weight:600;margin-bottom:10px;">Odd picks (One More Scroll) - pick 5</div>';
+  p2 += renderPicksList(lists.odd, S.topPicksOddChecked, 'odd', 'No odd picks in this window.');
+  var oddOut = (S.sectionOutputs.odd_picks && S.sectionOutputs.odd_picks.output_text) || "";
+  p2 += '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">';
+  p2 += '<button class="btn btn-sm btn-primary" onclick="buildOddPicksOutput()">Build odd picks block</button>';
+  p2 += '<button class="btn btn-sm btn-secondary" onclick="copyOddPicks()">Copy selected</button>';
+  if (oddOut) {
+    var oddIns = (S.bhInsert && S.bhInsert.section === 'odd_picks') ? S.bhInsert : null;
+    if (oddIns && oddIns.status === 'running') {
+      p2 += '<button class="btn btn-sm btn-secondary" disabled>Inserting…</button>';
+    } else {
+      p2 += '<button class="btn btn-sm btn-success" onclick="insertSectionBeehiiv(\'odd_picks\')">Insert into beehiiv</button>';
+    }
+  }
   p2 += '</div>';
-  p2 += '<button class="btn btn-sm btn-primary" onclick="buildTopPicksOutput()">Build Top Picks block from business selection</button>';
+  if (oddOut) {
+    p2 += '<textarea id="output-odd_picks" style="margin-top:8px;width:100%;min-height:90px;font:inherit;" oninput="S.sectionOutputs.odd_picks.output_text=this.value">' + esc(oddOut) + '</textarea>';
+  }
+  p2 += '</div>';
+  p2 += '<button class="btn btn-sm btn-primary" onclick="buildTopPicksOutput()">Build Top Picks (business) block</button>';
 
   var h = '';
   h += phasePanel('top_picks', 1, 'Refresh picks', true, has, p1);
