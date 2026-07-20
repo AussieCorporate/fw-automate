@@ -2594,46 +2594,71 @@ async def api_fetch_rising_trends() -> JSONResponse:
 _top_picks_cache: dict[str, Any] = {"data": None, "scraped_at": None}
 
 
-def _combined_top_picks(days: int = 7) -> dict:
+TOP_PICKS_CLICK_LIMIT = 15  # how many click-ranked business stories to surface
+
+
+def _combined_top_picks(days: int = 7, start=None, end=None) -> dict:
     """Two lists for FW Top Picks: {'odd': [...], 'business': [...]}.
 
-    Business = the PS feed's business news (each with its one-sentence summary +
-    category + is_feature), joined to beehiiv click counts by URL. Features have
-    no clicks (they ship inline) and are tagged; they sort to the top so Victor
-    sees them first, then clicked news by clicks desc. Odd = the feed's odd picks.
-    Falls back to the click-only list if the PS feed isn't present yet.
+    Business = this window's FEATURE stories (our own inline blog posts, tagged
+    and ALWAYS shown because they draw ~no clicks) followed by the TOP 15
+    stories by verified clicks across the Pick & Scroll editions in the window.
+    Odd = the PS feed's odd picks. Window defaults to the last `days`; pass
+    timezone-aware start/end datetimes for an explicit calendar range.
     """
     from flatwhite.editorial.beehiiv_picks import scrape_top_picks, _strip_utm
     from flatwhite.editorial import ps_picks_feed
 
     try:
-        clicked = scrape_top_picks(days, 50)
+        # High limit so nothing is truncated before we choose the top stories.
+        links = scrape_top_picks(days, 500, start=start, end=end)
     except Exception:  # noqa: BLE001 - click data is best-effort
-        clicked = []
-    clicks_by_url = {_strip_utm(c.get("url", "")): c.get("clicks", 0) for c in clicked}
+        links = []
 
     feed = ps_picks_feed.read_feed(days=days)
-    business = []
-    for b in feed.get("business", []):
-        business.append({
-            "url": b.get("url", ""), "title": b.get("title", ""),
-            "summary": b.get("summary", ""), "category": b.get("category", "AUS"),
-            "is_feature": bool(b.get("is_feature")),
-            "clicks": clicks_by_url.get(_strip_utm(b.get("url", ""))),
-        })
-    # Features first (no clicks), then clicked news most-clicked first.
-    business.sort(key=lambda x: (not x["is_feature"], -(x["clicks"] or 0)))
+    # PS only records which stories were FEATURES going forward (via the feed);
+    # tag by URL match where we know, rather than fabricating the flag.
+    feature_urls = {
+        _strip_utm(b.get("url", ""))
+        for b in feed.get("business", []) if b.get("is_feature")
+    }
 
-    # Fallback: no PS feed yet -> business = today's click-only list, so FW still
-    # works before PS starts writing the feed.
-    if not business and clicked:
-        business = [{
-            "url": c.get("url", ""), "title": c.get("campaign_title", ""),
-            "summary": c.get("summary", ""), "category": "",
-            "is_feature": False, "clicks": c.get("clicks"),
-        } for c in clicked]
+    # Our own PS story links ranked by clicks (scrape already sorts desc); the
+    # rest are incidental in-article links, not stories, so they're dropped.
+    ps_stories = [x for x in links if x.get("is_ps_story")]
 
-    return {"odd": feed.get("odd", []), "business": business}
+    def _item(x: dict) -> dict:
+        feat = _strip_utm(x.get("url", "")) in feature_urls
+        return {
+            "url": x.get("url", ""),
+            "title": x.get("campaign_title", ""),
+            "summary": x.get("summary", ""),
+            "category": "",  # FEATURE badge / click count carries the signal
+            "is_feature": feat,
+            # Rank + display both use verified clicks (bot-filtered) so the order
+            # matches the number shown.
+            "clicks": x.get("verified_clicks", x.get("clicks", 0)),
+            "edition_date": x.get("edition_date", ""),
+        }
+
+    top = ps_stories[:TOP_PICKS_CLICK_LIMIT]
+    top_urls = {x.get("url", "") for x in top}
+    # Any known feature outside the top 15 still gets bolted on (Victor's ask).
+    extra_features = [
+        x for x in ps_stories[TOP_PICKS_CLICK_LIMIT:]
+        if _strip_utm(x.get("url", "")) in feature_urls
+    ]
+    business = [_item(x) for x in top + extra_features]
+    business_urls = top_urls | {x.get("url", "") for x in extra_features}
+    business_more = [
+        _item(x) for x in ps_stories if x.get("url", "") not in business_urls
+    ]
+
+    return {
+        "odd": feed.get("odd", []),
+        "business": business,
+        "business_more": business_more,
+    }
 
 
 @app.get("/api/top-picks")
@@ -2643,6 +2668,7 @@ def api_top_picks() -> JSONResponse:
     return JSONResponse({
         "odd": data.get("odd", []),
         "business": data.get("business", []),
+        "business_more": data.get("business_more", []),
         "scraped_at": _top_picks_cache["scraped_at"],
         "week_iso": get_current_week_iso(),
     })
@@ -2650,8 +2676,10 @@ def api_top_picks() -> JSONResponse:
 
 @app.post("/api/top-picks/scrape")
 async def api_top_picks_scrape(request: Request) -> JSONResponse:
-    """Build the two Top Picks lists: PS feed (business + odd) joined to beehiiv
-    click data. Body (optional): {"days": int} - defaults to 7.
+    """Build the two Top Picks lists: this window's feature stories + top-15
+    click-ranked business news, plus the odd picks. Body (optional):
+    {"from": "YYYY-MM-DD", "to": "YYYY-MM-DD"} for an explicit calendar range,
+    or {"days": int} (defaults to the last 7 days).
     """
     import asyncio
 
@@ -2662,14 +2690,29 @@ async def api_top_picks_scrape(request: Request) -> JSONResponse:
         pass
     days = body.get("days", 7)
 
+    def _parse_day(s, *, end_of_day=False):
+        if not s:
+            return None
+        try:
+            d = _dt.datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=_dt.timezone.utc)
+        except (TypeError, ValueError):
+            return None
+        return d + _dt.timedelta(hours=23, minutes=59, seconds=59) if end_of_day else d
+
+    start = _parse_day(body.get("from"))
+    end = _parse_day(body.get("to"), end_of_day=True)
+
     loop = asyncio.get_event_loop()
     try:
-        data = await loop.run_in_executor(None, _combined_top_picks, days)
+        data = await loop.run_in_executor(
+            None, lambda: _combined_top_picks(days, start=start, end=end)
+        )
         now = _dt.datetime.utcnow().isoformat() + "Z"
         _top_picks_cache["data"] = data
         _top_picks_cache["scraped_at"] = now
         return JSONResponse({
             "odd": data["odd"], "business": data["business"],
+            "business_more": data.get("business_more", []),
             "scraped_at": now, "week_iso": get_current_week_iso(),
         })
     except Exception as e:

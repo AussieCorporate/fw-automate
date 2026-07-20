@@ -73,6 +73,24 @@ def _is_excluded(url: str) -> bool:
     return any(excl in domain for excl in EXCLUDE_DOMAINS)
 
 
+# Every Pick & Scroll STORY is republished to our own Shopify blog at
+# theaussiecorporate.com/blogs/pickandscrollnews/<slug>, and that blog link is
+# the story's link in the newsletter. That domain sits on the exclude list as
+# self-promo, so the story links were being dropped from the ranking entirely -
+# leaving only incidental in-article links. Detect our own story links so we
+# rank THOSE (the real stories) by clicks, not the incidental ones.
+_PS_STORY_PATH = "/blogs/pickandscrollnews/"
+
+
+def _is_ps_story(url: str) -> bool:
+    """True if the URL is one of our own Pick & Scroll story blog posts."""
+    parsed = urlparse(url)
+    host = (parsed.hostname or "")
+    if host.startswith("www."):
+        host = host[4:]
+    return host.endswith("theaussiecorporate.com") and _PS_STORY_PATH in (parsed.path or "")
+
+
 class _TextAroundLinkExtractor(HTMLParser):
     """Parse newsletter HTML to extract the sentence/paragraph around each link."""
 
@@ -149,12 +167,17 @@ def _extract_summaries_from_html(html: str) -> dict[str, str]:
     return {url: _clean_summary(text) for url, text in parser.get_summaries().items()}
 
 
-def fetch_recent_posts(days: int = 7) -> list[dict]:
-    """Fetch posts published in the last N days from Beehiiv API.
+def fetch_recent_posts(days: int = 7, start=None, end=None) -> list[dict]:
+    """Fetch posts published in a date window from Beehiiv API.
+
+    By default the last N days. Pass timezone-aware ``start``/``end`` datetimes
+    to bound an explicit window (the calendar range on the Top Picks screen).
 
     Returns list of post metadata dicts (id, title, slug, publish_date, web_url).
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    now = datetime.now(timezone.utc)
+    lo = start or (now - timedelta(days=days))
+    hi = end or now
 
     posts: list[dict] = []
     page = 1
@@ -178,8 +201,10 @@ def fetch_recent_posts(days: int = 7) -> list[dict]:
         for post in data.get("data", []):
             pub_ts = post.get("publish_date", 0)
             pub_dt = datetime.fromtimestamp(pub_ts, tz=timezone.utc)
-            if pub_dt < cutoff:
-                return posts
+            if pub_dt < lo:
+                return posts          # desc order: nothing older will qualify
+            if pub_dt > hi:
+                continue              # newer than the window: skip, keep scanning
             posts.append({
                 "id": post["id"],
                 "title": post.get("title", ""),
@@ -222,13 +247,18 @@ def fetch_post_clicks_and_content(post_id: str) -> dict:
     }
 
 
-def scrape_top_picks(days: int = 7, limit: int = 20) -> list[dict]:
-    """Main entry point: fetch last N days of Pick & Scroll editions and rank links by clicks.
+def scrape_top_picks(days: int = 7, limit: int = 20, start=None, end=None) -> list[dict]:
+    """Main entry point: fetch a window of Pick & Scroll editions and rank links by clicks.
 
-    Returns list of dicts sorted by total_clicks descending:
-        url, summary, clicks, campaign_title, campaign_url, source_domain
+    Our own PS story links are TAGGED (is_ps_story=True) and always kept even
+    with zero clicks (their self-promo domain is otherwise excluded), so callers
+    can rank the real stories rather than incidental in-article links.
+
+    Returns list of dicts sorted by verified clicks descending, each with:
+        url, summary, clicks, verified_clicks, is_ps_story, edition_date,
+        campaign_title, campaign_url, source_domain
     """
-    posts = fetch_recent_posts(days=days)
+    posts = fetch_recent_posts(days=days, start=start, end=end)
     if not posts:
         return []
 
@@ -255,7 +285,10 @@ def scrape_top_picks(days: int = 7, limit: int = 20) -> list[dict]:
             # show 0 verified). Rank on verified, keep raw for display.
             verified = (click_entry.get("email") or {}).get("verified_clicks", 0) or 0
 
-            if _is_excluded(raw_url) or _is_excluded(base_url):
+            is_ours = _is_ps_story(raw_url) or _is_ps_story(base_url)
+            # Our own story links are self-hosted (on the exclude list) but must
+            # be kept; everything else on the exclude list is genuine self-promo.
+            if not is_ours and (_is_excluded(raw_url) or _is_excluded(base_url)):
                 continue
 
             if base_url not in link_agg:
@@ -273,6 +306,8 @@ def scrape_top_picks(days: int = 7, limit: int = 20) -> list[dict]:
                     "summary": summary,
                     "clicks": 0,
                     "verified_clicks": 0,
+                    "is_ps_story": is_ours,
+                    "edition_date": post.get("publish_date", ""),
                     "campaign_title": data["title"],
                     "campaign_url": data["web_url"],
                     "source_domain": _domain(base_url),
@@ -286,6 +321,26 @@ def scrape_top_picks(days: int = 7, limit: int = 20) -> list[dict]:
                 "url": data["web_url"],
                 "clicks_in_campaign": total,
             })
+
+        # A story can draw ZERO clicks, and beehiiv may not list a zero-click
+        # link in stats at all. So sweep the edition's HTML links directly and
+        # add any of our own stories we haven't already captured.
+        for surl, stext in summaries.items():
+            b = _strip_utm(surl)
+            if not _is_ps_story(b) or b in link_agg:
+                continue
+            link_agg[b] = {
+                "url": b,
+                "summary": stext,
+                "clicks": 0,
+                "verified_clicks": 0,
+                "is_ps_story": True,
+                "edition_date": post.get("publish_date", ""),
+                "campaign_title": data["title"],
+                "campaign_url": data["web_url"],
+                "source_domain": _domain(b),
+                "campaigns": [],
+            }
 
     # Sort by verified clicks descending, falling back to raw for ties
     ranked = sorted(

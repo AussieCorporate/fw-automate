@@ -2631,16 +2631,29 @@ function copyTopPicks() {
   });
 }
 
+function _topPicksDefaultRange() {
+  // Default window: last 7 days (today back to 6 days ago), as YYYY-MM-DD.
+  function iso(d) { return d.toISOString().slice(0, 10); }
+  var to = new Date();
+  var from = new Date(); from.setDate(from.getDate() - 6);
+  return { from: iso(from), to: iso(to) };
+}
+
 function scrapeTopPicks() {
+  var def = _topPicksDefaultRange();
+  var from = (S.topPicksFrom || def.from);
+  var to = (S.topPicksTo || def.to);
   S.loading.top_picks = true; render();
-  api("/api/top-picks/scrape", { method: "POST", body: { days: 7 } })
+  api("/api/top-picks/scrape", { method: "POST", body: { from: from, to: to } })
     .then(function(d) {
       S.topPicks = d;
       S.lastScraped.top_picks = d.scraped_at || null;
       S.loading.top_picks = false;
-      S.topPicksChecked = {};
+      S.topPicksBizChecked = {};
+      S.topPicksOddChecked = {};
       render();
-      showToast("Top Picks scraped — " + (d.picks || []).length + " links ranked");
+      var n = ((d.business || []).length) + ((d.odd || []).length);
+      showToast("Top Picks refreshed — " + n + " stories (" + from + " to " + to + ")");
     })
     .catch(function(e) {
       S.loading.top_picks = false; render();
@@ -2650,7 +2663,10 @@ function scrapeTopPicks() {
 
 function _picksLists() {
   var d = S.topPicks || {};
-  return { business: d.business || [], odd: d.odd || [] };
+  var biz = (d.business || []).slice();
+  var more = d.business_more || [];
+  if (S.topPicksShowAll && more.length) biz = biz.concat(more);
+  return { business: biz, odd: d.odd || [], moreCount: more.length };
 }
 
 // Render one selectable picks list (business or odd). checkedKey is the state
@@ -2682,16 +2698,27 @@ function renderTopPicks(el) {
   var hasOutput = !!(S.sectionOutputs.top_picks && S.sectionOutputs.top_picks.output_text);
   if (!S.sectionPhase.top_picks) S.sectionPhase.top_picks = hasOutput ? 3 : (has ? 2 : 1);
 
+  var def = _topPicksDefaultRange();
+  var fromVal = S.topPicksFrom || def.from;
+  var toVal = S.topPicksTo || def.to;
+
   var p1 = '<div class="card mb20">';
-  p1 += '<p style="font-size:13px;color:var(--text-2);margin:0 0 12px 0;">Pulls the last 7 days of Pick &amp; Scroll picks: business news (with click counts) including feature stories\' summaries, and the odd stories. Feature stories are tagged (they have no clicks - the story runs inline).</p>';
+  p1 += '<p style="font-size:13px;color:var(--text-2);margin:0 0 12px 0;">The top 15 Pick &amp; Scroll business stories by clicks over the dates you choose, PLUS every feature story published in that window (features run inline so they get no clicks - they\'re tagged and always included). Also lists the odd "one more scroll" picks.</p>';
+  p1 += '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px;">';
+  p1 += '<label style="font-size:12px;color:var(--text-3);">From<br><input type="date" value="' + escAttr(fromVal) + '" max="' + escAttr(def.to) + '" onchange="S.topPicksFrom=this.value" style="margin-top:4px;padding:6px 8px;border:1px solid var(--divider);border-radius:6px;background:var(--bg-2);color:var(--text-1);"></label>';
+  p1 += '<label style="font-size:12px;color:var(--text-3);">To<br><input type="date" value="' + escAttr(toVal) + '" max="' + escAttr(def.to) + '" onchange="S.topPicksTo=this.value" style="margin-top:4px;padding:6px 8px;border:1px solid var(--divider);border-radius:6px;background:var(--bg-2);color:var(--text-1);"></label>';
   p1 += '<button class="btn btn-primary" onclick="scrapeTopPicks()">REFRESH PICKS</button>';
   if (S.loading.top_picks) p1 += ' <span class="ingest-spinner"></span>';
-  if (S.lastScraped.top_picks) p1 += '<span style="font-size:11px;color:var(--text-3);margin-left:10px;">Last: ' + esc(S.lastScraped.top_picks) + '</span>';
+  p1 += '</div>';
+  if (S.lastScraped.top_picks) p1 += '<span style="font-size:11px;color:var(--text-3);">Last refreshed: ' + esc(S.lastScraped.top_picks) + '</span>';
   p1 += '</div>';
 
   var p2 = '';
-  p2 += '<div class="card mb20"><div style="font-weight:600;margin-bottom:10px;">Business (Top Picks) - pick 5</div>';
+  p2 += '<div class="card mb20"><div style="font-weight:600;margin-bottom:10px;">Business (Top Picks) - top 15 by clicks + features</div>';
   p2 += renderPicksList(lists.business, S.topPicksBizChecked, 'biz', 'No picks yet. Refresh, or run a PS newsletter so the feed fills.');
+  if (lists.moreCount) {
+    p2 += '<div style="margin-top:8px;"><button class="btn btn-sm btn-secondary" onclick="S.topPicksShowAll=!S.topPicksShowAll;render()">' + (S.topPicksShowAll ? 'Show top 15 only' : ('Show all ' + (15 + lists.moreCount) + ' stories in this window')) + '</button></div>';
+  }
   p2 += '</div>';
   p2 += '<div class="card mb20"><div style="font-weight:600;margin-bottom:10px;">Odd picks - pick 5</div>';
   p2 += renderPicksList(lists.odd, S.topPicksOddChecked, 'odd', 'No odd picks in the last 7 days.');
