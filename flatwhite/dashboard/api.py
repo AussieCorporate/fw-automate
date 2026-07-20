@@ -2735,21 +2735,26 @@ def _combined_top_picks(days: int = 7, start=None, end=None) -> dict:
         pass
 
     # Odd "one more scroll" picks: read the editor's picks straight out of the
-    # editions in the window (Editor's / Draft / Doctor's Pick). Falls back to
-    # the thin feed if the newsletter parse turns up nothing.
+    # editions in the window (Editor's / Draft / Doctor's Pick), joined to their
+    # click counts and ranked by clicks (same as business). Falls back to the
+    # thin feed if the newsletter parse turns up nothing.
     try:
         odd_raw = scrape_one_more_scroll(days, start=start, end=end)
     except Exception:  # noqa: BLE001 - odd picks are best-effort
         odd_raw = []
+    clicks_by_url = {
+        _strip_utm(x.get("url", "")): (x.get("clicks", 0) or 0) for x in links
+    }
     odd = [{
         "url": o.get("url", ""),
         "title": o.get("label", ""),
         "summary": o.get("summary", ""),
         "category": o.get("label", ""),   # the pick label shows as a chip
         "is_feature": False,
-        "clicks": None,
+        "clicks": clicks_by_url.get(_strip_utm(o.get("url", "")), 0),
         "edition_date": o.get("edition_date", ""),
     } for o in odd_raw]
+    odd.sort(key=lambda o: o.get("clicks") or 0, reverse=True)  # top clicks first
     if not odd:
         odd = feed.get("odd", [])
 
