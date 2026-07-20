@@ -2654,6 +2654,34 @@ def _combined_top_picks(days: int = 7, start=None, end=None) -> dict:
         _item(x) for x in ps_stories if x.get("url", "") not in business_urls
     ]
 
+    # Feature SEED: a manual/one-off list of feature stories (each {title,
+    # summary, url, edition_date}) bolted on top as features. This is the same
+    # shape the pipeline will write to the feed going forward; the seed just
+    # lets us preview the look before that history accrues. Env override for
+    # the path; default lives beside the PS picks feed.
+    import os as _os
+    seed_path = _os.environ.get(
+        "FW_TOP_PICKS_FEATURE_SEED",
+        _os.path.expanduser(
+            "~/Movies/Shell Bot 2/state_store_root/state/fw_feature_seed.json"),
+    )
+    try:
+        with open(seed_path, encoding="utf-8") as _f:
+            seeds = json.load(_f)
+        have = {b["url"] for b in business if b["url"]}
+        seed_items = [{
+            "url": s.get("url", ""),
+            "title": s.get("title", ""),
+            "summary": s.get("summary", ""),
+            "category": "",
+            "is_feature": True,
+            "clicks": None,
+            "edition_date": s.get("edition_date", ""),
+        } for s in seeds if s.get("url", "") not in have]
+        business = seed_items + business          # features first
+    except (OSError, ValueError, TypeError):
+        pass
+
     return {
         "odd": feed.get("odd", []),
         "business": business,
