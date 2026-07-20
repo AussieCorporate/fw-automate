@@ -1767,6 +1767,40 @@ def api_brains_trust_angles() -> JSONResponse:
     return JSONResponse({"angles": angles})
 
 
+@app.post("/api/brains-trust/email-sources")
+async def api_brains_trust_email_sources(request: Request) -> JSONResponse:
+    """Email Victor the broker-research PDFs behind the chosen Brains Trust
+    angle (so he can open them for charts). Body:
+    {"chosen_pitch": str, "source_pdf_ids": [int, ...], "to": str?}."""
+    import asyncio
+
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    pitch = (body.get("chosen_pitch") or body.get("pitch") or "").strip()
+    pdf_ids = [i for i in (body.get("source_pdf_ids") or []) if isinstance(i, int)]
+    to = body.get("to")
+
+    if not pdf_ids:
+        return JSONResponse(
+            {"ok": False, "message": "This angle has no linked research PDFs."},
+            status_code=400,
+        )
+
+    from flatwhite.dashboard import brains_trust_sources as bts
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            None, lambda: bts.send_source_pdf_email(pitch, pdf_ids, to)
+        )
+        return JSONResponse(result, status_code=200 if result.get("ok") else 400)
+    except Exception as e:  # noqa: BLE001 - surface send failures to the UI
+        return JSONResponse({"ok": False, "message": f"Send failed: {e}"},
+                            status_code=500)
+
+
 # ── Big Conversation candidates ───────────────────────────────────────────────
 
 @app.get("/api/big-conversation-candidates")
@@ -2623,9 +2657,24 @@ def _combined_top_picks(days: int = 7, start=None, end=None) -> dict:
         for b in feed.get("business", []) if b.get("is_feature")
     }
 
-    # Our own PS story links ranked by clicks (scrape already sorts desc); the
-    # rest are incidental in-article links, not stories, so they're dropped.
-    ps_stories = [x for x in links if x.get("is_ps_story")]
+    def _is_sponsorish(x: dict) -> bool:
+        """Drop bot-inflated sponsor links: lots of raw clicks but few verified
+        (a real story runs ~2x raw:verified; a sponsor/scan link runs 7x+)."""
+        raw = x.get("clicks", 0) or 0
+        ver = x.get("verified_clicks", 0) or 0
+        return raw >= 20 and (ver == 0 or raw / max(ver, 1) > 4)
+
+    # All clicked STORY links across the editions (our own blog links AND the
+    # external sources our stories link to), ranked by raw clicks. Only genuine
+    # self-promo/social/survey junk was already dropped by the scraper's exclude
+    # list; here we additionally drop bot-inflated sponsor links.
+    # Require a real summary: a link with no adjacent story text is furniture
+    # (a chart embed, an image, a button), not a pickable story.
+    candidates = [
+        x for x in links
+        if not _is_sponsorish(x) and (x.get("summary") or "").strip()
+    ]
+    candidates.sort(key=lambda x: x.get("clicks", 0) or 0, reverse=True)
 
     def _item(x: dict) -> dict:
         feat = _strip_utm(x.get("url", "")) in feature_urls
@@ -2635,23 +2684,21 @@ def _combined_top_picks(days: int = 7, start=None, end=None) -> dict:
             "summary": x.get("summary", ""),
             "category": "",  # FEATURE badge / click count carries the signal
             "is_feature": feat,
-            # Rank + display both use verified clicks (bot-filtered) so the order
-            # matches the number shown.
-            "clicks": x.get("verified_clicks", x.get("clicks", 0)),
+            "clicks": None if feat else (x.get("clicks", 0) or 0),  # raw clicks
             "edition_date": x.get("edition_date", ""),
         }
 
-    top = ps_stories[:TOP_PICKS_CLICK_LIMIT]
+    top = candidates[:TOP_PICKS_CLICK_LIMIT]
     top_urls = {x.get("url", "") for x in top}
     # Any known feature outside the top 15 still gets bolted on (Victor's ask).
     extra_features = [
-        x for x in ps_stories[TOP_PICKS_CLICK_LIMIT:]
+        x for x in candidates[TOP_PICKS_CLICK_LIMIT:]
         if _strip_utm(x.get("url", "")) in feature_urls
     ]
     business = [_item(x) for x in top + extra_features]
     business_urls = top_urls | {x.get("url", "") for x in extra_features}
     business_more = [
-        _item(x) for x in ps_stories if x.get("url", "") not in business_urls
+        _item(x) for x in candidates if x.get("url", "") not in business_urls
     ]
 
     # Feature SEED: a manual/one-off list of feature stories (each {title,

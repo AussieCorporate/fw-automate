@@ -1123,12 +1123,34 @@ function renderBrainsPicker() {
     });
   }
   if (S.brainsChosen) {
+    var nPdfs = (S.brainsChosen.source_pdf_ids || []).length;
     h += '<div style="display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap;">';
     h += modelSelect('model-brains_trust','brains_trust');
     h += '<button class="btn btn-primary" onclick="draftBrainsTrust()"' + (S.brainsDrafting ? ' disabled' : '') + '>' + (S.brainsDrafting ? "Drafting…" : "Draft") + '</button>';
+    if (nPdfs) {
+      h += '<button class="btn btn-secondary" onclick="emailBrainsSources()"' + (S.brainsEmailing ? ' disabled' : '') + '>' + (S.brainsEmailing ? "Sending…" : ("📎 Email me the source PDFs (" + nPdfs + ")")) + '</button>';
+    }
     h += '</div>';
+    h += '<div style="font-size:11px;color:var(--text-3);margin-top:6px;">Emails you links to the ' + nPdfs + ' research email(s) this angle used, so you can open them for the charts.</div>';
   }
   return h;
+}
+
+function emailBrainsSources() {
+  if (!S.brainsChosen) return;
+  S.brainsEmailing = true; render();
+  api("/api/brains-trust/email-sources", { method: "POST", body: {
+    chosen_pitch: S.brainsChosen.pitch,
+    source_pdf_ids: S.brainsChosen.source_pdf_ids || [],
+  }})
+    .then(function(d) {
+      S.brainsEmailing = false; render();
+      showToast(d.message || (d.ok ? "Sent" : "Could not send"), d.ok ? "success" : "error");
+    })
+    .catch(function(e) {
+      S.brainsEmailing = false; render();
+      showToast("Send failed: " + e.message, "error");
+    });
 }
 
 function renderBrains(el) {
