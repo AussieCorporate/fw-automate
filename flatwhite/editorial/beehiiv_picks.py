@@ -360,6 +360,23 @@ def scrape_top_picks(days: int = 7, limit: int = 20, start=None, end=None) -> li
 # the editor, so we read them straight out of the newsletter HTML rather than
 # from click data.
 _OMS_STOPS = ("TRIVIA", "OUR SOCIALS", "ANSWERS", "TOGETHER WITH", "CHART OF THE DAY")
+# Each odd pick starts with a bold label CONTAINING the word "pick" (Editor's
+# Pick / Draft Pick / Doctor's Pick / ...). Split on these, NOT on any <b> - a
+# bolded word inside a pick's own text used to truncate it mid-sentence.
+_PICK_LABEL_RE = re.compile(r"(?is)<b>\s*([^<]*?pick[^<]*?)\s*</b>")
+
+
+def _shorten_odd(text: str, cap: int = 130) -> str:
+    """Tighten an odd-pick summary to the published One More Scroll style: drop
+    the trailing 'LINK' anchor label, keep the first sentence, and cap length so
+    the rambly narrative picks don't dwarf the punchy ones."""
+    text = re.sub(r"\s*\bLINK\b\s*$", "", text).strip()
+    m = re.match(r"(.{20,}?[.!?])(?:\s|$)", text)   # first real sentence
+    if m:
+        text = m.group(1).strip()
+    if len(text) > cap:
+        text = text[:cap].rsplit(" ", 1)[0].rstrip(",;:") + "..."
+    return text.strip()
 
 
 def scrape_one_more_scroll(days: int = 7, start=None, end=None) -> list[dict]:
@@ -383,14 +400,14 @@ def scrape_one_more_scroll(days: int = 7, start=None, end=None) -> list[dict]:
             if j > 0:
                 section = section[:j]
                 break
-        for m in re.finditer(r"(?is)<b>\s*(.*?)\s*</b>(.*?)(?=<b>|\Z)", section):
+        labels = list(_PICK_LABEL_RE.finditer(section))
+        for i, m in enumerate(labels):
             label = re.sub(r"<[^>]+>", "", m.group(1)).strip().rstrip(":")
-            if "pick" not in label.lower():
-                continue
-            body = m.group(2)
+            body = section[m.end():(labels[i + 1].start() if i + 1 < len(labels) else len(section))]
             um = re.search(r'href="([^"]+)"', body)
             url = _strip_utm(um.group(1)) if um else ""
             text = unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", body)).strip())
+            text = _shorten_odd(text)
             if not text:
                 continue
             key = url or text[:60]
