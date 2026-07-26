@@ -31,7 +31,18 @@ _CREDS_PATH = os.environ.get(
     "SHARED_GMAIL_CREDENTIALS",
     "/Users/victornguyen/Documents/MISC/Trading Strategy/credentials/credentials.json",
 )
-_SEND_SCOPES = ["https://www.googleapis.com/auth/gmail.send"]
+# The FULL scope set of the shared token, even though this module only sends.
+# Loading it with a narrower list and then writing the refreshed credentials
+# back (see _gmail_service) rewrites the shared token.json down to those
+# scopes, which breaks the Trading Strategy research ingest and the TAC
+# carousel job that also read it. That happened on 20 Jul 2026 and starved
+# Brains Trust of fresh research; keep this identical to that project's
+# src/gmail_client.py SCOPES.
+_SHARED_SCOPES = [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.modify",
+    "https://www.googleapis.com/auth/gmail.send",
+]
 # Where the email is sent. Victor reads the linked research emails while logged
 # into general@pickandscrollnews.com.au (where the research lands).
 DEFAULT_TO = os.environ.get("BRAINS_TRUST_SOURCES_TO", "victor@dogasydney.com.au")
@@ -133,7 +144,7 @@ def _gmail_service():
     from google.auth.transport.requests import Request
     from googleapiclient.discovery import build
 
-    creds = Credentials.from_authorized_user_file(_TOKEN_PATH, _SEND_SCOPES)
+    creds = Credentials.from_authorized_user_file(_TOKEN_PATH, _SHARED_SCOPES)
     if not creds.valid and creds.expired and creds.refresh_token:
         creds.refresh(Request())
         with open(_TOKEN_PATH, "w") as f:
