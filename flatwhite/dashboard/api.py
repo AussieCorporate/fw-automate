@@ -2233,16 +2233,75 @@ def _proceed_editorial(data: dict, model: str | None, custom_prompt: str | None 
     return route(task_type="editorial", prompt=prompt, system=EDITORIAL_INTRO_SYSTEM, model_override=override)
 
 
+def _pool_source_pdf_ids(angles) -> list[int]:
+    """Every source PDF id across the selected angles, deduplicated, in the
+    order first seen. Used so the "email me the source research" button covers
+    the whole piece rather than one angle. Junk entries are skipped."""
+    out: list[int] = []
+    for a in (angles or []):
+        if not isinstance(a, dict):
+            continue
+        ids = a.get("source_pdf_ids")
+        if not isinstance(ids, list):
+            continue
+        for i in ids:
+            if isinstance(i, int) and not isinstance(i, bool) and i not in out:
+                out.append(i)
+    return out
+
+
+def _selected_angles(data: dict) -> list[dict]:
+    """The angles Victor ticked, in tick order, anchor first.
+
+    Accepts the multi-select payload (`chosen_angles`) and falls back to the
+    legacy single-angle keys, so an older browser tab keeps working. Entries
+    without a usable pitch are dropped; if that leaves nothing, the legacy keys
+    are used rather than building a prompt with no angle in it.
+    """
+    good = []
+    for a in (data.get("chosen_angles") or []):
+        if not isinstance(a, dict):
+            continue
+        pitch = (a.get("pitch") or "").strip()
+        if not pitch:
+            continue
+        good.append({
+            "pitch": pitch,
+            "angle": (a.get("angle") or "").strip(),
+            "why_tac": (a.get("why_tac") or "").strip(),
+            "date_iso": (a.get("date_iso") or "").strip(),
+        })
+    if good:
+        return good
+
+    legacy_pitch = (data.get("chosen_pitch") or "").strip()
+    if not legacy_pitch:
+        return []
+    return [{
+        "pitch": legacy_pitch,
+        "angle": (data.get("chosen_angle") or "").strip(),
+        "why_tac": (data.get("chosen_why_tac") or "").strip(),
+        "date_iso": "",
+    }]
+
+
 def _proceed_brains_trust(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
-    """Consolidate the angle Victor picked plus the surfaced 3-week research
-    pool into a Brains Trust draft. Same (data, model, custom_prompt) -> str
-    shape as every other _proceed_* function, so it plugs into proceed_fns
-    unchanged.
+    """Draft the Brains Trust from the angle(s) Victor ticked plus the surfaced
+    3-week research pool. Same (data, model, custom_prompt) -> str shape as
+    every other _proceed_* function, so it plugs into proceed_fns unchanged.
+
+    Victor picks BY TOPIC: several angles that are facets of one story. So with
+    more than one angle the ask is a CONVERGED view - the thesis that reconciles
+    them - not the first angle with the others bolted on behind it. Every angle
+    he ticked must be addressed; "use what's relevant, ignore the rest" applies
+    only to the surrounding pool.
 
     data: {
-        "chosen_pitch": str,             # the angle Victor picked
-        "chosen_angle": str,             # its supporting angle summary
-        "chosen_why_tac": str,           # optional, why it matters to readers
+        "chosen_angles": list[dict],     # ordered, anchor first; each
+                                          # {pitch, angle, why_tac, date_iso}
+        "chosen_pitch": str,             # legacy single-angle form, still read
+        "chosen_angle": str,
+        "chosen_why_tac": str,
         "candidates_pool": list[dict],   # the full window shown on screen,
                                           # each {date_iso, pitch, angle}
     }
@@ -2254,9 +2313,7 @@ def _proceed_brains_trust(data: dict, model: str | None, custom_prompt: str | No
     if custom_prompt:
         return route(task_type="brains_trust", prompt=custom_prompt, system=BRAINS_TRUST_VOICE, model_override=override)
 
-    chosen_pitch = (data.get("chosen_pitch") or "").strip()
-    chosen_angle = (data.get("chosen_angle") or "").strip()
-    chosen_why = (data.get("chosen_why_tac") or "").strip()
+    angles = _selected_angles(data)
     pool = data.get("candidates_pool") or []
 
     pool_lines = [
@@ -2265,14 +2322,51 @@ def _proceed_brains_trust(data: dict, model: str | None, custom_prompt: str | No
     ]
     pool_block = "\n".join(pool_lines) if pool_lines else "(no additional research pool supplied)"
 
+    if len(angles) > 1:
+        selected_lines = []
+        for n, a in enumerate(angles, 1):
+            label = "ANCHOR" if n == 1 else f"ALSO SELECTED {n}"
+            line = f"[{label}] {a['pitch']}"
+            if a["angle"]:
+                line += f"\n{a['angle']}"
+            if a["why_tac"]:
+                line += f"\nWhy it matters to readers: {a['why_tac']}"
+            selected_lines.append(line)
+        selected_block = "\n\n".join(selected_lines)
+
+        chosen_block = (
+            "SELECTED ANGLES - these are facets of ONE topic, listed in the "
+            "order chosen. The first is the ANCHOR: the angle closest to the "
+            "point being made, so weight the piece toward it.\n\n"
+            f"{selected_block}\n\n"
+            "WRITE THE CONVERGED VIEW. Find the single thesis these angles "
+            "converge on and open on that finding - not on the anchor angle "
+            "restated. Every selected angle above must be addressed in the "
+            "piece as evidence for that thesis.\n"
+            "These instructions are not part of the piece. Never mention the "
+            "angles, the selection, or the fact that they converge. Do not "
+            "open with a sentence about the thesis - open with the concrete "
+            "finding itself, in figures. A reader must not be able to tell the "
+            "piece was assembled from separate angles.\n"
+            "If the selected angles do not genuinely converge on one thesis, "
+            "that is the one exception: say so plainly in your first line, name "
+            "the separate topics you were given, then write the strongest piece "
+            "you can from the anchor alone. Do not invent a connective thread "
+            "between unrelated angles.\n"
+        )
+    else:
+        a = angles[0] if angles else {"pitch": "", "angle": "", "why_tac": ""}
+        chosen_block = (
+            f"CHOSEN ANGLE:\n{a['pitch']}\n{a['angle']}\n"
+            + (f"Why it matters to readers: {a['why_tac']}\n" if a["why_tac"] else "")
+        )
+
     prompt = (
         "Write this week's Brains Trust (also called the Economic Scoop) section "
         "for the Flat White newsletter.\n\n"
-        f"CHOSEN ANGLE:\n{chosen_pitch}\n{chosen_angle}\n"
-        + (f"Why it matters to readers: {chosen_why}\n" if chosen_why else "")
-        + "\n"
+        f"{chosen_block}\n"
         "RESEARCH BANK FROM THE LAST 3 WEEKS (consolidate whatever is relevant "
-        "to the chosen angle above; ignore anything unrelated):\n"
+        "to the angles above; ignore anything unrelated):\n"
         f"{pool_block}\n\n"
         "Output ONLY the Brains Trust body text. No title. No sign-off. "
         "Ground every claim in the research bank; do not invent figures."

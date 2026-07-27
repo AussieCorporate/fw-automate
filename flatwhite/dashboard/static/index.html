@@ -287,6 +287,8 @@ select.form-input { appearance: auto; }
 .pick-row{display:flex;gap:12px;padding:10px 12px;border-radius:10px;cursor:pointer;border:1px solid transparent;margin-bottom:6px}
 .pick-row:hover{background:rgba(0,0,0,.03)}
 .pick-row.picked{border-color:var(--accent,#6c63ff);background:rgba(108,99,255,.06)}
+.pick-num{width:22px;flex:none;padding-top:1px}
+.pick-badge{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--accent,#6c63ff);color:#fff;font-size:11px;font-weight:700}
 .pick-date{width:84px;flex:none;color:var(--text-2);font-size:12px;padding-top:2px}
 .pick-pitch{font-weight:600;font-size:14px}
 .pick-angle{color:var(--text-2);font-size:13px;margin-top:2px}
@@ -360,7 +362,7 @@ var S = {
   editorialBigStory: "",
   threadDraft: { title: "", url: "", preview: "", topComment: "" },
   brainsAngles: null,        // [{id, date_iso, pitch, angle, why_tac}, ...] from the research bank
-  brainsChosen: null,        // the picked angle object
+  brainsPicks: [],           // picked angle objects, IN TICK ORDER (first = anchor)
   brainsDrafting: false,
   findsChecked: {},
   findsBlurbs: {},
@@ -1072,13 +1074,36 @@ function _brainsWordCountChip(text) {
   return '<span class="' + cls + '">' + esc(label) + '</span>';
 }
 
+function _brainsPickIndex(a) {
+  var picks = S.brainsPicks || [];
+  for (var i = 0; i < picks.length; i++) { if (picks[i].id === a.id) return i; }
+  return -1;
+}
+
+// Toggle. Tick order is the running order: the first pick is the ANCHOR, the
+// angle the converged view leans toward. Unticking renumbers the rest, so
+// changing the anchor is untick-then-retick rather than a separate control.
 function pickBrainsAngle(idx) {
-  S.brainsChosen = S.brainsAngles[idx];
+  var a = S.brainsAngles[idx];
+  if (!a) return;
+  var at = _brainsPickIndex(a);
+  if (at >= 0) S.brainsPicks.splice(at, 1);
+  else S.brainsPicks.push(a);
   render();
 }
 
+function _brainsPooledPdfIds() {
+  var seen = {}, out = [];
+  (S.brainsPicks || []).forEach(function(a) {
+    (a.source_pdf_ids || []).forEach(function(i) {
+      if (!seen[i]) { seen[i] = 1; out.push(i); }
+    });
+  });
+  return out;
+}
+
 function draftBrainsTrust() {
-  if (!S.brainsChosen) return;
+  if (!S.brainsPicks || !S.brainsPicks.length) return;
   S.brainsDrafting = true;
   render();
   api("/api/proceed-section", {
@@ -1087,9 +1112,7 @@ function draftBrainsTrust() {
       section: "brains_trust",
       model: getModel("model-brains_trust"),
       data: {
-        chosen_pitch: S.brainsChosen.pitch,
-        chosen_angle: S.brainsChosen.angle,
-        chosen_why_tac: S.brainsChosen.why_tac,
+        chosen_angles: S.brainsPicks,
         candidates_pool: S.brainsAngles,
       },
     },
@@ -1108,40 +1131,49 @@ function draftBrainsTrust() {
 }
 
 function renderBrainsPicker() {
-  var h = '<div style="font-size:13px;color:var(--text-2);margin-bottom:10px;font-weight:600;">Recommended angles (last 3 weeks)</div>';
+  var h = '<div style="font-size:13px;color:var(--text-2);margin-bottom:4px;font-weight:600;">Recommended angles (last 3 weeks)</div>';
+  h += '<div style="font-size:12px;color:var(--text-3);margin-bottom:10px;">Tick every angle on the topic. The first one you tick is the anchor; the draft writes the view they converge on.</div>';
   var angles = S.brainsAngles || [];
+  var picks = S.brainsPicks || [];
   if (!angles.length) {
     h += '<p style="color:var(--text-3);font-size:13px;">No angles found in the research bank right now. The Friday digest email still runs independently of this list.</p>';
   } else {
     angles.forEach(function(a, i) {
-      var chosen = S.brainsChosen && S.brainsChosen.id === a.id;
-      h += '<div class="pick-row' + (chosen ? " picked" : "") + '" onclick="pickBrainsAngle(' + i + ')">';
+      var at = _brainsPickIndex(a);
+      h += '<div class="pick-row' + (at >= 0 ? " picked" : "") + '" onclick="pickBrainsAngle(' + i + ')">';
+      h += '<div class="pick-num">' + (at >= 0 ? '<span class="pick-badge">' + (at + 1) + '</span>' : '') + '</div>';
       h += '<div class="pick-date">' + esc(a.date_iso) + '</div>';
       h += '<div><div class="pick-pitch">' + esc(a.pitch) + '</div>';
       if (a.angle) h += '<div class="pick-angle">' + esc(a.angle) + '</div>';
       h += '</div></div>';
     });
   }
-  if (S.brainsChosen) {
-    var nPdfs = (S.brainsChosen.source_pdf_ids || []).length;
+  if (picks.length) {
+    var nPdfs = _brainsPooledPdfIds().length;
     h += '<div style="display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap;">';
     h += modelSelect('model-brains_trust','brains_trust');
-    h += '<button class="btn btn-primary" onclick="draftBrainsTrust()"' + (S.brainsDrafting ? ' disabled' : '') + '>' + (S.brainsDrafting ? "Drafting…" : "Draft") + '</button>';
+    h += '<button class="btn btn-primary" onclick="draftBrainsTrust()"' + (S.brainsDrafting ? ' disabled' : '') + '>' + (S.brainsDrafting ? "Drafting…" : ("Draft from " + picks.length + " angle" + (picks.length > 1 ? "s" : ""))) + '</button>';
     if (nPdfs) {
       h += '<button class="btn btn-secondary" onclick="emailBrainsSources()"' + (S.brainsEmailing ? ' disabled' : '') + '>' + (S.brainsEmailing ? "Sending…" : ("📎 Email me the source PDFs (" + nPdfs + ")")) + '</button>';
     }
     h += '</div>';
-    h += '<div style="font-size:11px;color:var(--text-3);margin-top:6px;">Emails you links to the ' + nPdfs + ' research email(s) this angle used, so you can open them for the charts.</div>';
+    h += '<div style="font-size:11px;color:var(--text-3);margin-top:6px;">Anchor: ' + esc(picks[0].pitch) + '. Emails you links to the ' + nPdfs + ' research email(s) behind all ' + picks.length + ' selected angle(s).</div>';
+    // Measured 27 Jul 2026: three angles drafted at 408 words against a
+    // 260-380 house range, so warn from three rather than four.
+    if (picks.length > 2) {
+      h += '<div style="font-size:11px;color:var(--warn,#b26a00);margin-top:4px;">Heads up: Brains Trust runs 260-380 words. Three angles drafted at about 410 words in testing, so expect to trim. Check the word count on the output.</div>';
+    }
   }
   return h;
 }
 
 function emailBrainsSources() {
-  if (!S.brainsChosen) return;
+  var picks = S.brainsPicks || [];
+  if (!picks.length) return;
   S.brainsEmailing = true; render();
   api("/api/brains-trust/email-sources", { method: "POST", body: {
-    chosen_pitch: S.brainsChosen.pitch,
-    source_pdf_ids: S.brainsChosen.source_pdf_ids || [],
+    chosen_pitch: picks[0].pitch,
+    source_pdf_ids: _brainsPooledPdfIds(),
   }})
     .then(function(d) {
       S.brainsEmailing = false; render();
@@ -1163,7 +1195,7 @@ function renderBrains(el) {
   if (hasOutput) p2 += '<div style="margin-top:8px;">' + _brainsWordCountChip(S.sectionOutputs.brains_trust.output_text) + '</div>';
 
   var h = '<div class="sh"><div><h2>The Brains Trust</h2><div class="sub">Pick an angle from the last 3 weeks of research; the dash drafts the piece.</div></div></div>';
-  h += phasePanel('brains_trust', 1, 'Pick + draft', true, !!S.brainsChosen, p1);
+  h += phasePanel('brains_trust', 1, 'Pick + draft', true, !!(S.brainsPicks && S.brainsPicks.length), p1);
   h += phasePanel('brains_trust', 2, 'Output', true, hasOutput, p2);
 
   el.innerHTML = h;
