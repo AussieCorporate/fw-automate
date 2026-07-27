@@ -1,0 +1,104 @@
+"""Brains Trust voice rules, derived from Victor's edit of a real draft.
+
+On 27 Jul 2026 Victor edited a live Brains Trust draft (AI hiring + the AI
+laptop refresh) down from 346 words to 244 and sent both versions back. Every
+rule asserted here comes from a specific difference between the two, so the
+prompt encodes his edit rather than a general theory of good writing.
+
+What he cut, in his own edit:
+- the setup-fact opener (laptop chips) in favour of the consequence (jobs)
+- "The practical question is what happens when..."      posed-question device
+- "Morgan Stanley's AlphaWise research provides the answer"  announced pivot
+- "The employment data sharpens the picture further."   announced pivot
+- "The convergence matters."                            meta-commentary
+- "The hardware cycle and the hiring cycle are now running in the same
+   direction."                                          summary restating the link
+- "what the research calls 'graduate-ladder compression'"  coined jargon
+- stacked source chains, in favour of "Jarden estimates" / "Gartner expects"
+- third person, in favour of "you"
+- "167,200", in favour of "roughly 167,000"
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+from flatwhite.classify.prompts import BRAINS_TRUST_VOICE
+
+_V = BRAINS_TRUST_VOICE.lower()
+
+
+def test_leads_on_consequence_not_setup():
+    """He moved the jobs story to the top and demoted the hardware cycle."""
+    assert "consequence" in _V
+    assert "context" in _V
+
+
+def test_bans_announced_pivots():
+    """Sentences whose only job is to announce the join between paragraphs."""
+    assert "announce" in _V
+    assert "sharpens the picture" in _V, "name the real example so it is unmistakable"
+    assert "provides the answer" in _V
+
+
+def test_bans_posed_question_device():
+    assert "the practical question is" in _V
+
+
+def test_bans_meta_commentary_about_assembly():
+    """'The convergence matters.' - the piece narrating its own construction."""
+    assert "the convergence matters" in _V
+
+
+def test_bans_summary_line_restating_the_link():
+    assert "running in the same direction" in _V
+
+
+def test_bans_coined_jargon_in_quotes():
+    assert "graduate-ladder compression" in _V
+
+
+def test_attribution_is_bank_plus_plain_verb():
+    assert "jarden estimates" in _V or "gartner expects" in _V
+    assert "alphawise" in _V, "the stacked product/report name he cut"
+
+
+def test_attribution_ban_is_a_pattern_not_one_phrase():
+    """First fix banned the literal phrase 'AlphaWise research provides', and
+    the next draft simply wrote 'AlphaWise research finds'. The rule has to
+    catch the shape, not the wording."""
+    assert "never name a research product" in _V
+    assert "whatever verb follows" in _V
+
+
+def test_pull_quote_must_be_a_standalone_block():
+    """The draft buried 'changing shape, not size' inside a sentence and added
+    a comment about the framing, instead of setting it as the pull quote."""
+    assert "do not bury a quotable line" in _V
+    assert "changing shape, not size" in _V
+    assert "without introduction" in _V
+
+
+def test_register_requires_contractions_and_second_person():
+    assert "contraction" in _V
+    assert "isn't" in _V and "it's" in _V, "name the contractions explicitly"
+    assert "reader as 'you'" in _V
+    assert "cohort beneath you" in _V, "his own phrasing, as the worked example"
+
+
+def test_requires_rounded_numbers():
+    assert "167,200" in _V and "167,000" in _V
+
+
+def test_length_target_matches_his_edit():
+    """His edit landed at 244 words; the old 260-380 band let drafts hit 400+."""
+    assert "240" in BRAINS_TRUST_VOICE
+    assert "380" not in BRAINS_TRUST_VOICE, "the old ceiling must be gone"
+
+
+def test_existing_house_rules_survive():
+    """The rules that were already right must not be lost in the rewrite."""
+    assert "australian english" in _V
+    assert "em dash" in _V
+    assert "—" not in BRAINS_TRUST_VOICE, "the prompt itself must contain no em dash"
+    assert "invent" in _V, "never invent a figure or a bank"

@@ -35,6 +35,38 @@ Committed + pushed + deployed (GCP VM `flatwhite`, `us-central1-a`, via `deploy/
 
 beehiiv reports (e.g. Sharesight placements) use the beehiiv MCP tools: audience, opens, raw vs verified clicks, per-edition breakdown.
 
+## Brains Trust voice rules — derived from Victor's own edit (27 Jul 2026)
+
+Victor edited a live Brains Trust draft (AI hiring + the AI laptop refresh) from
+346 words down to 244 and sent both versions back. `BRAINS_TRUST_VOICE` in
+`flatwhite/classify/prompts.py` now encodes that diff, and
+`tests/test_brains_trust_voice.py` pins every rule to the specific line he cut.
+Do not "improve" these rules from theory - they came from his edit.
+
+What he cut, and the rules that replaced it:
+- **Opened on the setup fact** (laptop chips) instead of the consequence (jobs).
+  Rule: lead on what it does to people; context is the second beat, never the opener.
+- **Announced pivots**: "X provides the answer", "The employment data sharpens
+  the picture further", "The convergence matters". Rule: paragraphs join by their
+  content; never write a sentence whose job is to announce the join.
+- **Posed questions as a device**: "The practical question is what happens when..."
+- **A summary line restating a link already made**: "The hardware cycle and the
+  hiring cycle are now running in the same direction."
+- **Coined jargon in quotes**: "what the research calls 'graduate-ladder compression'".
+- **Stacked attribution**: "Morgan Stanley's AlphaWise research", "Jarden's
+  research, drawing on Deloitte Access Economics and ... finds". Rule: house name
+  plus a plain verb and nothing in between. NOTE: banning the literal phrase was
+  not enough - the next draft wrote "AlphaWise research finds". The rule must ban
+  the shape, not the wording.
+- **Third person and no contractions**. Rule: contractions, and "you" where the
+  implication is personal.
+- **False precision**: "167,200" became "roughly 167,000".
+- **A buried pull quote**. Rule: lift a quotable line out as a standalone block
+  with "- Jarden" on its own line, no introduction.
+
+LENGTH is now 240-320 words with a hard 340 ceiling. The old 260-380 band let
+drafts reach 400+.
+
 ## FW editorial intro — no skill exists yet (13 Jul 2026, from Victor)
 
 The Flat White editorial introduction skill now EXISTS: ~/.claude/skills/flat-white-intro/SKILL.md (built 13 Jul 2026 from the real published format — source: data/beehiiv_fw_ground_truth.json, 10 real editions, segment-parsed). The dash's _proceed_editorial should be recalibrated against that skill + corpus before being trusted.
