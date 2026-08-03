@@ -2339,6 +2339,8 @@ def _proceed_brains_trust(data: dict, model: str | None, custom_prompt: str | No
         "chosen_why_tac": str,
         "candidates_pool": list[dict],   # the full window shown on screen,
                                           # each {date_iso, pitch, angle}
+        "own_text": str,                 # if non-blank, drafts from this
+                                          # text instead of chosen_angles/pool
     }
     """
     from flatwhite.classify.prompts import BRAINS_TRUST_VOICE
@@ -2347,6 +2349,20 @@ def _proceed_brains_trust(data: dict, model: str | None, custom_prompt: str | No
 
     if custom_prompt:
         return route(task_type="brains_trust", prompt=custom_prompt, system=BRAINS_TRUST_VOICE, model_override=override)
+
+    own_text = (data.get("own_text") or "").strip()
+    if own_text:
+        prompt = (
+            "Write this week's Brains Trust (also called the Economic Scoop) "
+            "section for the Flat White newsletter.\n\n"
+            "SOURCE MATERIAL (write from this; it replaces the research bank "
+            "for this piece):\n"
+            f"{own_text}\n\n"
+            "Output ONLY the Brains Trust body text. No title. No sign-off. "
+            "Ground every claim in the source material above; do not invent "
+            "figures."
+        )
+        return route(task_type="brains_trust", prompt=prompt, system=BRAINS_TRUST_VOICE, model_override=override)
 
     angles = _selected_angles(data)
     pool = data.get("candidates_pool") or []

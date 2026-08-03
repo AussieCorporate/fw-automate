@@ -70,6 +70,43 @@ def test_proceed_brains_trust_handles_missing_pool_gracefully(monkeypatch):
     assert "Solo angle, no pool" in cap["prompt"]
 
 
+def test_proceed_brains_trust_drafts_from_own_text(monkeypatch):
+    cap = _capture_route(monkeypatch)
+    data = {"own_text": "Victor's own story about the RBA meeting."}
+    out = api._proceed_brains_trust(data, "claude-sonnet-4-6")
+    assert out == "Drafted Brains Trust body."
+    assert cap["task_type"] == "brains_trust"
+    assert "Victor's own story about the RBA meeting." in cap["prompt"]
+    assert cap["model_override"] == "claude-sonnet-4-6"
+
+
+def test_proceed_brains_trust_own_text_excludes_angle_pool(monkeypatch):
+    cap = _capture_route(monkeypatch)
+    data = {
+        "own_text": "Victor's own story.",
+        "chosen_pitch": "Some angle that must NOT appear",
+        "candidates_pool": [{"date_iso": "2026-07-13", "pitch": "Pool pitch that must NOT appear", "angle": "x"}],
+    }
+    api._proceed_brains_trust(data, None)
+    assert "Some angle that must NOT appear" not in cap["prompt"]
+    assert "Pool pitch that must NOT appear" not in cap["prompt"]
+
+
+def test_proceed_brains_trust_blank_own_text_falls_back_to_angles(monkeypatch):
+    cap = _capture_route(monkeypatch)
+    data = {"own_text": "   ", "chosen_pitch": "Solo angle, no pool"}
+    api._proceed_brains_trust(data, None)
+    assert "Solo angle, no pool" in cap["prompt"]  # fell through to the existing angle path
+
+
+def test_proceed_brains_trust_custom_prompt_wins_over_own_text(monkeypatch):
+    cap = _capture_route(monkeypatch)
+    data = {"own_text": "Should be ignored"}
+    out = api._proceed_brains_trust(data, None, custom_prompt="Write exactly this.")
+    assert out == "Drafted Brains Trust body."
+    assert cap["prompt"] == "Write exactly this."
+
+
 def test_brains_trust_registered_in_proceed_fns():
     # api_proceed_section dispatches via a local dict; assert brains_trust
     # routes to the real generator rather than 400ing as "Unknown section".
