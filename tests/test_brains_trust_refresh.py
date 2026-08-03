@@ -38,7 +38,7 @@ def test_returns_command_for_days_behind(tmp_path, monkeypatch):
     assert result is not None
     argv, cwd, days = result
     assert days == 5
-    assert argv == [btr._PYTHON_BIN, "scripts/backfill_tac_carousels.py", "--days", "5"]
+    assert argv == [btr._PYTHON_BIN, "-m", "scripts.backfill_tac_carousels", "--days", "5"]
     assert cwd == str(tmp_path)  # parent of the data root
 
 

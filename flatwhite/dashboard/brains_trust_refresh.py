@@ -71,5 +71,5 @@ def build_refresh_command(
         return None
 
     project_root = os.path.dirname(root.rstrip(os.sep))
-    argv = [_PYTHON_BIN, "scripts/backfill_tac_carousels.py", "--days", str(days)]
+    argv = [_PYTHON_BIN, "-m", "scripts.backfill_tac_carousels", "--days", str(days)]
     return argv, project_root, days
