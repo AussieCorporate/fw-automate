@@ -362,6 +362,7 @@ var S = {
   editorialBigStory: "",
   threadDraft: { title: "", url: "", preview: "", topComment: "" },
   brainsAngles: null,        // [{id, date_iso, pitch, angle, why_tac}, ...] from the research bank
+  brainsRefreshRun: null,    // {status: "queued"|"running"|"failed", run_id, error} while a manual refresh is in flight
   brainsPicks: [],           // picked angle objects, IN TICK ORDER (first = anchor)
   brainsUsedPicks: null,     // pitches behind the CURRENTLY DISPLAYED draft, so
                              // a stale server-loaded output can't be mistaken
@@ -1165,7 +1166,14 @@ function renderBrainsPicker() {
     h += '</ol></div>';
   }
 
-  h += '<div style="font-size:13px;color:var(--text-2);margin-bottom:4px;font-weight:600;">Recommended angles (last 3 weeks)</div>';
+  var _refreshing = S.brainsRefreshRun && (S.brainsRefreshRun.status === "queued" || S.brainsRefreshRun.status === "running");
+  h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;">';
+  h += '<div style="font-size:13px;color:var(--text-2);font-weight:600;">Recommended angles (last 3 weeks)</div>';
+  h += '<button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;" onclick="runBrainsRefresh()"' + (_refreshing ? ' disabled' : '') + '>' + (_refreshing ? "Refreshing…" : "Refresh") + '</button>';
+  h += '</div>';
+  if (S.brainsRefreshRun && S.brainsRefreshRun.status === "failed") {
+    h += '<div style="font-size:11px;color:var(--warn,#b26a00);margin-bottom:8px;">Refresh failed: ' + esc(S.brainsRefreshRun.error || "unknown error") + '</div>';
+  }
   h += '<div style="font-size:12px;color:var(--text-3);margin-bottom:10px;">Tick every angle on the topic. Tick one for a standalone piece. The first tick is the anchor; several angles are drafted as the view they converge on. Click a ticked angle again to remove it.</div>';
   if (!angles.length) {
     h += '<p style="color:var(--text-3);font-size:13px;">No angles found in the research bank right now. The Friday digest email still runs independently of this list.</p>';
@@ -1805,6 +1813,57 @@ function pollBigConvRun(topic, runId) {
     })
     .catch(function() {
       setTimeout(function() { pollBigConvRun(topic, runId); }, 4000);  // transient, keep polling
+    });
+}
+
+function runBrainsRefresh() {
+  S.brainsRefreshRun = { status: "queued", run_id: null, error: null };
+  render();
+  api("/api/brains-trust/refresh", { method: "POST" })
+    .then(function(d) {
+      if (!d.ran) {
+        S.brainsRefreshRun = null;
+        render();
+        showToast("Already up to date", "success");
+        return;
+      }
+      S.brainsRefreshRun = { status: "running", run_id: d.run_id, error: null };
+      render();
+      pollBrainsRefreshRun(d.run_id);
+    })
+    .catch(function(e) {
+      S.brainsRefreshRun = { status: "failed", run_id: null, error: e.message };
+      render();
+    });
+}
+
+function pollBrainsRefreshRun(runId) {
+  api("/api/skill-run/" + encodeURIComponent(runId))
+    .then(function(r) {
+      if (!S.brainsRefreshRun) return;  // user navigated away
+      if (r.status === "done") {
+        S.brainsRefreshRun = null;
+        S.brainsAngles = null;
+        loadPageData("brains_trust").then(function() {
+          var angles = S.brainsAngles || [];
+          var newest = angles.length ? angles[0].date_iso : null;
+          showToast(
+            newest
+              ? "Pulled research through " + newest + " — " + angles.length + " angle" + (angles.length === 1 ? "" : "s") + " now available"
+              : "Refreshed, but no angles found",
+            "success"
+          );
+          render();
+        });
+      } else if (r.status === "failed") {
+        S.brainsRefreshRun = { status: "failed", run_id: runId, error: r.error };
+        render();
+      } else {
+        setTimeout(function() { pollBrainsRefreshRun(runId); }, 3000);
+      }
+    })
+    .catch(function() {
+      setTimeout(function() { pollBrainsRefreshRun(runId); }, 4000);  // transient, keep polling
     });
 }
 
