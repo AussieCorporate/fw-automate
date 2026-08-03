@@ -367,6 +367,9 @@ var S = {
   brainsUsedPicks: null,     // pitches behind the CURRENTLY DISPLAYED draft, so
                              // a stale server-loaded output can't be mistaken
                              // for one made from the current selection
+  brainsUsedSource: null,    // "angles" | "text" | null - which input path
+                             // produced the CURRENTLY DISPLAYED draft
+  brainsOwnText: "",         // Victor's pasted story, ephemeral (not saved server-side)
   brainsDrafting: false,
   findsChecked: {},
   findsBlurbs: {},
@@ -1140,11 +1143,40 @@ function draftBrainsTrust() {
     // this the output panel can show a converged draft while nothing is
     // ticked, and there is no way to tell what it came from.
     S.brainsUsedPicks = (S.brainsPicks || []).map(function(p) { return p.pitch; });
+    S.brainsUsedSource = "angles";
     S.sectionOutputs.brains_trust = { output_text: d.output, model_used: d.model };
     S.sectionPhase.brains_trust = 2;
     render();
     fillOutput('brains_trust');
     showToast("Brains Trust drafted");
+  }).catch(function(e) {
+    S.brainsDrafting = false;
+    render();
+    showToast("Error: " + e.message, "error");
+  });
+}
+
+function draftBrainsTrustFromText() {
+  var text = (S.brainsOwnText || "").trim();
+  if (!text) return;
+  S.brainsDrafting = true;
+  render();
+  api("/api/proceed-section", {
+    method: "POST",
+    body: {
+      section: "brains_trust",
+      model: getModel("model-brains_trust"),
+      data: { own_text: text },
+    },
+  }).then(function(d) {
+    S.brainsDrafting = false;
+    S.brainsUsedSource = "text";
+    S.brainsUsedPicks = null;
+    S.sectionOutputs.brains_trust = { output_text: d.output, model_used: d.model };
+    S.sectionPhase.brains_trust = 2;
+    render();
+    fillOutput('brains_trust');
+    showToast("Brains Trust drafted from your text");
   }).catch(function(e) {
     S.brainsDrafting = false;
     render();
@@ -1218,6 +1250,13 @@ function renderBrainsPicker() {
       h += '<div style="font-size:11px;color:var(--warn,#b26a00);margin-top:4px;">Heads up: Brains Trust runs 260-380 words. Three angles drafted at about 410 words in testing, so expect to trim. Check the word count on the output.</div>';
     }
   }
+  h += '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--divider);">';
+  h += '<div style="font-size:13px;color:var(--text-2);font-weight:600;margin-bottom:6px;">Or paste your own story</div>';
+  h += '<textarea id="brains-own-text" rows="6" style="width:100%;font-size:13px;" placeholder="Paste your own story here to draft Brains Trust from it directly, instead of picking angles above." oninput="S.brainsOwnText = this.value;">' + esc(S.brainsOwnText || '') + '</textarea>';
+  h += '<div style="margin-top:8px;">';
+  h += '<button class="btn btn-primary" onclick="draftBrainsTrustFromText()"' + (S.brainsDrafting ? ' disabled' : '') + '>' + (S.brainsDrafting ? "Drafting…" : "Draft from my text") + '</button>';
+  h += '</div>';
+  h += '</div>';
   return h;
 }
 
@@ -1249,9 +1288,11 @@ function renderBrains(el) {
   if (hasOutput) {
     var used = S.brainsUsedPicks || [];
     p2 += '<div style="font-size:12px;color:var(--text-3);margin-bottom:8px;">';
-    p2 += used.length
-      ? 'Drafted from ' + used.length + ' angle' + (used.length > 1 ? 's' : '') + ': ' + esc(used.join('  |  '))
-      : 'This draft was loaded from a previous session, so the angles behind it are not recorded. Re-draft to be sure it matches your current selection.';
+    p2 += S.brainsUsedSource === "text"
+      ? 'Drafted from your own pasted text.'
+      : used.length
+        ? 'Drafted from ' + used.length + ' angle' + (used.length > 1 ? 's' : '') + ': ' + esc(used.join('  |  '))
+        : 'This draft was loaded from a previous session, so the angles/text behind it are not recorded. Re-draft to be sure it matches your current selection.';
     p2 += '</div>';
   }
   p2 += outputBox('brains_trust');
