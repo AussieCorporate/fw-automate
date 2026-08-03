@@ -1770,6 +1770,30 @@ def api_brains_trust_angles() -> JSONResponse:
     return JSONResponse({"angles": angles})
 
 
+@app.post("/api/brains-trust/refresh")
+def api_brains_trust_refresh() -> JSONResponse:
+    """Manually catch the angle pool up with new research, in the background.
+    Never turns the retired tac-carousels launchd job back on and never sends
+    email - it only runs the same catch-up script that job used to run.
+    Poll progress via the existing GET /api/skill-run/{run_id}."""
+    from flatwhite.dashboard import brains_trust_refresh as _btr
+
+    built = _btr.build_refresh_command()
+    if built is None:
+        return JSONResponse({"ran": False, "reason": "up_to_date"})
+    argv, cwd, days = built
+    try:
+        run_id, started = _skill_runner.start_run(
+            "brains-trust-refresh", "brains-trust-refresh", argv,
+            cwd=cwd, timeout=1800,
+        )
+    except RuntimeError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=429)
+    return JSONResponse({
+        "ran": True, "run_id": run_id, "started": started, "days_requested": days,
+    })
+
+
 @app.post("/api/brains-trust/email-sources")
 async def api_brains_trust_email_sources(request: Request) -> JSONResponse:
     """Email Victor the broker-research PDFs behind the chosen Brains Trust

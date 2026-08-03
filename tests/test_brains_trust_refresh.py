@@ -71,3 +71,52 @@ def test_mixed_prefix_folders_picks_newest_regardless_of_prefix(tmp_path, monkey
     _write_candidates(data_root, "backfill_20260729")  # newer, backfill-prefixed
     _, _, days = btr.build_refresh_command(data_root=data_root)
     assert days == 5  # counted from 20260729, not 20260710
+
+
+from unittest.mock import patch
+from fastapi.testclient import TestClient
+import flatwhite.dashboard.api as api_module
+
+
+def test_refresh_endpoint_reports_up_to_date():
+    with patch(
+        "flatwhite.dashboard.brains_trust_refresh.build_refresh_command",
+        return_value=None,
+    ):
+        client = TestClient(api_module.app)
+        resp = client.post("/api/brains-trust/refresh")
+    assert resp.status_code == 200
+    assert resp.json() == {"ran": False, "reason": "up_to_date"}
+
+
+def test_refresh_endpoint_starts_a_run():
+    with patch(
+        "flatwhite.dashboard.brains_trust_refresh.build_refresh_command",
+        return_value=(["echo", "hi"], "/tmp", 5),
+    ), patch(
+        "flatwhite.dashboard.skill_runner.start_run",
+        return_value=("run123", True),
+    ) as mock_start:
+        client = TestClient(api_module.app)
+        resp = client.post("/api/brains-trust/refresh")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body == {"ran": True, "run_id": "run123", "started": True, "days_requested": 5}
+    mock_start.assert_called_once_with(
+        "brains-trust-refresh", "brains-trust-refresh",
+        ["echo", "hi"], cwd="/tmp", timeout=1800,
+    )
+
+
+def test_refresh_endpoint_429s_when_concurrency_cap_hit():
+    with patch(
+        "flatwhite.dashboard.brains_trust_refresh.build_refresh_command",
+        return_value=(["echo", "hi"], "/tmp", 5),
+    ), patch(
+        "flatwhite.dashboard.skill_runner.start_run",
+        side_effect=RuntimeError("Another skill run is already in progress."),
+    ):
+        client = TestClient(api_module.app)
+        resp = client.post("/api/brains-trust/refresh")
+    assert resp.status_code == 429
+    assert "already in progress" in resp.json()["error"]
