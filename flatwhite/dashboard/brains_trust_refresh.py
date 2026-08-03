@@ -6,9 +6,10 @@ from the Trading Strategy project. Those files are normally written by the
 tac-carousels launchd job — but that job was deliberately retired 20 Jul 2026
 (carousel-making moved to the Pick & Scroll Instagram desk) and Victor decided
 3 Aug 2026 to keep it off rather than resume its separate email. This module
-is the manual alternative: it runs the same catch-up script
-(scripts/backfill_tac_carousels.py) the retired job used, on demand, capped so
-a stale pool can't turn into an unbounded Anthropic API bill in one click.
+is the manual alternative: it runs a catch-up script
+(scripts/backfill_tac_carousels.py) covering the same underlying pipeline
+that job used to run, on demand, capped so a stale pool can't turn into an
+unbounded Anthropic API bill in one click.
 
 Read-only until build_refresh_command's caller actually runs the returned
 command - this module itself never spawns a process or writes a file.
@@ -57,7 +58,15 @@ def build_refresh_command(
 ) -> tuple[list[str], str, int] | None:
     """(argv, cwd, days_requested) to catch the angle pool up, or None if it's
     already current. days_requested is capped at _MAX_DAYS_PER_REFRESH; a pool
-    with no research at all yet is treated as fully stale (the cap)."""
+    with no research at all yet is treated as fully stale (the cap).
+
+    The target script (scripts/backfill_tac_carousels.py) deliberately skips
+    "today" - it only ever fills in yesterday and earlier. So a pool whose
+    newest folder is already yesterday is fully caught up as far as this
+    script can ever get it, even though (today - yesterday) is nominally 1
+    day. Subtract that day before clamping to zero, or every click would
+    re-run an already-covered day forever and "already up to date" would
+    never be reachable."""
     root = data_root or _DEFAULT_DATA_ROOT
     newest = _newest_known_date(root)
     if newest is None:
@@ -65,7 +74,8 @@ def build_refresh_command(
     else:
         newest_date = datetime.strptime(newest, "%Y%m%d").date()
         today = datetime.now(timezone.utc).date()
-        days = min(max(0, (today - newest_date).days), _MAX_DAYS_PER_REFRESH)
+        days_behind = (today - newest_date).days - 1
+        days = min(max(0, days_behind), _MAX_DAYS_PER_REFRESH)
 
     if days <= 0:
         return None

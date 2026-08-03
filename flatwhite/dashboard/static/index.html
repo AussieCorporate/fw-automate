@@ -660,6 +660,19 @@ function loadPageData(page) {
         S.lastScraped.editorial = r[1].last_scraped_at || null;
       });
     case "brains_trust":
+      // Reconnect to a refresh already in progress (e.g. you clicked Refresh,
+      // reloaded the page, and came back) so it shows "Refreshing…" and keeps
+      // polling instead of a blank Refresh button. Fires alongside the angles
+      // fetch below rather than gating on it.
+      api("/api/brains-trust/refresh/status")
+        .then(function(r) {
+          if (r.active && !S.brainsRefreshRun) {
+            S.brainsRefreshRun = { status: "running", run_id: r.run_id, error: null };
+            render();
+            pollBrainsRefreshRun(r.run_id);
+          }
+        })
+        .catch(function() {});
       if (S.brainsAngles) return Promise.resolve();
       return api("/api/brains-trust/angles").then(function(d) {
         S.brainsAngles = d.angles || [];
@@ -1841,7 +1854,7 @@ function runBrainsRefresh() {
 function pollBrainsRefreshRun(runId) {
   api("/api/skill-run/" + encodeURIComponent(runId))
     .then(function(r) {
-      if (!S.brainsRefreshRun) return;  // user navigated away
+      if (!S.brainsRefreshRun) return;  // state was already cleared (e.g. by completion) - stale poll response, ignore it
       if (r.status === "done") {
         S.brainsRefreshRun = null;
         S.brainsAngles = null;
