@@ -2779,6 +2779,22 @@ _top_picks_cache: dict[str, Any] = {"data": None, "scraped_at": None}
 TOP_PICKS_CLICK_LIMIT = 15  # how many click-ranked business stories to surface
 
 
+def _parse_edition_date(s: str | None):
+    """Edition date as an aware UTC datetime, or None if absent/unparseable.
+
+    Seed entries carry a date-only string ("2026-07-16"), which
+    datetime.fromisoformat returns NAIVE; comparing that against the aware
+    window bounds raises TypeError. Naive values are read as UTC.
+    """
+    if not s:
+        return None
+    try:
+        d = _dt.datetime.fromisoformat(s)
+    except (TypeError, ValueError):
+        return None
+    return d.replace(tzinfo=_dt.timezone.utc) if d.tzinfo is None else d
+
+
 def _combined_top_picks(days: int = 7, start=None, end=None) -> dict:
     """Two lists for FW Top Picks: {'odd': [...], 'business': [...]}.
 
@@ -2862,6 +2878,18 @@ def _combined_top_picks(days: int = 7, start=None, end=None) -> dict:
         _os.path.expanduser(
             "~/Movies/Shell Bot 2/state_store_root/state/fw_feature_seed.json"),
     )
+    # The seed is windowed like everything else. It used to be bolted on whole,
+    # so six features from 16-20 July sat permanently at the top of a list that
+    # is meant to cover the last seven days (Victor, 10 Aug 2026: "it's not a
+    # cumulative list ... I just need the last 7 days"). An item with a missing
+    # or unparseable date is dropped: we cannot show it falls inside the window.
+    win_start = start or (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=days))
+    win_end = end or _dt.datetime.now(_dt.timezone.utc)
+
+    def _in_window(edition_date: str) -> bool:
+        d = _parse_edition_date(edition_date)
+        return d is not None and win_start <= d <= win_end
+
     try:
         with open(seed_path, encoding="utf-8") as _f:
             seeds = json.load(_f)
@@ -2874,7 +2902,8 @@ def _combined_top_picks(days: int = 7, start=None, end=None) -> dict:
             "is_feature": True,
             "clicks": None,
             "edition_date": s.get("edition_date", ""),
-        } for s in seeds if s.get("url", "") not in have]
+        } for s in seeds
+            if s.get("url", "") not in have and _in_window(s.get("edition_date", ""))]
         business = seed_items + business          # features first
     except (OSError, ValueError, TypeError):
         pass
