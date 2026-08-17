@@ -35,6 +35,16 @@ def test_shape_blocks_encode_real_bands_not_aspirational_ones():
     assert "225-262" in vp.BRAINS_TRUST_SHAPE_BLOCK
 
 
+def test_brains_trust_shape_block_enforces_consequence_not_setup_opening():
+    """The most load-bearing pinned Brains Trust rule (Victor's 27 Jul edit:
+    lead on the consequence, not the setup fact) must be enforced by the
+    SHAPE stage too, not just the GENERATE prompt - a draft that opens on
+    the setup fact needs its consequence sentence promoted to P1."""
+    low = vp.BRAINS_TRUST_SHAPE_BLOCK.lower()
+    assert "consequence" in low and "setup" in low
+    assert "promote" in low
+
+
 def test_shape_to_published_rejects_unknown_segment():
     try:
         vp.shape_to_published("draft text", "some_other_segment")
