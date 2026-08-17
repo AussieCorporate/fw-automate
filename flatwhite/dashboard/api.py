@@ -3023,6 +3023,7 @@ def api_top_picks_recent_posts() -> JSONResponse:
 # flatwhite/dashboard/big_conversation_bank.py for the filesystem logic.
 
 from flatwhite.dashboard import big_conversation_bank as _bcb
+from flatwhite.dashboard import strip_stage as _strip_stage
 from flatwhite.dashboard import skill_runner as _skill_runner
 from flatwhite.dashboard.state import (
     load_topic_archive_state,
@@ -3055,6 +3056,10 @@ def api_big_conversation_topic(topic: str) -> JSONResponse:
     hasn't written its output yet — not an error."""
     overrides = load_pairing_overrides(topic)
     detail = _bcb.get_topic_detail(topic, pairing_overrides=overrides)
+    # Stage 3 (strip the Claude phrasing) is run by the dashboard, not the
+    # skill. Surfacing its outcome here is the whole point: an unstripped
+    # piece must never look the same as a stripped one.
+    detail["strip"] = _strip_stage.strip_status_for_topic(topic)
     return JSONResponse(detail)
 
 
@@ -3186,6 +3191,12 @@ def api_run_big_conversation(topic: str) -> JSONResponse:
         if record and record.get("status") in ("done", "failed"):
             save_skill_run_outcome(run_key, record["id"], "big-conversation",
                                     record["status"], record.get("error"))
+        # Stage 3 of the voice pipeline runs HERE, not inside the skill. The
+        # skill only describes the pipeline, so on both 17 Aug 2026 runs the
+        # agent improvised and did the strip by hand on Claude - the exact
+        # thing this stage exists to prevent. Running it from the dashboard
+        # takes the choice away from the agent.
+        _strip_stage.strip_topic_after_run(topic, record)
 
     try:
         run_id, started = _skill_runner.start_run(

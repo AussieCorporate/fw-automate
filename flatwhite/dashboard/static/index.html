@@ -1761,6 +1761,7 @@ function renderBigConvTopicDetail() {
     return h;
   }
 
+  h += renderStripStatus(d.strip);
   h += '<div class="bc-headline">' + esc(d.headline) + '</div>';
   (d.paragraphs || []).forEach(function(p) {
     h += '<div class="bc-paragraph" ondragover="bcDragOver(event)" ondrop="bcDrop(event,' + p.index + ')">';
@@ -1778,6 +1779,28 @@ function renderBigConvTopicDetail() {
 
   h += '<div style="margin-top:16px;"><button class="btn btn-success" onclick="toggleReady(\'big_conversation\')">Mark ready</button></div>';
   return h;
+}
+
+// Stage 3 of the voice pipeline (strip the Claude phrasing) runs on GPT-5.4
+// from the dashboard, not inside the skill. Its outcome is shown here because
+// an unstripped piece must never look identical to a stripped one - that is
+// exactly how two runs shipped unchecked on 17 Aug 2026.
+function renderStripStatus(s) {
+  if (!s) return '';
+  if (s.status === 'stripped') {
+    return '<div class="card" style="border-left:3px solid var(--ok,#2e7d32);">'
+      + '<p style="font-size:13px;color:var(--label2);margin:0;">AI phrasing strip: <strong>done on GPT-5.4</strong>, '
+      + s.change_count + (s.change_count === 1 ? ' change' : ' changes')
+      + '. The stripped version is saved next to the draft.</p></div>';
+  }
+  if (s.status === 'failed') {
+    return '<div class="card" style="border-left:3px solid var(--danger,#c0392b);">'
+      + '<p style="font-size:13px;color:var(--danger,#c0392b);margin:0;">AI phrasing strip: <strong>FAILED</strong>. '
+      + esc(s.error || '') + '</p></div>';
+  }
+  return '<div class="card" style="border-left:3px solid var(--warn,#e0a800);">'
+    + '<p style="font-size:13px;color:var(--label2);margin:0;">AI phrasing strip: <strong>not run</strong>. '
+    + 'This piece has not been checked for AI phrasing.</p></div>';
 }
 
 function renderBigConvViralPool(pools) {

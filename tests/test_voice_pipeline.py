@@ -53,9 +53,15 @@ def test_shape_to_published_rejects_unknown_segment():
         assert "big_conversation" in str(e) and "brains_trust" in str(e)
 
 
-def test_strip_prompt_carries_the_binding_delete_rule():
-    assert "DELETING" in vp.STRIP_CLAUDE_PHRASING_SYSTEM
-    assert "never by writing a" in vp.STRIP_CLAUDE_PHRASING_SYSTEM.lower() or "never by" in vp.STRIP_CLAUDE_PHRASING_SYSTEM.lower()
+def test_strip_prompt_still_prefers_deletion_over_rewriting():
+    """Victor lifted the absolute delete-only ban on 17 Aug 2026 (a
+    cross-family rewrite on GPT is not Claude rewriting its own tell), but
+    deletion stays the first move and rewriting stays the fallback. If this
+    ever inverts, the stage starts polishing instead of cutting."""
+    low = vp.STRIP_CLAUDE_PHRASING_SYSTEM.lower()
+    assert "prefer deletion" in low
+    assert "when both would work, delete" in low
+    assert "rewriting is the fallback, not the default" in low
 
 
 def test_strip_prompt_carries_the_veto_caution():
@@ -66,10 +72,12 @@ def test_strip_prompt_carries_the_veto_caution():
     assert "flag it in your output instead of deleting it" in low
 
 
-def test_tell_catalogue_has_all_22_entries():
+def test_tell_catalogue_has_all_23_entries():
+    """22 structural patterns, plus entry 23, the stock-phrase vocabulary
+    added 17 Aug 2026 after word-level filler kept surviving the strip."""
     import re
     headings = re.findall(r"^\d+\. ", vp.CLAUDE_TELL_CATALOGUE, flags=re.MULTILINE)
-    assert len(headings) == 22, f"expected 22 catalogue entries, found {len(headings)}"
+    assert len(headings) == 23, f"expected 23 catalogue entries, found {len(headings)}"
 
 
 def test_tell_catalogue_includes_findings_new_entries():
@@ -82,7 +90,8 @@ def test_tell_catalogue_includes_findings_new_entries():
 def test_allowed_repairs_are_narrow():
     system = vp.STRIP_CLAUDE_PHRASING_SYSTEM
     assert "ALLOWED MINIMAL REPAIRS" in system
-    assert "Never write a new sentence" in system
+    assert "change nothing" in system
+    assert "Never add a fact" in system
 
 
 def test_split_strip_output_with_changes_and_flagged():
@@ -316,3 +325,51 @@ def test_run_voice_chain_never_collapses_stages_even_when_strip_makes_no_changes
     assert result["stage1_generate"] == "GENERATED"
     assert result["stage2_shaped"] == "SHAPED"
     assert result["stage3_stripped"] == "SHAPED"
+
+
+# ─── Stock-phrase blocklist + constrained rewrite ───────────────────────────
+# (17 Aug 2026, Victor: the catalogue was 22 structural patterns and almost
+# nothing at the word level, so stock AI filler slipped through. He also
+# reversed the delete-only rule for this stage specifically: GPT may rewrite,
+# because a cross-family rewrite is not the same risk as Claude rewriting its
+# own tell.)
+
+
+def test_stock_phrase_blocklist_carries_the_real_ai_filler_kit():
+    cat = vp.CLAUDE_TELL_CATALOGUE.lower()
+    for phrase in [
+        "in today's fast-paced",
+        "at the end of the day",
+        "here's the thing",
+        "it's worth noting",
+        "a testament to",
+        "navigate the landscape",
+        "delve into",
+        "underscores",
+        "serves as a reminder",
+        "sheds light on",
+        "when it comes to",
+        "plays a crucial role",
+    ]:
+        assert phrase in cat, f"stock phrase missing from catalogue: {phrase}"
+
+
+def test_stock_phrases_are_fixed_on_sight_not_flagged_for_victor():
+    """The hand-edit caution exists because a structural tell may be Victor's
+    own line. Stock filler never is, so it must be exempt from that caution."""
+    sys_prompt = vp.STRIP_CLAUDE_PHRASING_SYSTEM.lower()
+    assert "stock phrase" in sys_prompt
+    assert "exempt" in sys_prompt
+    assert "never victor" in sys_prompt or "never his" in sys_prompt
+
+
+def test_strip_may_rewrite_under_guardrails_not_delete_only():
+    """Victor reversed the delete-only rule for this stage on 17 Aug 2026.
+    Deletion is still preferred; rewriting is allowed where deleting breaks
+    the sentence, under three guardrails."""
+    sys_prompt = vp.STRIP_CLAUDE_PHRASING_SYSTEM.lower()
+    assert "rewrite is allowed" in sys_prompt
+    assert "prefer deletion" in sys_prompt
+    assert "no new fact" in sys_prompt
+    assert "no new figure of speech" in sys_prompt
+    assert "plain anglo" in sys_prompt

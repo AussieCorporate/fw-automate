@@ -331,9 +331,17 @@ def shape_to_published(draft: str, segment: str, *, model_override: str | None =
 
 
 # ─── STAGE 3: STRIP THE CLAUDE PHRASING ────────────────────────────────────
-# Binding rule from Victor: fix a tell by DELETING the scaffolding, never by
-# generating a cleverer replacement line - AI rewrites of AI tells reintroduce
-# the same patterns. This stage is mechanical and surgical by design.
+# Deletion is still the preferred fix: a shorter sentence is usually the right
+# answer, and an AI asked to rewrite a flagged line tends to swap one
+# engineered pattern for another.
+#
+# Victor amended the old delete-only rule on 17 Aug 2026. The rule was written
+# against Claude rewriting its own tell, which is a genuinely bad idea. This
+# stage runs on GPT-5.4, a different model family with different habits, and a
+# cross-family rewrite is not the same risk. So rewriting is now allowed where
+# deleting would break the sentence - under the guardrails in the system
+# prompt below, and with every change listed so Victor can judge whether the
+# rewrites beat the cuts.
 
 STRIP_CLAUDE_PHRASING_SYSTEM = (
     "You are doing ONE job: deleting AI-essay tells from a Flat White "
@@ -341,15 +349,27 @@ STRIP_CLAUDE_PHRASING_SYSTEM = (
     "structure. You are not editing for quality, not improving prose, not "
     "adding anything. You are cutting scaffolding and closing up the gap.\n"
     "\n"
-    "THE BINDING RULE: fix a tell by DELETING it, never by writing a "
-    "cleverer replacement line. Asking an AI to rewrite a flagged sentence "
-    "reliably swaps one engineered pattern for another - a fresh em dash, a "
-    "fresh antithesis, a fresh imperative punch closer. The only reliable "
-    "fix is subtraction: delete the scaffolding, break the symmetry, end "
-    "earlier. Only touch a sentence if it matches an entry in the catalogue "
-    "below - do not go hunting for prose you merely think could be better.\n"
+    "THE FIRST RULE: PREFER DELETION. Subtraction is the fix that works - "
+    "delete the scaffolding, break the symmetry, end earlier. A shorter, "
+    "rougher sentence is almost always better than a smoother replacement. "
+    "Only touch a sentence if it matches an entry in the catalogue below - "
+    "do not go hunting for prose you merely think could be better.\n"
     "\n"
-    "ALLOWED MINIMAL REPAIRS (the only editing beyond straight deletion):\n"
+    "REWRITE IS ALLOWED, SECOND: where deleting the tell would break the "
+    "sentence or lose a load-bearing fact, rewrite it instead of leaving it "
+    "in. Three guardrails bind every rewrite:\n"
+    "- NO NEW FACT, name, number, quote, source or example. You may only "
+    "re-say what the draft already says.\n"
+    "- NO NEW FIGURE OF SPEECH. No fresh antithesis, no balanced pair, no "
+    "aphorism, no em dash, no punchy closer. Replacing one engineered "
+    "pattern with a cleverer one is the failure this stage exists to catch.\n"
+    "- PLAIN ANGLO words in the plainest order that carries the meaning. If "
+    "your rewrite is more elegant than the sentence it replaces, it is "
+    "wrong - make it plainer.\n"
+    "When both would work, delete. Rewriting is the fallback, not the "
+    "default.\n"
+    "\n"
+    "ALLOWED MINIMAL REPAIRS (routine tidying, never counted as a rewrite):\n"
     "- Rejoin a sentence after deleting a clause: capitalise the new "
     "sentence start, turn a now-dangling comma into a full stop, delete a "
     "now-orphaned conjunction ('but', 'though', 'so') at a paragraph start.\n"
@@ -360,8 +380,9 @@ STRIP_CLAUDE_PHRASING_SYSTEM = (
     "comma, whichever the sentence already reads as without the dash.\n"
     "- Delete a whole sentence and let the sentence before it stand as the "
     "new paragraph ending.\n"
-    "Nothing else. Never write a new sentence. Never add a fact, a quote, a "
-    "name, an example, or an image that was not already in the draft.\n"
+    "Beyond those repairs and the guardrailed rewrite above, change nothing. "
+    "Never add a fact, a quote, a name, an example, or an image that was not "
+    "already in the draft.\n"
     "\n"
     "THE FULL TELL CATALOGUE (pattern -> deletion rule):\n"
     "{tell_catalogue}\n"
@@ -375,10 +396,19 @@ STRIP_CLAUDE_PHRASING_SYSTEM = (
     "just scaffolding, leave it in place and flag it in your output instead "
     "of deleting it.\n"
     "\n"
+    "THE STOCK PHRASE LIST IS EXEMPT FROM THAT CAUTION. The stock phrase "
+    "entry in the catalogue below is off-the-shelf AI filler and is never "
+    "Victor's own writing, so it is never his hand-edit and never load "
+    "bearing. Fix every stock phrase on sight - delete it, or rewrite the "
+    "clause around it under the guardrails - and never hold one back to "
+    "flag it for him. The caution applies only to the structural patterns.\n"
+    "\n"
     "OUTPUT FORMAT: first the stripped body text, then a line containing "
-    "only '---CHANGES---', then a plain bullet list of every deletion you "
-    "made (quote the deleted phrase and name which catalogue entry it "
-    "matched), then if you flagged anything per the caution above, a line "
+    "only '---CHANGES---', then a plain bullet list of every change you "
+    "made. Start each bullet with 'Deleted' or 'Rewrote', quote the phrase "
+    "you acted on (and for a rewrite, quote what it became), and name which "
+    "catalogue entry it matched. Then if you flagged anything per the "
+    "caution above, a line "
     "'---FLAGGED FOR VICTOR---' followed by those items and why you left "
     "them in. If you made no changes, say so explicitly rather than omitting "
     "the section."
@@ -470,6 +500,18 @@ CLAUDE_TELL_CATALOGUE = '''\
 
 22. END-PLACED READER REASSURANCE (Brains Trust) - a closing sentence that comforts or advises the reader directly instead of landing the economic mechanism.
     Deletion rule: delete the reassurance clause; if an earlier sentence in the same paragraph already explains the mechanism, end there instead.
+
+23. STOCK PHRASES - off-the-shelf AI filler at the word and phrase level. Entries 1-22 are structural shapes; this entry is the vocabulary. NEVER Victor's own writing, so it is EXEMPT from the hand-edit caution: fix every instance on sight, never flag one instead of fixing it.
+    Deletion rule: delete the phrase and close the gap. The sentence almost always reads correctly starting from the word after it - capitalise the new opening word and drop a now-orphaned conjunction. Only if deleting genuinely breaks the sentence, rewrite the clause in plain Anglo under the three guardrails. Never swap one stock phrase for another (do not turn "at the end of the day" into "ultimately").
+    Real example (caught live on GPT-5.4, 17 Aug 2026): "It's not just about the tracking. In today's fast-paced corporate world, Teams and Slack monitoring has become increasingly common. At the end of the day, workers deserve to know. But here's the thing: employers have legitimate reasons too." -> "Teams and Slack monitoring has become increasingly common. Workers deserve to know. Employers have legitimate reasons too."
+
+    OPENERS AND THROAT-CLEARING: "in today's fast-paced [world/environment/landscape]", "in an era where", "in the realm of", "when it comes to", "now more than ever", "more than ever before", "it goes without saying", "needless to say", "let's be clear", "let's be honest", "make no mistake", "the truth is", "the reality is", "here's the thing", "the thing is", "at the end of the day", "when all is said and done", "time and time again", "few things are as", "there's no denying".
+
+    TRANSITIONS AND HEDGES: "moreover", "furthermore", "additionally", "that said", "that being said", "ultimately", "crucially", "notably", "importantly", "arguably", "it's worth noting", "it's important to note", "it's important to remember", "one might argue", "in essence", "in short", "simply put", "put simply".
+
+    PSEUDO-ANALYTIC VERBS: "delve into", "dive into", "deep dive", "unpack", "explore the nuances", "navigate the landscape", "navigate the complexities", "underscores", "highlights the need for", "sheds light on", "serves as a reminder", "serves as a testament", "stands as a testament", "a testament to", "speaks volumes", "plays a crucial role", "plays a pivotal role", "plays a vital role", "raises important questions", "begs the question".
+
+    ABSTRACTION NOUNS AND CORPORATE GLOSS: "landscape" (figurative), "ecosystem" (figurative), "tapestry", "myriad", "plethora", "realm", "journey" (figurative), "paradigm shift", "game-changer", "key takeaway", "actionable insights", "best-in-class", "seamless", "robust", "leverage" (verb), "foster", "boasts", "a stark reminder", "a double-edged sword", "the elephant in the room", "a perfect storm".
 '''
 
 STRIP_CLAUDE_PHRASING_PROMPT = (
