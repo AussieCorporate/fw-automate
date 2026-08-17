@@ -3029,6 +3029,8 @@ from flatwhite.dashboard.state import (
     set_topic_archived,
     load_pairing_overrides,
     save_pairing_override,
+    save_skill_run_outcome,
+    load_skill_run_outcome,
 )
 
 
@@ -3133,11 +3135,22 @@ def _skill_argv(prompt: str, add_dir: str) -> list[str]:
 
 @app.get("/api/big-conversation/topic/{topic}/run-status")
 def api_big_conversation_run_status(topic: str) -> JSONResponse:
-    """Is this topic currently being processed? Lets the UI reconnect to a run
-    in progress after navigating away, instead of showing a blank Process button."""
-    r = _skill_runner.get_active_by_key(f"bigconv:{topic}")
-    return JSONResponse({"active": bool(r), "run_id": r["id"] if r else None,
-                         "status": r["status"] if r else None})
+    """Is this topic currently being processed, or what happened last time it
+    was? Lets the UI reconnect to a run in progress after navigating away, and
+    - just as important - report an honest outcome for a run that has ALREADY
+    finished (done or failed), instead of going silent the moment it drops out
+    of the in-memory "active" set (or the dashboard process restarts). See
+    docs/bigconv-silent-run-report.md: a run that finished was previously
+    indistinguishable from a topic that was never processed."""
+    key = f"bigconv:{topic}"
+    r = _skill_runner.get_active_by_key(key)
+    if r:
+        return JSONResponse({"active": True, "run_id": r["id"], "status": r["status"], "error": None})
+    persisted = load_skill_run_outcome(key)
+    if persisted:
+        return JSONResponse({"active": False, "run_id": persisted["run_id"],
+                             "status": persisted["status"], "error": persisted["error"]})
+    return JSONResponse({"active": False, "run_id": None, "status": None, "error": None})
 
 
 @app.post("/api/skill-run/big-conversation/{topic}")
@@ -3164,15 +3177,26 @@ def api_run_big_conversation(topic: str) -> JSONResponse:
         f'screenshots folder are written, print exactly on its own line: '
         f'BIG_CONVERSATION_DONE'
     )
+    run_key = f"bigconv:{topic}"
+
+    def _on_done(record):
+        # Persist the TERMINAL outcome so run-status can answer honestly even
+        # after this run drops out of skill_runner's in-memory active set (or
+        # the dashboard process restarts). See docs/bigconv-silent-run-report.md.
+        if record and record.get("status") in ("done", "failed"):
+            save_skill_run_outcome(run_key, record["id"], "big-conversation",
+                                    record["status"], record.get("error"))
+
     try:
         run_id, started = _skill_runner.start_run(
-            "big-conversation", f"bigconv:{topic}",
+            "big-conversation", run_key,
             _skill_argv(prompt, out_dir), cwd=out_dir,
             success_marker="BIG_CONVERSATION_DONE",
             marker_fail_error=(
                 "The Big Conversation run ended without finishing the piece (it "
                 "may have errored partway). Nothing was lost - try Process again, "
-                "or run the big-conversation skill in a Claude session."))
+                "or run the big-conversation skill in a Claude session."),
+            on_complete=_on_done)
     except RuntimeError as exc:
         return JSONResponse({"error": str(exc)}, status_code=429)
     return JSONResponse({"run_id": run_id, "started": started, "topic": topic})

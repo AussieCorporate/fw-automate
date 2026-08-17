@@ -48,3 +48,34 @@ def test_pairing_overrides_are_scoped_per_topic(tmp_path: Path):
         save_pairing_override("Career Pivoting", "shot.png", 4)
         assert load_pairing_overrides("Kids in the Office") == {"shot.png": 1}
         assert load_pairing_overrides("Career Pivoting") == {"shot.png": 4}
+
+
+def test_skill_run_outcome_round_trips(tmp_path: Path):
+    # See docs/bigconv-silent-run-report.md: a headless skill run's outcome
+    # must survive after it drops out of skill_runner's in-memory active set
+    # (or the dashboard process restarts), so run-status can answer honestly.
+    db_path = tmp_path / "bc_run_state_test.db"
+    with patch.object(db_module, "DB_PATH", db_path):
+        db_module.init_db()
+        from flatwhite.dashboard.state import load_skill_run_outcome, save_skill_run_outcome
+
+        assert load_skill_run_outcome("bigconv:Some Topic") is None
+        save_skill_run_outcome("bigconv:Some Topic", "abc123", "big-conversation", "done", None)
+        outcome = load_skill_run_outcome("bigconv:Some Topic")
+        assert outcome["run_id"] == "abc123"
+        assert outcome["status"] == "done"
+        assert outcome["error"] is None
+
+
+def test_skill_run_outcome_overwrites_on_next_run(tmp_path: Path):
+    db_path = tmp_path / "bc_run_state_overwrite_test.db"
+    with patch.object(db_module, "DB_PATH", db_path):
+        db_module.init_db()
+        from flatwhite.dashboard.state import load_skill_run_outcome, save_skill_run_outcome
+
+        save_skill_run_outcome("bigconv:Some Topic", "run1", "big-conversation", "failed", "boom")
+        save_skill_run_outcome("bigconv:Some Topic", "run2", "big-conversation", "done", None)
+        outcome = load_skill_run_outcome("bigconv:Some Topic")
+        assert outcome["run_id"] == "run2"
+        assert outcome["status"] == "done"
+        assert outcome["error"] is None

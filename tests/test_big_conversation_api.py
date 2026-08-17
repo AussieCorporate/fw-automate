@@ -72,7 +72,8 @@ def test_topic_detail_endpoint_returns_paragraphs_when_processed(bc_env):
         "**THE BIG CONVERSATION**\n\n"
         "Nobody decided kids should be in the office.\n\n"
         "First paragraph text.\n\n"
-        "---\n\nAssets in `Kids in the Office/_BIG_CONVERSATION_assets/`.\n"
+        "---\n\nAssets in `Kids in the Office/_BIG_CONVERSATION_assets/`.\n\n"
+        "**P1** - `p1_1_Katie_Moloney.png` - some note.\n"
     )
     assets = bc_env / "Kids in the Office" / bcb.ASSETS_DIRNAME
     assets.mkdir(parents=True)
@@ -171,7 +172,8 @@ def test_pairing_endpoint_moves_screenshot_and_persists(bc_env):
         "**THE BIG CONVERSATION**\n\n"
         "Headline here.\n\n"
         "Paragraph one.\n\nParagraph two.\n\n"
-        "---\n\nAssets in `Kids in the Office/_BIG_CONVERSATION_assets/`.\n"
+        "---\n\nAssets in `Kids in the Office/_BIG_CONVERSATION_assets/`.\n\n"
+        "**P1** - `p1_1_Katie_Moloney.png` - some note.\n"
     )
     assets = bc_env / "Kids in the Office" / bcb.ASSETS_DIRNAME
     assets.mkdir(parents=True)
@@ -196,3 +198,45 @@ def test_pairing_endpoint_requires_filename_and_int_paragraph(bc_env):
         api_big_conversation_pairing("Kids in the Office", FakeRequest({"filename": "x.png"}))
     )
     assert result.status_code == 400
+
+
+def test_run_status_is_honest_null_when_never_run(bc_env):
+    # A topic that was never processed AND never had a run attempted must be
+    # reported as such - null, not "false"-shaped like a finished run.
+    from flatwhite.dashboard.api import api_big_conversation_run_status
+
+    result = api_big_conversation_run_status("Never Run Topic")
+    data = json.loads(result.body)
+    assert data == {"active": False, "run_id": None, "status": None, "error": None}
+
+
+def test_run_status_reports_a_finished_run_even_after_it_drops_out_of_active_set(bc_env):
+    # Real bug (13 Aug 2026): once a headless run left skill_runner's
+    # in-memory "active" set, /run-status went back to reporting exactly the
+    # same shape as a topic that was never processed - a genuinely finished
+    # run became invisible. This is the fix: the terminal outcome is
+    # persisted (save_skill_run_outcome, called from the run's on_complete
+    # hook) and /run-status must surface it. See
+    # docs/bigconv-silent-run-report.md.
+    from flatwhite.dashboard.api import api_big_conversation_run_status
+    from flatwhite.dashboard.state import save_skill_run_outcome
+
+    save_skill_run_outcome("bigconv:Offer Withdrawn After Negotiation", "run123",
+                            "big-conversation", "done", None)
+    result = api_big_conversation_run_status("Offer Withdrawn After Negotiation")
+    data = json.loads(result.body)
+    assert data["active"] is False
+    assert data["run_id"] == "run123"
+    assert data["status"] == "done"
+
+
+def test_run_status_reports_a_failed_run_with_its_plain_english_reason(bc_env):
+    from flatwhite.dashboard.api import api_big_conversation_run_status
+    from flatwhite.dashboard.state import save_skill_run_outcome
+
+    save_skill_run_outcome("bigconv:Some Topic", "run456", "big-conversation",
+                            "failed", "Claude Code isn't logged in on this Mac.")
+    result = api_big_conversation_run_status("Some Topic")
+    data = json.loads(result.body)
+    assert data["status"] == "failed"
+    assert data["error"] == "Claude Code isn't logged in on this Mac."

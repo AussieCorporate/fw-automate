@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 import flatwhite.dashboard.big_conversation_bank as bcb
 
 
@@ -247,14 +249,46 @@ Assets in `Kids in the Office/_BIG_CONVERSATION_assets/`.
 """
 
 
-def test_find_piece_markdown_matches_by_assets_reference(tmp_path, monkeypatch):
+def test_find_piece_markdown_matches_by_handle_overlap(tmp_path, monkeypatch):
+    # Matching is by CONTENT (which screenshot handles the piece quotes),
+    # not by one fixed sentence - see find_piece_markdown's docstring.
     monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
     (tmp_path / "_KIDS_OFFICE_BIG_CONVERSATION.md").write_text(_FIXTURE_MD)
     (tmp_path / "_OTHER_TOPIC_BIG_CONVERSATION.md").write_text(
         "Assets in `Some Other Topic/_BIG_CONVERSATION_assets/`.\n"
     )
+    assets = tmp_path / "Kids in the Office" / bcb.ASSETS_DIRNAME
+    assets.mkdir(parents=True)
+    (assets / "p1_1_Katie_Moloney.png").write_bytes(b"x")
     found = bcb.find_piece_markdown("Kids in the Office")
     assert found == tmp_path / "_KIDS_OFFICE_BIG_CONVERSATION.md"
+
+
+def test_find_piece_markdown_matches_without_the_old_assets_sentence(tmp_path, monkeypatch):
+    # Real bug (13 Aug 2026): the skill's own contract (SKILL.md step 6)
+    # never requires the piece file to contain the sentence "Assets in
+    # `<topic>/_BIG_CONVERSATION_assets/`." - it's only required in the
+    # skill's spoken reply. Real runs on disk ("Offer Withdrawn After
+    # Negotiation", "Conference Room Sharing") never wrote that sentence,
+    # citing screenshots only by their bare original handle+suffix (e.g.
+    # `Sriram_Lakshminarayanan_0001`) instead. The old sentence-only
+    # heuristic reported those topics as unprocessed even though the piece
+    # and its assets were both on disk. See docs/bigconv-silent-run-report.md.
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
+    md_text = (
+        "THE BIG CONVERSATION\n\nHeadline here.\n\nBody paragraph.\n\n---\n\n"
+        "## BUILD map\n\n"
+        "- `Sriram_Lakshminarayanan_0001` -- pole: con. Some note.\n"
+        "- `Britt_Vibes_0002` -- consensus. Some note.\n"
+    )
+    (tmp_path / "_OFFER_WITHDRAWN_BIG_CONVERSATION.md").write_text(md_text)
+    assets = tmp_path / "Offer Withdrawn After Negotiation" / bcb.ASSETS_DIRNAME
+    assets.mkdir(parents=True)
+    (assets / "p1_1_Sriram_Lakshminarayanan.png").write_bytes(b"x")
+    (assets / "p1_2_Britt_Vibes.png").write_bytes(b"x")
+
+    found = bcb.find_piece_markdown("Offer Withdrawn After Negotiation")
+    assert found == tmp_path / "_OFFER_WITHDRAWN_BIG_CONVERSATION.md"
 
 
 def test_find_piece_markdown_returns_none_when_unprocessed(tmp_path, monkeypatch):
@@ -262,14 +296,21 @@ def test_find_piece_markdown_returns_none_when_unprocessed(tmp_path, monkeypatch
     assert bcb.find_piece_markdown("Kids in the Office") is None
 
 
-def test_find_piece_markdown_does_not_match_suffix_of_another_topic(tmp_path, monkeypatch):
-    # Reviewer-found bug: "Office" and "the Office" are trailing substrings
-    # of "Kids in the Office", so a plain (unanchored) substring search over
-    # "Assets in `Kids in the Office/_BIG_CONVERSATION_assets/`." wrongly
-    # matched them. Neither shorter name has its own piece file, so both
-    # must return None rather than the "Kids in the Office" piece.
+def test_find_piece_markdown_does_not_cross_match_similarly_named_topic(tmp_path, monkeypatch):
+    # "Office" and "the Office" are trailing substrings of "Kids in the
+    # Office" and each have their OWN (different) submissions, but neither
+    # has a piece written yet - they must never inherit "Kids in the
+    # Office"'s piece just because their name is a fragment of it, or
+    # because a stray handle happens to overlap.
     monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", tmp_path)
     (tmp_path / "_KIDS_OFFICE_BIG_CONVERSATION.md").write_text(_FIXTURE_MD)
+    kids_assets = tmp_path / "Kids in the Office" / bcb.ASSETS_DIRNAME
+    kids_assets.mkdir(parents=True)
+    (kids_assets / "p1_1_Katie_Moloney.png").write_bytes(b"x")
+    other_assets = tmp_path / "the Office" / bcb.ASSETS_DIRNAME
+    other_assets.mkdir(parents=True)
+    (other_assets / "p1_1_Someone_Else.png").write_bytes(b"x")
+
     assert bcb.find_piece_markdown("the Office") is None
     assert bcb.find_piece_markdown("Office") is None
     # Regression check: the real topic still matches correctly.
@@ -291,6 +332,31 @@ def test_parse_piece_markdown_splits_headline_and_paragraphs():
     assert parsed["paragraphs"][3].startswith("Fourth paragraph")
     # The BUILD map after the --- divider must not leak into paragraphs.
     assert not any("BUILD" in p for p in parsed["paragraphs"])
+
+
+@pytest.mark.parametrize("header_line", [
+    "THE BIG CONVERSATION",
+    "**THE BIG CONVERSATION**",
+    "# THE BIG CONVERSATION",
+    "# THE BIG CONVERSATION — Tight Jobs Market & HR Vetting",
+])
+def test_parse_piece_markdown_strips_header_regardless_of_decoration(header_line):
+    # Real bug (13 Aug 2026): 6 of 8 real pieces on disk write this header
+    # WITHOUT the "**bold**" wrapping the old regex required (plain text,
+    # "# H1", or "# H1 — <topic>"). When the header wasn't recognised, it
+    # was mistaken for the headline, which shifted every real paragraph out
+    # by one and silently dropped the actual last paragraph. See
+    # docs/bigconv-silent-run-report.md.
+    text = (
+        f"{header_line}\n\n"
+        "The real headline.\n\n"
+        "First paragraph.\n\n"
+        "Second paragraph.\n\n"
+        "---\n\nBUILD map goes here.\n"
+    )
+    parsed = bcb.parse_piece_markdown(text)
+    assert parsed["headline"] == "The real headline."
+    assert parsed["paragraphs"] == ["First paragraph.", "Second paragraph."]
 
 
 def test_list_paragraph_screenshots_groups_and_ranks(tmp_path, monkeypatch):

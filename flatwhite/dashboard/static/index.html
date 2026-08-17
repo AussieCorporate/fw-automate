@@ -1677,19 +1677,50 @@ function openBigConvTopic(topic) {
   S.bigConvRun = null;
   S.bigConvShowTierPool = false;
   render();
-  loadBigConvTopicDetail(topic);
-  // Reconnect to a run already in progress for this topic (e.g. you clicked
-  // Process, navigated away, and came back) so it shows "Working..." and keeps
-  // polling instead of a blank Process button.
-  api("/api/big-conversation/topic/" + encodeURIComponent(topic) + "/run-status")
-    .then(function(r) {
-      if (r.active && S.bigConvSelectedTopic === topic) {
-        S.bigConvRun = { topic: topic, status: "running", run_id: r.run_id, error: null };
-        render();
-        pollBigConvRun(topic, r.run_id);
-      }
+  // Load the piece AND the run history together, then decide what to show.
+  // Waiting for both matters: a run can finish "done" but the piece still
+  // not be found (see applyBigConvRunStatus) - that combination is only
+  // knowable once S.bigConvDetail.processed is in hand.
+  Promise.all([
+    loadBigConvTopicDetail(topic),
+    api("/api/big-conversation/topic/" + encodeURIComponent(topic) + "/run-status"),
+  ])
+    .then(function(results) {
+      if (S.bigConvSelectedTopic !== topic) return;  // navigated away meanwhile
+      applyBigConvRunStatus(topic, results[1]);
     })
     .catch(function() {});
+}
+
+// Turn a /run-status response into the honest S.bigConvRun state the detail
+// view renders. Never leaves an accepted-but-finished run indistinguishable
+// from a topic that was never processed (Victor's house rule: "ready" must
+// mean verified) - see docs/bigconv-silent-run-report.md.
+function applyBigConvRunStatus(topic, r) {
+  if (S.bigConvSelectedTopic !== topic) return;
+  if (r.status === "queued" || r.status === "running") {
+    S.bigConvRun = { topic: topic, status: "running", run_id: r.run_id, error: null };
+    render();
+    pollBigConvRun(topic, r.run_id);
+  } else if (r.status === "failed") {
+    S.bigConvRun = { topic: topic, status: "failed", error: r.error, output_tail: r.output_tail };
+    render();
+  } else if (r.status === "done" && !(S.bigConvDetail && S.bigConvDetail.processed)) {
+    // The run finished successfully, but no piece was found for this topic -
+    // a real mismatch, not "never tried". Say so plainly instead of falling
+    // through to the generic "No piece drafted yet" state.
+    S.bigConvRun = {
+      topic: topic, status: "done_no_piece",
+      error: "The last run finished, but the dashboard couldn't find the " +
+             "piece it wrote for this topic. The files may not have saved " +
+             "where the dashboard expects them - check the Instagram output " +
+             "folder by hand, or try Process again.",
+    };
+    render();
+  }
+  // r.status === "done" with S.bigConvDetail.processed true: the piece
+  // loaded fine, nothing more to show - leave S.bigConvRun null (already
+  // set by openBigConvTopic).
 }
 
 function closeBigConvTopic() {
@@ -1718,6 +1749,9 @@ function renderBigConvTopicDetail() {
       h += '<p style="font-size:13px;color:var(--danger,#c0392b);">Couldn\'t process this topic: ' + esc(run.error || 'unknown error') + '</p>';
       h += '<button class="btn btn-primary" onclick="runBigConvTopic(' + jsq(topic) + ')">Try again</button>';
       if (run.output_tail) { h += '<details style="margin-top:8px"><summary style="font-size:12px;color:var(--label2);cursor:pointer">Details</summary><pre class="bc-instruction" style="white-space:pre-wrap">' + esc(run.output_tail) + '</pre></details>'; }
+    } else if (run && run.status === 'done_no_piece') {
+      h += '<p style="font-size:13px;color:var(--danger,#c0392b);">' + esc(run.error) + '</p>';
+      h += '<button class="btn btn-primary" onclick="runBigConvTopic(' + jsq(topic) + ')">Try again</button>';
     } else {
       h += '<p style="font-size:13px;color:var(--label2);">No piece drafted yet for this topic.</p>';
       h += '<button class="btn btn-primary" onclick="runBigConvTopic(' + jsq(topic) + ')">Process</button>';
@@ -1768,10 +1802,6 @@ function renderBigConvTierPools(pools) {
   });
   h += '</div>';
   return h;
-}
-
-function refreshBigConvTopic() {
-  if (S.bigConvSelectedTopic) loadBigConvTopicDetail(S.bigConvSelectedTopic);
 }
 
 // ── Screenshot preview (click a thumbnail to read it full size) ─────
@@ -1856,9 +1886,19 @@ function pollBigConvRun(topic, runId) {
     .then(function(r) {
       if (!S.bigConvRun || S.bigConvRun.topic !== topic) return;  // user moved on
       if (r.status === "done") {
-        S.bigConvRun = null;
-        showToast("Big Conversation ready", "success");
-        refreshBigConvTopic();  // loads the piece + screenshots the skill wrote
+        // Load the piece before declaring victory - the skill exiting 0 with
+        // its success marker does NOT guarantee the dashboard can find what
+        // it wrote (see docs/bigconv-silent-run-report.md). Confirm first.
+        loadBigConvTopicDetail(topic).then(function() {
+          if (S.bigConvSelectedTopic !== topic) return;  // user moved on
+          if (S.bigConvDetail && S.bigConvDetail.processed) {
+            S.bigConvRun = null;
+            showToast("Big Conversation ready", "success");
+            render();
+          } else {
+            applyBigConvRunStatus(topic, { status: "done" });
+          }
+        });
       } else if (r.status === "failed") {
         S.bigConvRun = { topic: topic, status: "failed", error: r.error, output_tail: r.output_tail };
         render();
@@ -1948,7 +1988,7 @@ function bcDrop(e, paragraphIndex) {
 }
 
 function loadBigConvTopicDetail(topic) {
-  api("/api/big-conversation/topic/" + encodeURIComponent(topic)).then(function(d) {
+  return api("/api/big-conversation/topic/" + encodeURIComponent(topic)).then(function(d) {
     S.bigConvDetail = d;
     render();
   });

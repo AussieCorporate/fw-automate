@@ -879,3 +879,42 @@ def save_pairing_override(topic: str, filename: str, paragraph_index: int) -> No
     )
     conn.commit()
     conn.close()
+
+
+# ─── HEADLESS SKILL RUN OBSERVABILITY ───────────────────────────────────────
+# skill_runner.py tracks a run's live progress in memory only (by design -
+# see its own docstring, it's a generic, testable engine that never touches
+# the DB). Once a run reaches a terminal state (done/failed) that outcome is
+# also written here, keyed by the same dedupe `key` skill_runner uses, so an
+# accepted run is still observable after it drops out of the in-memory
+# "active" set or the dashboard process restarts - see
+# docs/bigconv-silent-run-report.md for why this matters.
+
+def save_skill_run_outcome(run_key: str, run_id: str, kind: str, status: str, error: str | None) -> None:
+    """Record a headless skill run's TERMINAL outcome (status is 'done' or
+    'failed', never 'queued'/'running' - those are inherently transient and
+    read live from skill_runner instead)."""
+    conn = get_connection()
+    conn.execute(
+        """INSERT INTO skill_run_state (run_key, run_id, kind, status, error, ended_at)
+           VALUES (?, ?, ?, ?, ?, datetime('now'))
+           ON CONFLICT(run_key) DO UPDATE SET
+             run_id = excluded.run_id, kind = excluded.kind,
+             status = excluded.status, error = excluded.error,
+             ended_at = excluded.ended_at""",
+        (run_key, run_id, kind, status, error),
+    )
+    conn.commit()
+    conn.close()
+
+
+def load_skill_run_outcome(run_key: str) -> dict | None:
+    """The last recorded terminal outcome for `run_key`, or None if this key
+    has never finished a run."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT run_id, kind, status, error, ended_at FROM skill_run_state WHERE run_key = ?",
+        (run_key,),
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None

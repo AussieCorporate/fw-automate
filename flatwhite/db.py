@@ -463,6 +463,29 @@ def migrate_db() -> None:
         )
     """)
 
+    # v8 skill-run observability fix (13 Aug 2026): the dashboard's headless
+    # skill runner (flatwhite/dashboard/skill_runner.py) only ever tracked
+    # runs in an in-memory dict, and the run-status endpoint only reported
+    # runs that were still ACTIVE. The moment a run finished (done or
+    # failed), or the dashboard process restarted, its outcome vanished -
+    # a genuinely completed Big Conversation run became indistinguishable
+    # from "never ran" the next time Victor opened the topic. This table
+    # persists the TERMINAL outcome of each headless skill run, keyed by the
+    # same dedupe `key` skill_runner already uses (e.g.
+    # "bigconv:<topic>"), so run-status can answer honestly even after the
+    # run drops out of the in-memory active set or the process restarts.
+    # See docs/bigconv-silent-run-report.md.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS skill_run_state (
+            run_key TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            status TEXT NOT NULL,
+            error TEXT,
+            ended_at TEXT NOT NULL
+        )
+    """)
+
     conn.commit()
     conn.close()
 

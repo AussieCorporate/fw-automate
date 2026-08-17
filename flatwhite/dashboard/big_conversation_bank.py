@@ -174,38 +174,87 @@ def list_pool_screenshots(topic: str) -> dict[str, list[dict]]:
     return pools
 
 
+def _asset_handles(assets_dir: Path) -> set[str]:
+    """The distinct submitter 'handles' behind every screenshot copied into a
+    topic's `_BIG_CONVERSATION_assets/` folder, read off the skill's own
+    rename convention `p<paragraph>_<rank>_<handle>.<ext>` (SKILL.md's "Emit
+    outputs" step). Used by `find_piece_markdown` to confirm a piece file
+    really belongs to THIS topic."""
+    handles: set[str] = set()
+    for img in assets_dir.iterdir():
+        if not img.is_file():
+            continue
+        m = _ASSET_NAME_RE.match(img.name)
+        if m:
+            handles.add(m.group(3).lower())
+    return handles
+
+
 def find_piece_markdown(topic: str) -> Path | None:
     """Find the `_<SHORTNAME>_BIG_CONVERSATION.md` file the skill wrote for
     `topic`, at the Instagram output root. The shortname is an AI-chosen
     abbreviation (e.g. "Kids in the Office" -> "_KIDS_OFFICE_BIG_CONVERSATION.md")
     that can't be derived from the folder name programmatically — instead
-    this searches every `_*_BIG_CONVERSATION.md` at the output root for the
-    one whose BUILD map references this topic's own assets folder, e.g.
-    "Assets in `Kids in the Office/_BIG_CONVERSATION_assets/`."
+    this matches by CONTENT: every screenshot the skill copies into
+    `<topic>/_BIG_CONVERSATION_assets/` keeps the submitter's original
+    handle in its new filename, and the piece text always quotes that
+    handle back somewhere (verified against three real formats seen on
+    disk: the renamed asset filename, the original pre-rename filename in
+    parens, and the bare original handle+suffix alone). The md file that
+    mentions the most of THIS topic's own handles is the match.
 
-    The skill always wraps that reference in backticks immediately before
-    the topic name (no other text in between). Matching includes the
-    leading backtick rather than a bare substring so a topic name that is
-    a trailing fragment of a longer topic's name (e.g. "Office" or "the
-    Office" inside "Kids in the Office") can't false-match it — the
-    backtick only ever sits directly before the FULL topic name.
+    An earlier version of this function instead looked for one specific
+    sentence in the piece text ("Assets in
+    `<topic>/_BIG_CONVERSATION_assets/`."). That sentence was never part of
+    the skill's own output contract (SKILL.md step 6 only requires it in the
+    skill's spoken reply, not the file) and real runs on disk ("Offer
+    Withdrawn After Negotiation", "Conference Room Sharing") never wrote it
+    — so that heuristic silently reported those topics as unprocessed even
+    though the piece and its assets folder were both sitting on disk. See
+    docs/bigconv-silent-run-report.md.
 
-    Returns None (soft-fail, not an error) if the Instagram output root is
-    absent or no matching piece has been written yet — the topic just
-    isn't processed yet.
+    Returns None (soft-fail, not an error) if the Instagram output root or
+    this topic's assets folder is absent (not processed yet), or if no
+    `_*_BIG_CONVERSATION.md` file quotes enough of this topic's own
+    screenshot handles to be a confident match (guards against a short or
+    common handle accidentally substring-matching an unrelated topic's
+    piece).
     """
     root = INSTAGRAM_OUTPUT_DIR
     if not root.is_dir():
         return None
-    needle = f"`{topic}/{ASSETS_DIRNAME}".lower()
+    assets_dir = root / topic / ASSETS_DIRNAME
+    if not assets_dir.is_dir():
+        return None
+    handles = _asset_handles(assets_dir)
+    if not handles:
+        return None
+    best_md, best_score = None, 0
     for md in sorted(root.glob("_*_BIG_CONVERSATION.md")):
         try:
-            text = md.read_text(encoding="utf-8", errors="replace")
+            text = md.read_text(encoding="utf-8", errors="replace").lower()
         except OSError:
             continue
-        if needle in text.lower():
-            return md
+        score = sum(1 for h in handles if h in text)
+        if score > best_score:
+            best_md, best_score = md, score
+    threshold = max(1, -(-len(handles) // 2))  # ceil(len(handles) / 2)
+    if best_md is not None and best_score >= threshold:
+        return best_md
     return None
+
+
+# The "THE BIG CONVERSATION" header block's markdown decoration is NOT
+# consistent across real runs on disk - confirmed against all 8 real pieces
+# (13 Aug 2026): plain text, "**bold**", "# H1", and "# H1 — <topic
+# suffix>" all appear. Matching loosely (optional #/bold, optional trailing
+# " — anything") so the header is stripped in every case instead of being
+# mistaken for the headline (which then shifts every paragraph out by one
+# and drops the real last paragraph). See docs/bigconv-silent-run-report.md.
+_HEADER_BLOCK_RE = re.compile(
+    r"^#{0,2}\s*\*{0,2}THE BIG CONVERSATION\*{0,2}(\s*[—\-:].*)?$",
+    re.IGNORECASE,
+)
 
 
 def parse_piece_markdown(text: str) -> dict:
@@ -213,22 +262,23 @@ def parse_piece_markdown(text: str) -> dict:
     into {"headline": str, "paragraphs": list[str]}.
 
     Per the big-conversation skill's own output shape: a
-    `**THE BIG CONVERSATION**` header line, a one-line bold headline, then
-    one paragraph per screenshot group (p1, p2, ...), then a `---` divider
-    before the BUILD map. Only the text before the first such divider is
-    the piece; everything after is the paragraph->screenshot map, read
-    separately from the assets folder's own filenames (Task 5).
+    "THE BIG CONVERSATION" header line (decoration varies - see
+    _HEADER_BLOCK_RE), a one-line headline, then one paragraph per
+    screenshot group (p1, p2, ...), then a `---` divider before the BUILD
+    map. Only the text before the first such divider is the piece;
+    everything after is the paragraph->screenshot map, read separately from
+    the assets folder's own filenames (Task 5).
     """
     piece = text.split("\n---\n", 1)[0].strip()
     blocks = [b.strip() for b in re.split(r"\n\s*\n", piece) if b.strip()]
-    if blocks and re.fullmatch(r"\*\*THE BIG CONVERSATION\*\*", blocks[0]):
+    if blocks and _HEADER_BLOCK_RE.match(blocks[0]):
         blocks = blocks[1:]
     headline = blocks[0] if blocks else ""
     paragraphs = blocks[1:]
     return {"headline": headline, "paragraphs": paragraphs}
 
 
-_ASSET_NAME_RE = re.compile(r"^p(\d+)_(\d+|alt\d*)_.+\.(?:png|jpg|jpeg)$", re.IGNORECASE)
+_ASSET_NAME_RE = re.compile(r"^p(\d+)_(\d+|alt\d*)_(.+)\.(?:png|jpg|jpeg)$", re.IGNORECASE)
 
 
 def _asset_rank(token: str) -> int:
