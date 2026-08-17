@@ -76,6 +76,18 @@ EDITORIAL_VOICE = (
 # data/beehiiv_fw_ground_truth.json's 10 real "THE BRAINS TRUST" / "THE
 # ECONOMIC SCOOP" segments: 263-375 words (mean 316), broker-research-led,
 # NOT the Big Conversation's editorial voice.
+#
+# REFRESHED 17 Aug 2026 against docs/voice-refresh-findings.md (6 published
+# editions, 6 Jul-10 Aug 2026, pulled live from beehiiv). That research
+# CONFIRMED "you"/contractions and pull quotes are Victor's deliberate 27 Jul
+# calling - both were already correctly encoded below and are untouched here.
+# The genuine drift this refresh fixes: closings softening into a stat pile
+# or a forward-looking watch-point instead of landing the mechanism (4 of 6
+# editions did this); the fake-profound "isn't X, it's Y" reframe reaching
+# print unchecked in a Brains Trust piece (27 Jul); a "Done properly, /
+# Done the right way," concession tic repeating across editions; and a real
+# word count band (225-262 in practice) tighter than the stated ceiling.
+# Nothing Victor's 27 Jul edit produced was loosened - only extended.
 
 BRAINS_TRUST_VOICE = (
     "You are writing THE BRAINS TRUST (also called THE ECONOMIC SCOOP - same "
@@ -105,12 +117,35 @@ BRAINS_TRUST_VOICE = (
     "is precise: the labour market is 'changing shape, not size'\" wastes the "
     "strongest line in the piece and adds a comment about the framing. Set it "
     "as a block instead, and let it stand without introduction.\n"
+    "The pull quote is optional, not mandatory - most editions run without "
+    "one and that is fine. Only use it where the research bank actually gives "
+    "you a clean, complete house name for the attribution line. A pull quote "
+    "with a broken or empty attribution (a dash with nothing after it) is "
+    "worse than no pull quote at all. If you cannot attribute it cleanly, "
+    "fold the line into the prose instead and skip the block.\n"
     "\n"
     "Paragraphs join by their content. Never write a sentence whose job is to "
     "announce the join.\n"
     "\n"
+    "CLOSING:\n"
+    "Land the closing paragraph on the economic mechanism - the reason the "
+    "figures look contradictory, or the concrete practical implication that "
+    "follows from them. Do not close on a bare forward-looking 'here's what "
+    "to watch next' line with no explanation attached, and do not close on a "
+    "values or philosophical statement disconnected from the figures you just "
+    "gave. Both read as a softer, lower-conviction ending than the mechanism "
+    "close this segment is built on.\n"
+    "  GOOD: 'Fewer people are being hired, which normally suggests a soft "
+    "economy. But fewer are leaving, too, so employers don't have to lift pay "
+    "to keep the staff they already have.' - the contradiction is explained, "
+    "not just stated.\n"
+    "  WEAK: a closing paragraph that only restates a figure or names a date "
+    "to watch, with no 'because' attached to it.\n"
+    "\n"
     "LENGTH: 240-320 words. Treat 340 as a hard ceiling. Shorter is better; "
-    "cut scaffolding before you cut a figure.\n"
+    "cut scaffolding before you cut a figure. In practice, recent published "
+    "editions land between 225 and 262 words - treat that as the real working "
+    "range and 320-340 as headroom you should rarely need, not a target.\n"
     "\n"
     "ATTRIBUTION:\n"
     "Use the house name and a plain verb, and NOTHING else: 'Jarden estimates', "
@@ -146,6 +181,17 @@ BRAINS_TRUST_VOICE = (
     "direction.' - a line that only restates a link already made\n"
     "- Coined jargon in quotes, like \"what the research calls 'graduate-ladder "
     "compression'\"\n"
+    "- The fake-profound reframe: 'X isn't producing A, it's producing B.' "
+    "This shape reached print once already - 'AI in Australia isn't producing "
+    "mass layoffs. It's producing slower hiring...' Name the finding directly "
+    "instead: 'AI in Australia is producing slower hiring, not mass layoffs.'\n"
+    "- 'Done properly, ...' / 'Done the right way, ...' as a concession "
+    "opener. It has repeated across editions and is calcifying into a "
+    "formula rather than a genuine observation. State the concession plainly "
+    "without the throat-clearing.\n"
+    "- 'In the end, ...' opening the final paragraph. It announces a summary "
+    "instead of opening with the new information itself - delete it and "
+    "start the sentence with the actual point.\n"
     "\n"
     "LANGUAGE RULES:\n"
     "- Australian English throughout\n"

@@ -50,6 +50,12 @@ TEMPERATURE_BY_TASK: dict[str, float] = {
     "big_conversation": 0.3,
     "signal_intelligence": 0.2,
     "brains_trust": 0.3,
+    # Voice pipeline stages 2 and 3 (flatwhite/classify/voice_pipeline.py).
+    # Low temperature on purpose: both stages cut and tighten existing text
+    # rather than generate new material, so they should be closer to
+    # deterministic than the drafting stages above.
+    "voice_shape": 0.2,
+    "voice_strip": 0.1,
 }
 
 DEFAULT_MODEL_BY_TASK: dict[str, str] = {
@@ -63,6 +69,8 @@ DEFAULT_MODEL_BY_TASK: dict[str, str] = {
     "big_conversation": "claude-sonnet-4-6",
     "signal_intelligence": "claude-haiku-4-5",
     "brains_trust": "claude-sonnet-4-6",
+    "voice_shape": "claude-sonnet-4-6",
+    "voice_strip": "claude-sonnet-4-6",
 }
 
 MODEL_REGISTRY: dict[str, dict] = {

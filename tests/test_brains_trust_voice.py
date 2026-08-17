@@ -102,3 +102,58 @@ def test_existing_house_rules_survive():
     assert "em dash" in _V
     assert "—" not in BRAINS_TRUST_VOICE, "the prompt itself must contain no em dash"
     assert "invent" in _V, "never invent a figure or a bank"
+
+
+# ─── 17 Aug 2026 refresh — docs/voice-refresh-findings.md ───────────────────
+# These pin the genuine drift found across the 6 most recent published
+# editions. They EXTEND the 27 Jul rules above; none of those assertions were
+# weakened to add these.
+
+
+def test_you_and_pull_quote_rules_were_not_weakened_by_the_refresh():
+    """CONTROLLER RULING: the research flagged 'you' and pull quotes as
+    'drift' but they are Victor's deliberate 27 Jul calling, already encoded
+    here and pinned by the tests above. This refresh must not touch them."""
+    assert "reader as 'you'" in _V
+    assert "do not bury a quotable line" in _V
+
+
+def test_bans_fake_profound_reframe():
+    """Reached print once already in a Brains Trust piece (27 Jul, AI hiring):
+    'AI in Australia isn't producing mass layoffs. It's producing slower
+    hiring...' - the tell list now covers this segment too."""
+    assert "fake-profound reframe" in _V
+    assert "isn't producing mass layoffs" in _V
+
+
+def test_bans_done_properly_tic():
+    """'Done properly,' / 'Done the right way,' used twice in six recent
+    editions - a calcifying house tic, not house voice."""
+    assert "done properly" in _V
+    assert "done the right way" in _V
+
+
+def test_bans_in_the_end_wrapup_opener():
+    assert "in the end" in _V
+
+
+def test_requires_closing_to_land_the_mechanism():
+    """Only 2 of 6 recent closings explained the contradiction rather than
+    piling up a stat or a forward-looking watch-point."""
+    assert "land the closing paragraph on the economic mechanism" in _V
+    assert "here's what to watch next" in _V
+
+
+def test_pull_quote_is_optional_and_broken_attribution_is_banned():
+    """One recent edition (20 Jul) shipped a pull quote with a broken, empty
+    attribution ('- UBS previously expected... ' with a dash and nothing
+    after it). The rule must say that's worse than skipping the quote."""
+    assert "optional, not mandatory" in _V
+    assert "broken or empty attribution" in _V
+
+
+def test_length_working_range_reflects_what_actually_ships():
+    """Recent editions run 225-262 words, nowhere near the 320-340 ceiling."""
+    assert "225 and 262" in _V
+    assert "240" in BRAINS_TRUST_VOICE, "the stated band floor must still be present"
+    assert "380" not in BRAINS_TRUST_VOICE, "the old ceiling must still be gone"
