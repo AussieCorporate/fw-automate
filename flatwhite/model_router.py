@@ -70,7 +70,15 @@ DEFAULT_MODEL_BY_TASK: dict[str, str] = {
     "signal_intelligence": "claude-haiku-4-5",
     "brains_trust": "claude-sonnet-4-6",
     "voice_shape": "claude-sonnet-4-6",
-    "voice_strip": "claude-sonnet-4-6",
+    # Deliberately a DIFFERENT provider from voice_shape/generate above. A
+    # Claude model checking its own output for Claude's tells is the exact
+    # blind spot this stage exists to remove - Victor's instruction, 18 Aug
+    # 2026. gpt-5.4, not -pro or -mini: this is a careful deletion task, not
+    # a reasoning marathon, and -pro costs more for no gain here. See
+    # flatwhite/classify/voice_pipeline.py for the honest-stop behaviour
+    # when OPENAI_API_KEY is missing - this stage must NEVER silently fall
+    # back to a Claude model.
+    "voice_strip": "gpt-5.4",
 }
 
 MODEL_REGISTRY: dict[str, dict] = {

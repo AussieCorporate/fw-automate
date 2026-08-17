@@ -237,6 +237,59 @@ def test_shape_blocks_instruct_aiming_at_the_middle_of_the_band():
     assert "middle of the target word band" in vp.SHAPE_TO_PUBLISHED_SYSTEM.lower()
 
 
+# ─── Strip stage runs on GPT-5.4, never silently falls back to Claude ───────
+# (18 Aug 2026, Victor's binding note: a Claude model can't reliably hear its
+# own tells, so the strip pass must run on a different model family.)
+
+
+def test_voice_strip_resolves_to_gpt_5_4_by_default():
+    from flatwhite import model_router as mr
+    assert mr.DEFAULT_MODEL_BY_TASK["voice_strip"] == "gpt-5.4"
+    assert mr.MODEL_REGISTRY["gpt-5.4"]["provider"] == "openai"
+    # voice_shape stays on Claude - only the strip stage moves providers.
+    assert mr.MODEL_REGISTRY[mr.DEFAULT_MODEL_BY_TASK["voice_shape"]]["provider"] == "anthropic"
+
+
+def test_voice_strip_raises_when_openai_key_missing_not_silently_routed_elsewhere(monkeypatch):
+    """route() itself must not substitute a different provider - it should
+    fail on the exact model_id the task type maps to (gpt-5.4), never quietly
+    call Claude instead."""
+    from flatwhite import model_router as mr
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(mr, "MODEL_REGISTRY", mr.MODEL_REGISTRY)  # no-op, documents intent
+    try:
+        mr.route(task_type="voice_strip", prompt="x", system="y")
+        assert False, "should have raised - no OPENAI_API_KEY configured"
+    except Exception as e:
+        assert "OPENAI_API_KEY" in str(e)
+        assert "gpt-5.4" in str(e)
+
+
+def test_run_voice_chain_stops_and_reports_when_strip_stage_unavailable_never_falls_back(monkeypatch):
+    """The chain must not crash and must not quietly strip with Claude. It
+    stops at stage 2's output, marks stage 3 'not_stripped', and explains
+    why in plain English."""
+    def fake_route(task_type, prompt, system="", model_override=None):
+        if task_type == "voice_shape":
+            return " ".join(["word"] * 300)  # inside band, no recut needed
+        if task_type == "voice_strip":
+            raise ValueError("No API key configured for gpt-5.4 (set OPENAI_API_KEY)")
+        raise AssertionError(f"unexpected task_type {task_type}")
+
+    monkeypatch.setattr(vp, "route", fake_route)
+    result = vp.run_voice_chain("big_conversation", generate_fn=lambda: "stage 1 draft")
+
+    assert result["stage3_status"] == "not_stripped"
+    assert result["stage3_error"] is not None
+    assert "OPENAI_API_KEY" in result["stage3_error"]
+    assert "never" in result["stage3_error"].lower() or "not silently" in result["stage3_error"].lower() \
+        or "by design" in result["stage3_error"].lower()
+    # The unstripped piece returned is EXACTLY stage 2's output - not
+    # re-generated, not touched by any other model.
+    assert result["stage3_stripped"] == result["stage2_shaped"]
+    assert result["stage3_changes"] == ""
+
+
 def test_run_voice_chain_never_collapses_stages_even_when_strip_makes_no_changes(monkeypatch):
     def fake_route(task_type, prompt, system="", model_override=None):
         if task_type == "voice_shape":

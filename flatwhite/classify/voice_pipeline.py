@@ -547,10 +547,35 @@ def split_strip_output(raw: str) -> dict:
     return {"body": body.strip(), "changes": changes.strip(), "flagged": flagged.strip()}
 
 
+def _describe_strip_failure(exc: Exception) -> str:
+    """Plain-English message for when the strip stage can't run. NEVER
+    triggers a fallback to a Claude model - the whole point of this stage
+    is that a Claude model cannot reliably hear its own tells, so a
+    Claude-stripped piece is exactly the failure mode this exists to avoid.
+    """
+    msg = str(exc)
+    if "No API key configured" in msg and "OPENAI_API_KEY" in msg:
+        return (
+            "The strip stage needs an OpenAI key (OPENAI_API_KEY) and none is "
+            "configured. This stage runs on GPT-5.4 by design - a Claude model "
+            "cannot reliably hear its own tells, so it never silently falls back "
+            "to one. Add OPENAI_API_KEY to the .env and re-run. The piece below "
+            "is exactly what stage 2 produced, unstripped - it has NOT been "
+            "checked for Claude tells."
+        )
+    return (
+        f"The strip stage failed ({msg}) and was not retried on a different "
+        "model - a Claude model is never substituted for this check by design. "
+        "The piece below is exactly what stage 2 produced, unstripped - it has "
+        "NOT been checked for Claude tells."
+    )
+
+
 # ─── THE CHAIN ──────────────────────────────────────────────────────────────
 
 def run_voice_chain(segment: str, generate_fn: Callable[[], str], *,
-                     model_override: str | None = None) -> dict:
+                     shape_model_override: str | None = None,
+                     strip_model_override: str | None = None) -> dict:
     """Runs GENERATE -> SHAPE TO PUBLISHED -> STRIP THE CLAUDE PHRASING in
     order, keeping every stage's output. Never collapses the three calls
     into one - each stage is a separate, inspectable step.
@@ -562,19 +587,35 @@ def run_voice_chain(segment: str, generate_fn: Callable[[], str], *,
             already lives (draft_big_conversation(), or the
             _proceed_brains_trust() prompt/route() call) rather than being
             duplicated here.
-        model_override: optional model id applied to stages 2 and 3.
+        shape_model_override: optional model id for stage 2 only.
+        strip_model_override: optional model id for stage 3 only. Deliberately
+            a SEPARATE parameter from shape_model_override (never one shared
+            override for both) - stage 3 defaults to GPT-5.4
+            (model_router.DEFAULT_MODEL_BY_TASK["voice_strip"]) and must
+            never be silently pulled onto a Claude model by a caller that
+            only meant to override stage 2.
 
     Length is checked mechanically (plain code, LENGTH_SPECS above) between
     every stage, never left to a model's self-report. If stage 2 lands over
     the hard ceiling, ONE automatic re-cut pass runs; after that the chain
     reports the overage in "length_warnings" rather than looping again.
 
+    If the strip stage (GPT-5.4) can't run for any reason - most likely no
+    OPENAI_API_KEY configured - the chain does NOT fall back to a Claude
+    model and does NOT crash. It stops the pipeline at stage 2, returns that
+    output as "stage3_stripped" (unstripped, "stage3_status": "not_stripped"),
+    and puts a plain-English explanation in "stage3_error".
+
     Returns a dict Victor can inspect stage by stage:
         {
             "segment": str,
             "stage1_generate": str,     # raw stage-1 draft
             "stage2_shaped": str,       # cut/tightened to real shape
-            "stage3_stripped": str,     # tells deleted, body text only
+            "stage3_stripped": str,     # tells deleted, body text only (or
+                                         # stage 2's output, unchanged, if
+                                         # stage3_status == "not_stripped")
+            "stage3_status": str,       # "stripped" or "not_stripped"
+            "stage3_error": str | None, # plain-English reason if not stripped
             "stage3_changes": str,      # what stage 3 deleted, as a list
             "stage3_flagged": str,      # anything left in for Victor's veto
             "word_counts": {"stage1": int, "stage2": int, "stage3": int},
@@ -587,11 +628,11 @@ def run_voice_chain(segment: str, generate_fn: Callable[[], str], *,
     stage1 = generate_fn()
     counts1 = check_length(stage1, segment)
 
-    stage2 = shape_to_published(stage1, segment, model_override=model_override)
+    stage2 = shape_to_published(stage1, segment, model_override=shape_model_override)
     counts2 = check_length(stage2, segment)
 
     if counts2["over_word_hard_ceiling"]:
-        stage2 = _recut_over_ceiling(stage2, segment, counts2["word_count"], model_override=model_override)
+        stage2 = _recut_over_ceiling(stage2, segment, counts2["word_count"], model_override=shape_model_override)
         counts2 = check_length(stage2, segment)
         if counts2["over_word_hard_ceiling"]:
             ceiling = LENGTH_SPECS[segment]["word_hard_ceiling"]
@@ -601,21 +642,30 @@ def run_voice_chain(segment: str, generate_fn: Callable[[], str], *,
                 "before shipping - the chain does not re-cut a second time."
             )
 
-    stage3_raw = strip_claude_phrasing(stage2, model_override=model_override)
-    stage3_parts = split_strip_output(stage3_raw)
+    stage3_status = "stripped"
+    stage3_error: str | None = None
+    try:
+        stage3_raw = strip_claude_phrasing(stage2, model_override=strip_model_override)
+        stage3_parts = split_strip_output(stage3_raw)
+    except Exception as exc:  # noqa: BLE001 - any failure here must STOP and report, never fall back
+        stage3_status = "not_stripped"
+        stage3_error = _describe_strip_failure(exc)
+        stage3_parts = {"body": stage2, "changes": "", "flagged": ""}
+
     counts3 = check_length(stage3_parts["body"], segment)
+    stripped_note = "" if stage3_status == "stripped" else " (this piece was never stripped, see stage3_error)"
 
     if counts3["over_word_hard_ceiling"]:
         ceiling = LENGTH_SPECS[segment]["word_hard_ceiling"]
         warnings.append(
             f"Final piece is {counts3['word_count']} words, over the {ceiling}-word "
-            "hard ceiling even after stripping. Do not ship this silently."
+            f"hard ceiling{stripped_note}. Do not ship this silently."
         )
     if counts3["over_paragraph_hard_ceiling"]:
         ceiling = LENGTH_SPECS[segment]["paragraph_hard_ceiling"]
         warnings.append(
             f"Final piece has {counts3['paragraph_count']} paragraphs, over the "
-            f"{ceiling}-paragraph ceiling."
+            f"{ceiling}-paragraph ceiling{stripped_note}."
         )
 
     return {
@@ -623,6 +673,8 @@ def run_voice_chain(segment: str, generate_fn: Callable[[], str], *,
         "stage1_generate": stage1,
         "stage2_shaped": stage2,
         "stage3_stripped": stage3_parts["body"],
+        "stage3_status": stage3_status,
+        "stage3_error": stage3_error,
         "stage3_changes": stage3_parts["changes"],
         "stage3_flagged": stage3_parts["flagged"],
         "word_counts": {
