@@ -30,9 +30,76 @@ separate bug) is fixed.
 
 from __future__ import annotations
 
+import re
 from typing import Callable
 
 from flatwhite.model_router import route
+
+# ─── LENGTH: mechanical, not a promise ─────────────────────────────────────
+# Added 18 Aug 2026 on Victor's binding instruction: length is a first-class
+# requirement, checked by plain code between stages, not left to a model's
+# self-report. Numbers are the real published measurements from
+# docs/voice-refresh-findings.md - do not loosen them from theory.
+
+LENGTH_SPECS = {
+    "big_conversation": {
+        "word_target_min": 280,
+        "word_target_max": 340,
+        "word_hard_ceiling": 365,  # the observed maximum across the last 6 published pieces
+        "paragraph_target_min": 4,
+        "paragraph_target_max": 4,  # 5 only when the material genuinely needs it
+        "paragraph_hard_ceiling": 5,  # 6 has never shipped
+    },
+    "brains_trust": {
+        "word_target_min": 240,
+        "word_target_max": 280,  # reality clusters at 225-262; 320 is headroom, not an aim
+        "word_hard_ceiling": 340,  # Victor's own pinned ceiling, 27 Jul edit - unchanged
+        "paragraph_target_min": 3,
+        "paragraph_target_max": 4,
+        "paragraph_hard_ceiling": 5,
+    },
+}
+
+
+def _strip_non_prose(text: str) -> str:
+    """Drops chart placeholder lines before counting - they aren't prose."""
+    return "\n".join(l for l in text.splitlines() if not l.strip().startswith("[CHART"))
+
+
+def _word_count(text: str) -> int:
+    return len(re.findall(r"[A-Za-z0-9][A-Za-z0-9'-]*", _strip_non_prose(text)))
+
+
+def _paragraph_count(text: str) -> int:
+    """Heuristic: blank-line-separated blocks, excluding chart placeholders
+    and lone pull-quote attribution lines ("- Jarden") which are not prose
+    paragraphs. Good enough for a length check, not a publishing parser."""
+    blocks = [b.strip() for b in re.split(r"\n\s*\n", _strip_non_prose(text)) if b.strip()]
+    count = 0
+    for b in blocks:
+        lines = b.splitlines()
+        if len(lines) == 1 and re.match(r"^-\s*\S+", lines[0].strip()):
+            continue
+        count += 1
+    return count
+
+
+def check_length(text: str, segment: str) -> dict:
+    """Plain-code word/paragraph count against LENGTH_SPECS - never a model
+    judgement. Returns counts plus whether the text is inside the target
+    band and whether it has breached a hard ceiling."""
+    if segment not in LENGTH_SPECS:
+        raise ValueError(f"Unknown segment: {segment!r}. Must be one of: {', '.join(LENGTH_SPECS)}.")
+    spec = LENGTH_SPECS[segment]
+    words = _word_count(text)
+    paras = _paragraph_count(text)
+    return {
+        "word_count": words,
+        "paragraph_count": paras,
+        "within_word_target": spec["word_target_min"] <= words <= spec["word_target_max"],
+        "over_word_hard_ceiling": words > spec["word_hard_ceiling"],
+        "over_paragraph_hard_ceiling": paras > spec["paragraph_hard_ceiling"],
+    }
 
 # ─── Real published exemplars (verbatim) ──────────────────────────────────
 # Sourced from published-examples.md / brains-trust-current-format.md / the
@@ -134,9 +201,11 @@ SHAPE_TO_PUBLISHED_SYSTEM = (
     "leave it exactly as stated - do not correct, round, or embellish it.\n"
     "\n"
     "WHAT TO SHAPE, IN ORDER:\n"
-    "1. LENGTH: cut to the real word band for this segment (given below), "
-    "not the draft's current length. Cut whole sentences and paragraphs "
-    "before you trim words from inside a sentence you are keeping.\n"
+    "1. LENGTH: cut toward the MIDDLE of the target word band given below, "
+    "not the top of it. Stage 3 (which runs after you) deletes more text, "
+    "so landing at the ceiling here means the piece finishes short of the "
+    "band instead of inside it. Cut whole sentences and paragraphs before "
+    "you trim words from inside a sentence you are keeping.\n"
     "2. PARAGRAPH COUNT: cut to the real paragraph target. If the draft has "
     "more paragraphs than the real target, the weakest or most repetitive "
     "paragraph is deleted whole, not compressed into a shorter version of "
@@ -184,9 +253,11 @@ BIG_CONVERSATION_SHAPE_BLOCK = (
     "if the draft has a genuinely distinct 5th angle worth keeping - do not "
     "stretch to 5 just to preserve length. 6 has never shipped; if the draft "
     "has 6, two are being cut, not trimmed.\n"
-    "Words: 270-365 total. If the draft is under 265 words, that is fine - "
-    "do not pad it. If it is over 365, cut a whole paragraph or sentence, "
-    "not a trim across all of them.\n"
+    "Words: 280-340 is the target band - cut toward the MIDDLE (around "
+    "310), not the top, because stage 3 shortens it further after you. 365 "
+    "is the hard ceiling observed across the last 6 published pieces, not "
+    "something to write toward. If the draft is already under 280, that is "
+    "fine - do not pad it.\n"
     "Opening: P1 states the situation or mechanism plainly in sentence one. "
     "No rhetorical question, no scene-setting zoom-out ('Somewhere between "
     "X and Y...', 'These days...').\n"
@@ -199,9 +270,11 @@ BIG_CONVERSATION_SHAPE_BLOCK = (
 BRAINS_TRUST_SHAPE_BLOCK = (
     "Paragraphs: 3-5 short paragraphs. Treat 5 as the ceiling, not the "
     "target.\n"
-    "Words: 225-262 is the real working range in practice. 320 is generous "
-    "headroom, 340 is a hard ceiling that should almost never be needed. If "
-    "the draft is already under 262, do not pad it up toward 320.\n"
+    "Words: 240-280 is the target band - cut toward the MIDDLE (around "
+    "260), not the top, because stage 3 shortens it further after you. "
+    "Recent published editions land at 225-262 in practice. 320 is "
+    "headroom, not an aim; 340 is Victor's own pinned hard ceiling from his "
+    "27 Jul 2026 edit and should almost never be needed.\n"
     "Opening: sentence one states a number or event flat, not a conceptual "
     "or paradox frame.\n"
     "Closing: the final paragraph lands the economic mechanism - the reason "
@@ -399,6 +472,46 @@ STRIP_CLAUDE_PHRASING_PROMPT = (
 )
 
 
+RECUT_PROMPT = (
+    "This draft is {words_over} words over the {ceiling}-word hard ceiling "
+    "for {segment_label} (it is currently {word_count} words).\n"
+    "\n"
+    "Cut approximately {words_over} words by deleting whole sentences or a "
+    "whole paragraph. Do not compress by rewriting - do not shorten "
+    "sentences by rephrasing them, only by removing them whole. Do not add "
+    "anything.\n"
+    "\n"
+    "DRAFT:\n"
+    "{draft}\n"
+    "\n"
+    "Output ONLY the cut body text."
+)
+
+
+def _recut_over_ceiling(draft: str, segment: str, word_count: int, *,
+                         model_override: str | None = None) -> str:
+    """One automatic re-cut pass when stage 2 lands over the hard ceiling.
+    Called at most once per chain run - see run_voice_chain(). If the draft
+    is still over the ceiling after this, the chain reports it rather than
+    calling this again."""
+    spec = LENGTH_SPECS[segment]
+    segment_label = "THE BIG CONVERSATION" if segment == "big_conversation" else "THE BRAINS TRUST"
+    prompt = RECUT_PROMPT.format(
+        words_over=word_count - spec["word_hard_ceiling"],
+        ceiling=spec["word_hard_ceiling"],
+        word_count=word_count,
+        segment_label=segment_label,
+        draft=draft,
+    )
+    result = route(
+        task_type="voice_shape",
+        prompt=prompt,
+        system=SHAPE_TO_PUBLISHED_SYSTEM,
+        model_override=model_override,
+    )
+    return result.strip()
+
+
 def strip_claude_phrasing(draft: str, *, model_override: str | None = None) -> str:
     """Stage 3. Deletes catalogued AI tells from `draft`. Shared across both
     segments - the tells and the delete-only rule are identical for both.
@@ -451,6 +564,11 @@ def run_voice_chain(segment: str, generate_fn: Callable[[], str], *,
             duplicated here.
         model_override: optional model id applied to stages 2 and 3.
 
+    Length is checked mechanically (plain code, LENGTH_SPECS above) between
+    every stage, never left to a model's self-report. If stage 2 lands over
+    the hard ceiling, ONE automatic re-cut pass runs; after that the chain
+    reports the overage in "length_warnings" rather than looping again.
+
     Returns a dict Victor can inspect stage by stage:
         {
             "segment": str,
@@ -459,12 +577,47 @@ def run_voice_chain(segment: str, generate_fn: Callable[[], str], *,
             "stage3_stripped": str,     # tells deleted, body text only
             "stage3_changes": str,      # what stage 3 deleted, as a list
             "stage3_flagged": str,      # anything left in for Victor's veto
+            "word_counts": {"stage1": int, "stage2": int, "stage3": int},
+            "paragraph_counts": {"stage1": int, "stage2": int, "stage3": int},
+            "length_warnings": list[str],  # empty if everything landed inside spec
         }
     """
+    warnings: list[str] = []
+
     stage1 = generate_fn()
+    counts1 = check_length(stage1, segment)
+
     stage2 = shape_to_published(stage1, segment, model_override=model_override)
+    counts2 = check_length(stage2, segment)
+
+    if counts2["over_word_hard_ceiling"]:
+        stage2 = _recut_over_ceiling(stage2, segment, counts2["word_count"], model_override=model_override)
+        counts2 = check_length(stage2, segment)
+        if counts2["over_word_hard_ceiling"]:
+            ceiling = LENGTH_SPECS[segment]["word_hard_ceiling"]
+            warnings.append(
+                f"Stage 2 is still {counts2['word_count']} words after one automatic "
+                f"re-cut pass, over the {ceiling}-word hard ceiling. Cut it by hand "
+                "before shipping - the chain does not re-cut a second time."
+            )
+
     stage3_raw = strip_claude_phrasing(stage2, model_override=model_override)
     stage3_parts = split_strip_output(stage3_raw)
+    counts3 = check_length(stage3_parts["body"], segment)
+
+    if counts3["over_word_hard_ceiling"]:
+        ceiling = LENGTH_SPECS[segment]["word_hard_ceiling"]
+        warnings.append(
+            f"Final piece is {counts3['word_count']} words, over the {ceiling}-word "
+            "hard ceiling even after stripping. Do not ship this silently."
+        )
+    if counts3["over_paragraph_hard_ceiling"]:
+        ceiling = LENGTH_SPECS[segment]["paragraph_hard_ceiling"]
+        warnings.append(
+            f"Final piece has {counts3['paragraph_count']} paragraphs, over the "
+            f"{ceiling}-paragraph ceiling."
+        )
+
     return {
         "segment": segment,
         "stage1_generate": stage1,
@@ -472,4 +625,15 @@ def run_voice_chain(segment: str, generate_fn: Callable[[], str], *,
         "stage3_stripped": stage3_parts["body"],
         "stage3_changes": stage3_parts["changes"],
         "stage3_flagged": stage3_parts["flagged"],
+        "word_counts": {
+            "stage1": counts1["word_count"],
+            "stage2": counts2["word_count"],
+            "stage3": counts3["word_count"],
+        },
+        "paragraph_counts": {
+            "stage1": counts1["paragraph_count"],
+            "stage2": counts2["paragraph_count"],
+            "stage3": counts3["paragraph_count"],
+        },
+        "length_warnings": warnings,
     }

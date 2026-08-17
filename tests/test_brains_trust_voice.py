@@ -157,3 +157,17 @@ def test_length_working_range_reflects_what_actually_ships():
     assert "225 and 262" in _V
     assert "240" in BRAINS_TRUST_VOICE, "the stated band floor must still be present"
     assert "380" not in BRAINS_TRUST_VOICE, "the old ceiling must still be gone"
+
+
+def test_length_target_is_tightened_below_the_pinned_ceiling():
+    """Victor's 27 Jul edit pinned 240-320 words / 340 ceiling - that band is
+    NOT weakened here. But length is now a first-class, mechanically checked
+    requirement: the real TARGET inside that band is 240-280, and 320 is
+    ceiling headroom, not something to write toward."""
+    assert "240-280" in _V
+    assert "320 is a ceiling, not" in _V
+    assert "240-320" in BRAINS_TRUST_VOICE, "the pinned band itself must still be stated"
+
+
+def test_paragraph_ceiling_is_explicit():
+    assert "5 is the ceiling, not the target" in _V

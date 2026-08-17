@@ -25,11 +25,13 @@ def test_shape_exemplars_are_real_published_text():
 
 
 def test_shape_blocks_encode_real_bands_not_aspirational_ones():
-    """4 paragraphs / 270-365 words for Big Conversation; 225-262 working
-    range for Brains Trust - the real numbers from the findings doc, not the
-    old 4-6 / 300-450 or 200-350 aspirational bands."""
+    """4 paragraphs / 280-340 words (365 hard ceiling) for Big Conversation;
+    240-280 target (225-262 in practice) for Brains Trust - Victor's 18 Aug
+    binding numbers, not the old 4-6 / 300-450 or 200-350 aspirational bands."""
     assert "4 is the real target" in vp.BIG_CONVERSATION_SHAPE_BLOCK
-    assert "270-365" in vp.BIG_CONVERSATION_SHAPE_BLOCK
+    assert "280-340" in vp.BIG_CONVERSATION_SHAPE_BLOCK
+    assert "365" in vp.BIG_CONVERSATION_SHAPE_BLOCK
+    assert "240-280" in vp.BRAINS_TRUST_SHAPE_BLOCK
     assert "225-262" in vp.BRAINS_TRUST_SHAPE_BLOCK
 
 
@@ -116,6 +118,123 @@ def test_run_voice_chain_calls_all_three_stages_in_order_and_keeps_every_output(
     assert result["stage3_stripped"] == "STRIPPED BODY"
     assert "deleted something" in result["stage3_changes"]
     assert result["segment"] == "big_conversation"
+
+
+# ─── Length: mechanical, plain-code checks (18 Aug 2026, Victor's binding note) ──
+
+
+def test_length_specs_match_the_binding_numbers():
+    """These numbers came from Victor directly, not from theory - pin them
+    exactly so a future edit can't quietly loosen the band."""
+    bc = vp.LENGTH_SPECS["big_conversation"]
+    assert (bc["word_target_min"], bc["word_target_max"], bc["word_hard_ceiling"]) == (280, 340, 365)
+    assert bc["paragraph_target_max"] == 4
+    assert bc["paragraph_hard_ceiling"] == 5
+
+    bt = vp.LENGTH_SPECS["brains_trust"]
+    assert (bt["word_target_min"], bt["word_target_max"], bt["word_hard_ceiling"]) == (240, 280, 340)
+    assert bt["paragraph_hard_ceiling"] == 5
+
+
+def test_word_count_ignores_chart_placeholders():
+    text = "One two three.\n\n[CHART - Source: ABS, June 2026]\n\nFour five six seven."
+    assert vp._word_count(text) == 7
+
+
+def test_paragraph_count_ignores_charts_and_lone_attribution_lines():
+    text = (
+        "Paragraph one here.\n\n"
+        "[CHART - Source: ABS]\n\n"
+        "Paragraph two here.\n\n"
+        '"A pull quote."\n'
+        "- Jarden\n\n"
+        "Paragraph three here."
+    )
+    # 3 prose paragraphs + 1 quote block = 4 (the lone "- Jarden" attribution
+    # line is excluded, but the quote text itself is still a block)
+    assert vp._paragraph_count(text) == 4
+
+
+def test_check_length_flags_over_hard_ceiling():
+    over = " ".join(["word"] * 400)  # 400 words, over both segments' ceilings
+    result = vp.check_length(over, "big_conversation")
+    assert result["word_count"] == 400
+    assert result["over_word_hard_ceiling"] is True
+    assert result["within_word_target"] is False
+
+
+def test_check_length_within_target():
+    words = " ".join(["word"] * 300)  # inside 280-340 for big_conversation
+    result = vp.check_length(words, "big_conversation")
+    assert result["within_word_target"] is True
+    assert result["over_word_hard_ceiling"] is False
+
+
+def test_run_voice_chain_reports_word_and_paragraph_counts_for_every_stage(monkeypatch):
+    def fake_route(task_type, prompt, system="", model_override=None):
+        if task_type == "voice_shape":
+            return " ".join(["word"] * 300)  # inside big_conversation's band
+        if task_type == "voice_strip":
+            return " ".join(["word"] * 300) + "\n---CHANGES---\nNo changes."
+        raise AssertionError
+
+    monkeypatch.setattr(vp, "route", fake_route)
+    result = vp.run_voice_chain("big_conversation", generate_fn=lambda: "short stage 1 draft")
+
+    assert result["word_counts"]["stage1"] == 4
+    assert result["word_counts"]["stage2"] == 300
+    assert result["word_counts"]["stage3"] == 300
+    assert "paragraph_counts" in result
+    assert result["length_warnings"] == []
+
+
+def test_run_voice_chain_recuts_once_then_reports_if_still_over_ceiling(monkeypatch):
+    over_ceiling = " ".join(["word"] * 400)  # over big_conversation's 365 ceiling
+    shape_calls = {"n": 0}
+
+    def fake_route(task_type, prompt, system="", model_override=None):
+        if task_type == "voice_shape":
+            shape_calls["n"] += 1
+            if shape_calls["n"] == 2:
+                assert "do not compress by rewriting" in prompt.lower()
+            return over_ceiling  # stays over ceiling even after the re-cut pass
+        if task_type == "voice_strip":
+            return over_ceiling + "\n---CHANGES---\nNo changes."
+        raise AssertionError
+
+    monkeypatch.setattr(vp, "route", fake_route)
+    result = vp.run_voice_chain("big_conversation", generate_fn=lambda: "draft")
+
+    assert shape_calls["n"] == 2, "one initial shape call plus exactly one re-cut, never more"
+    assert result["length_warnings"], "must report the overage plainly, not pass it through silently"
+    assert any("hard ceiling" in w for w in result["length_warnings"])
+
+
+def test_run_voice_chain_recut_success_clears_the_warning(monkeypatch):
+    over_ceiling = " ".join(["word"] * 400)
+    under_ceiling = " ".join(["word"] * 300)
+    shape_calls = {"n": 0}
+
+    def fake_route(task_type, prompt, system="", model_override=None):
+        if task_type == "voice_shape":
+            shape_calls["n"] += 1
+            return over_ceiling if shape_calls["n"] == 1 else under_ceiling
+        if task_type == "voice_strip":
+            return under_ceiling + "\n---CHANGES---\nNo changes."
+        raise AssertionError
+
+    monkeypatch.setattr(vp, "route", fake_route)
+    result = vp.run_voice_chain("big_conversation", generate_fn=lambda: "draft")
+
+    assert shape_calls["n"] == 2
+    assert result["length_warnings"] == []
+    assert result["word_counts"]["stage2"] == 300
+
+
+def test_shape_blocks_instruct_aiming_at_the_middle_of_the_band():
+    assert "MIDDLE" in vp.BIG_CONVERSATION_SHAPE_BLOCK
+    assert "MIDDLE" in vp.BRAINS_TRUST_SHAPE_BLOCK
+    assert "middle of the target word band" in vp.SHAPE_TO_PUBLISHED_SYSTEM.lower()
 
 
 def test_run_voice_chain_never_collapses_stages_even_when_strip_makes_no_changes(monkeypatch):
