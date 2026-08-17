@@ -104,7 +104,7 @@ def test_existing_house_rules_survive():
     assert "invent" in _V, "never invent a figure or a bank"
 
 
-# ─── 17 Aug 2026 refresh — docs/voice-refresh-findings.md ───────────────────
+# ─── 17 Aug 2026 refresh - docs/voice-refresh-findings.md ───────────────────
 # These pin the genuine drift found across the 6 most recent published
 # editions. They EXTEND the 27 Jul rules above; none of those assertions were
 # weakened to add these.
