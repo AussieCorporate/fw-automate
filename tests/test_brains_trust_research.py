@@ -171,3 +171,20 @@ def test_non_list_source_pdf_ids_is_skipped_not_fatal(tmp_path, monkeypatch):
     ])
     rows = bt.load_angle_recommendations(root=str(tmp_path), weeks=3)
     assert len(rows) == 1 and rows[0]["pitch"] == "Valid PDF ids"
+
+
+# ─── Pool freshness (25 Aug 2026: the pool went 10 days stale silently) ─────
+
+
+def test_pool_freshness_reports_age_of_newest_folder(tmp_path, monkeypatch):
+    _frozen_today(tmp_path, monkeypatch, "20260825")
+    _write_candidates(str(tmp_path), "20260815", [])
+    _write_candidates(str(tmp_path), "backfill_20260801", [])
+    f = bt.pool_freshness(root=str(tmp_path))
+    assert f["newest_date_iso"] == "2026-08-15"
+    assert f["days_old"] == 10
+
+
+def test_pool_freshness_handles_an_empty_bank(tmp_path):
+    f = bt.pool_freshness(root=str(tmp_path))
+    assert f == {"newest_date_iso": None, "days_old": None}

@@ -80,6 +80,26 @@ def _pdf_dates(root: str, pdf_ids: set[int]) -> dict[int, tuple[str, str]]:
         return {}
 
 
+def pool_freshness(root: str | None = None) -> dict:
+    """How stale the angle pool is: the newest candidate folder's date and its
+    age in days. {"newest_date_iso": str|None, "days_old": int|None}.
+    Added 25 Aug 2026 - the pool went 10 days stale with no signal in the UI,
+    silently degrading the reader-relevance filter the angles were minted
+    under. Never raises."""
+    root = root or _DEFAULT_ROOT
+    try:
+        hits = glob.glob(os.path.join(root, "carousels", "*", "_candidates.json"))
+        dates = sorted((d for d in (_folder_date(p) for p in hits) if d), reverse=True)
+        if not dates:
+            return {"newest_date_iso": None, "days_old": None}
+        newest = dates[0]
+        newest_dt = datetime.strptime(newest, "%Y%m%d").replace(tzinfo=timezone.utc)
+        days_old = max(0, (datetime.now(timezone.utc) - newest_dt).days)
+        return {"newest_date_iso": _dir_date_iso(newest), "days_old": days_old}
+    except Exception:
+        return {"newest_date_iso": None, "days_old": None}
+
+
 def load_angle_recommendations(
     root: str | None = None, weeks: int = 3, limit: int = 40
 ) -> list[dict]:

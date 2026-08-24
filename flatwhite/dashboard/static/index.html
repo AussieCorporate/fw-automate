@@ -679,7 +679,8 @@ function loadPageData(page) {
       if (S.brainsAngles) return Promise.resolve();
       return api("/api/brains-trust/angles").then(function(d) {
         S.brainsAngles = d.angles || [];
-      }).catch(function() { S.brainsAngles = []; });
+        S.brainsPool = { newest: d.pool_newest || null, daysOld: d.pool_days_old, stale: !!d.pool_stale };
+      }).catch(function() { S.brainsAngles = []; S.brainsPool = null; });
     case "bank":
       return loadBankItems();
     default: return Promise.resolve();
@@ -1216,6 +1217,11 @@ function renderBrainsPicker() {
   h += '<div style="font-size:13px;color:var(--text-2);font-weight:600;">Recommended angles (last 3 weeks)</div>';
   h += '<button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;" onclick="runBrainsRefresh()"' + (_refreshing ? ' disabled' : '') + '>' + (_refreshing ? "Refreshing…" : "Refresh") + '</button>';
   h += '</div>';
+  if (S.brainsPool && S.brainsPool.stale) {
+    h += '<div style="font-size:12px;color:var(--warn,#b26a00);border:1px solid var(--warn,#b26a00);border-radius:8px;padding:8px 10px;margin-bottom:8px;">';
+    h += '⚠️ The research pool is <b>' + S.brainsPool.daysOld + ' days old</b> (newest folder: ' + esc(S.brainsPool.newest || '?') + '). Hit Refresh before trusting these picks - stale angles quietly miss the latest research.';
+    h += '</div>';
+  }
   if (S.brainsRefreshRun && S.brainsRefreshRun.status === "failed") {
     h += '<div style="font-size:11px;color:var(--warn,#b26a00);margin-bottom:8px;">Refresh failed: ' + esc(S.brainsRefreshRun.error || "unknown error") + '</div>';
     if (S.brainsRefreshRun.output_tail) { h += '<details style="margin-top:8px"><summary style="font-size:12px;color:var(--label2);cursor:pointer">Details</summary><pre class="bc-instruction" style="white-space:pre-wrap">' + esc(S.brainsRefreshRun.output_tail) + '</pre></details>'; }
@@ -1238,16 +1244,17 @@ function renderBrainsPicker() {
     var nPdfs = _brainsPooledPdfIds().length;
     h += '<div style="display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap;">';
     h += modelSelect('model-brains_trust','brains_trust');
-    h += '<button class="btn btn-primary" onclick="draftBrainsTrust()"' + (S.brainsDrafting ? ' disabled' : '') + '>' + (S.brainsDrafting ? "Drafting…" : ("Draft from " + picks.length + " angle" + (picks.length > 1 ? "s" : ""))) + '</button>';
+    h += '<button class="btn btn-primary" onclick="draftBrainsTrust()"' + (S.brainsDrafting ? ' disabled' : '') + '>' + (S.brainsDrafting ? "Drafting… (web research + 3-stage voice pass, can take a few minutes)" : ("Draft from " + picks.length + " angle" + (picks.length > 1 ? "s" : ""))) + '</button>';
     if (nPdfs) {
       h += '<button class="btn btn-secondary" onclick="emailBrainsSources()"' + (S.brainsEmailing ? ' disabled' : '') + '>' + (S.brainsEmailing ? "Sending…" : ("📎 Email me the source PDFs (" + nPdfs + ")")) + '</button>';
     }
     h += '</div>';
     h += '<div style="font-size:11px;color:var(--text-3);margin-top:6px;">Anchor: ' + esc(picks[0].pitch) + '. Emails you links to the ' + nPdfs + ' research email(s) behind all ' + picks.length + ' selected angle(s).</div>';
-    // Measured 27 Jul 2026: three angles drafted at 408 words against a
-    // 260-380 house range, so warn from three rather than four.
+    // Since 25 Aug 2026 the draft runs the full voice chain, so length is
+    // cut mechanically to the 240-320 band (hard ceiling 340) - a breach now
+    // arrives as a visible warning in the output rather than a long draft.
     if (picks.length > 2) {
-      h += '<div style="font-size:11px;color:var(--warn,#b26a00);margin-top:4px;">Heads up: Brains Trust runs 260-380 words. Three angles drafted at about 410 words in testing, so expect to trim. Check the word count on the output.</div>';
+      h += '<div style="font-size:11px;color:var(--warn,#b26a00);margin-top:4px;">Heads up: Brains Trust runs 240-320 words (hard ceiling 340). Three angles is a lot to fit - the pipeline cuts to length automatically, but check nothing important got squeezed out.</div>';
     }
   }
   h += '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--divider);">';

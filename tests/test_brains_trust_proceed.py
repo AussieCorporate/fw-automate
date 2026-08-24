@@ -22,15 +22,31 @@ from unittest.mock import patch
 import flatwhite.dashboard.api as api
 
 
-def _capture_route(monkeypatch):
+def _capture_route(monkeypatch, research="NOTHING_FOUND"):
+    """Stub every model call on the Brains Trust path.
+
+    Since 25 Aug 2026 the path runs the full voice chain (generate -> shape ->
+    strip) plus a web-research step, so this stubs: api.route (the GENERATE
+    stage - `captured` records that first call only), voice_pipeline.route
+    (shape + strip stages, passthrough), and model_router.web_research.
+    """
     captured = {}
+
     def fake_route(task_type, prompt, system="", model_override=None):
-        captured["task_type"] = task_type
-        captured["prompt"] = prompt
-        captured["system"] = system
-        captured["model_override"] = model_override
+        if "task_type" not in captured:  # first call = the GENERATE stage
+            captured["task_type"] = task_type
+            captured["prompt"] = prompt
+            captured["system"] = system
+            captured["model_override"] = model_override
         return "Drafted Brains Trust body."
+
+    import flatwhite.classify.voice_pipeline as vp
+    import flatwhite.model_router as mr
     monkeypatch.setattr(api, "route", fake_route)
+    monkeypatch.setattr(vp, "route",
+                        lambda task_type, prompt, system="", model_override=None:
+                        "Drafted Brains Trust body.")
+    monkeypatch.setattr(mr, "web_research", lambda *a, **k: research)
     monkeypatch.setattr(api, "list_available_models",
                          lambda: [{"id": "claude-sonnet-4-6"}])
     return captured
@@ -105,6 +121,38 @@ def test_proceed_brains_trust_custom_prompt_wins_over_own_text(monkeypatch):
     out = api._proceed_brains_trust(data, None, custom_prompt="Write exactly this.")
     assert out == "Drafted Brains Trust body."
     assert cap["prompt"] == "Write exactly this."
+
+
+def test_outside_research_findings_are_woven_into_the_prompt(monkeypatch):
+    """The editions Victor rates best blend the broker anchor with outside
+    sources (ABS, Nielsen, a named expert). The draft prompt must carry the
+    live web findings when the lookup succeeds."""
+    cap = _capture_route(
+        monkeypatch,
+        research="- Whey protein prices up fivefold in the UK (Financial Times, Aug 2026)")
+    api._proceed_brains_trust({"chosen_pitch": "Protein prices climbing"}, None)
+    assert "OUTSIDE RESEARCH" in cap["prompt"]
+    assert "Whey protein prices up fivefold" in cap["prompt"]
+
+
+def test_nothing_found_research_adds_no_block(monkeypatch):
+    cap = _capture_route(monkeypatch, research="NOTHING_FOUND")
+    api._proceed_brains_trust({"chosen_pitch": "Protein prices climbing"}, None)
+    assert "OUTSIDE RESEARCH" not in cap["prompt"]
+
+
+def test_failed_research_never_blocks_the_draft_and_says_so(monkeypatch):
+    """Research is an enrichment: if the web lookup dies, the piece drafts
+    broker-only, with an honest note rather than a silent gap."""
+    captured = _capture_route(monkeypatch)
+    import flatwhite.model_router as mr
+    def _boom(*a, **k):
+        raise RuntimeError("web search unavailable")
+    monkeypatch.setattr(mr, "web_research", _boom)
+    out = api._proceed_brains_trust({"chosen_pitch": "Protein prices climbing"}, None)
+    assert "Drafted Brains Trust body." in out
+    assert "broker-research only" in out
+    assert "OUTSIDE RESEARCH" not in captured["prompt"]
 
 
 def test_brains_trust_registered_in_proceed_fns():

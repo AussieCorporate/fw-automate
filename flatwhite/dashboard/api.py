@@ -1762,12 +1762,22 @@ def api_brains_trust_angles() -> JSONResponse:
     fails soft to an empty list on any error (missing folder, bad JSON,
     locked DB, or anything else) so a research-bank outage never blocks
     Victor picking an angle from whatever else is available."""
-    from flatwhite.dashboard.brains_trust_research import load_angle_recommendations
+    from flatwhite.dashboard.brains_trust_research import load_angle_recommendations, pool_freshness
     try:
         angles = load_angle_recommendations(weeks=3)
     except Exception:
         angles = []
-    return JSONResponse({"angles": angles})
+    freshness = pool_freshness()
+    days_old = freshness.get("days_old")
+    return JSONResponse({
+        "angles": angles,
+        "pool_newest": freshness.get("newest_date_iso"),
+        "pool_days_old": days_old,
+        # 7 days: the pool refreshes off the weekly research flow, so anything
+        # older than a week means the refresh hasn't run and Victor should hit
+        # the Refresh button before trusting the picks.
+        "pool_stale": days_old is not None and days_old > 7,
+    })
 
 
 @app.post("/api/brains-trust/refresh")
@@ -2377,25 +2387,36 @@ def _proceed_brains_trust(data: dict, model: str | None, custom_prompt: str | No
     }
     """
     from flatwhite.classify.prompts import BRAINS_TRUST_VOICE
+    from flatwhite.classify.voice_pipeline import run_voice_chain
 
     override = _safe_override(model)
 
     if custom_prompt:
-        return route(task_type="brains_trust", prompt=custom_prompt, system=BRAINS_TRUST_VOICE, model_override=override)
+        # Free-form custom prompts skip SHAPE (their output may not be a
+        # standard-shaped piece) but still get the GPT-5.4 strip.
+        draft = route(task_type="brains_trust", prompt=custom_prompt, system=BRAINS_TRUST_VOICE, model_override=override)
+        return _strip_only(draft)
 
     own_text = (data.get("own_text") or "").strip()
     if own_text:
+        outside_block, research_error = _brains_trust_outside_block(own_text[:1500])
         prompt = (
             "Write this week's Brains Trust (also called the Economic Scoop) "
             "section for the Flat White newsletter.\n\n"
             "SOURCE MATERIAL (write from this; it replaces the research bank "
             "for this piece):\n"
             f"{own_text}\n\n"
+            f"{outside_block}"
             "Output ONLY the Brains Trust body text. No title. No sign-off. "
             "Ground every claim in the source material above; do not invent "
             "figures."
         )
-        return route(task_type="brains_trust", prompt=prompt, system=BRAINS_TRUST_VOICE, model_override=override)
+        chain = run_voice_chain(
+            "brains_trust",
+            lambda: route(task_type="brains_trust", prompt=prompt,
+                          system=BRAINS_TRUST_VOICE, model_override=override),
+        )
+        return _chain_result_text(chain) + _research_note(research_error)
 
     angles = _selected_angles(data)
     pool = data.get("candidates_pool") or []
@@ -2445,6 +2466,11 @@ def _proceed_brains_trust(data: dict, model: str | None, custom_prompt: str | No
             + (f"Why it matters to readers: {a['why_tac']}\n" if a["why_tac"] else "")
         )
 
+    topic_for_research = "\n".join(
+        f"{a.get('pitch', '')} - {a.get('angle', '')}" for a in angles if a.get("pitch")
+    ) or (data.get("chosen_pitch") or "")
+    outside_block, research_error = _brains_trust_outside_block(topic_for_research)
+
     prompt = (
         "Write this week's Brains Trust (also called the Economic Scoop) section "
         "for the Flat White newsletter.\n\n"
@@ -2452,10 +2478,77 @@ def _proceed_brains_trust(data: dict, model: str | None, custom_prompt: str | No
         "RESEARCH BANK FROM THE LAST 3 WEEKS (consolidate whatever is relevant "
         "to the angles above; ignore anything unrelated):\n"
         f"{pool_block}\n\n"
+        f"{outside_block}"
         "Output ONLY the Brains Trust body text. No title. No sign-off. "
         "Ground every claim in the research bank; do not invent figures."
     )
-    return route(task_type="brains_trust", prompt=prompt, system=BRAINS_TRUST_VOICE, model_override=override)
+    chain = run_voice_chain(
+        "brains_trust",
+        lambda: route(task_type="brains_trust", prompt=prompt,
+                      system=BRAINS_TRUST_VOICE, model_override=override),
+    )
+    return _chain_result_text(chain) + _research_note(research_error)
+
+
+def _brains_trust_outside_block(topic_text: str) -> tuple[str, str | None]:
+    """Live web research on the chosen topic, formatted as a prompt block.
+
+    Added 25 Aug 2026. The research bank is broker PDFs only; the editions
+    Victor rates best (24 Aug: protein prices) blend that anchor with outside
+    sources - ABS, consumer data, overseas price moves, a named expert. This
+    step gathers those at draft time via the Anthropic web_search tool.
+
+    Returns (block, error). On any failure the block is empty and the error
+    is a plain-English string - the draft proceeds broker-only, never blocked.
+    """
+    topic_text = (topic_text or "").strip()
+    if not topic_text:
+        return "", None
+    from flatwhite.model_router import web_research
+
+    research_prompt = (
+        "You are gathering OUTSIDE research for a data-led Australian corporate "
+        "newsletter segment. The segment's anchor is broker research on this "
+        "topic:\n\n"
+        f"{topic_text}\n\n"
+        "Search the web for material from OUTSIDE broker research, published "
+        "in roughly the last three months, that bears on this topic: official "
+        "statistics (ABS, RBA, Treasury), industry and consumer data "
+        "(Nielsen, CoreLogic, Fitch and the like), price or consumption "
+        "moves here or overseas, and named-expert or academic commentary.\n\n"
+        "Return 4-8 findings as plain bullets. Each bullet: the finding with "
+        "its concrete figure(s), the source institution or the named expert, "
+        "and the month/year. Only report what you actually found in the "
+        "search results - never fill a gap with something you merely believe. "
+        "No introduction, no commentary, just the bullets. If nothing "
+        "genuinely relevant turns up, output exactly: NOTHING_FOUND"
+    )
+    try:
+        findings = web_research(research_prompt).strip()
+    except Exception as exc:  # noqa: BLE001 - research is an enrichment, never a blocker
+        return "", str(exc)
+    if not findings or "NOTHING_FOUND" in findings:
+        return "", None
+    block = (
+        "OUTSIDE RESEARCH (live web findings gathered just now, sources "
+        "named per bullet):\n"
+        f"{findings}\n\n"
+        "Weave in the outside findings that genuinely bear on the thesis - "
+        "the best editions blend the broker anchor with one or two outside "
+        "sources. Attribute them plainly ('ABS figures show', 'One nutrition "
+        "researcher compared...'). The broker research stays the anchor; "
+        "skip any outside finding that doesn't serve the piece.\n\n"
+    )
+    return block, None
+
+
+def _research_note(research_error: str | None) -> str:
+    if not research_error:
+        return ""
+    return (
+        "\n\n[NOTE: live outside-research lookup failed this run "
+        f"({research_error}), so this piece is broker-research only.]"
+    )
 
 
 # ── Proceed section endpoint ──────────────────────────────────────────────────

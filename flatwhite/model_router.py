@@ -219,6 +219,38 @@ def route(task_type: str, prompt: str, system: str = "", model_override: str | N
     raise last_error
 
 
+def web_research(prompt: str, system: str = "", max_searches: int = 5) -> str:
+    """One-shot research call using the Anthropic API's server-side web_search
+    tool (the model searches the live web and answers from what it finds).
+
+    Added 25 Aug 2026 for the Brains Trust outside-research step: the research
+    bank is broker PDFs only, and the editions Victor rates best blend that
+    anchor with outside sources (ABS, consumer data, named experts). Uses the
+    existing ANTHROPIC_API_KEY; callers must treat failure as "no outside
+    research this run", never as a reason to block the draft.
+    """
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise ValueError("No API key configured for web research (set ANTHROPIC_API_KEY)")
+    import anthropic
+    client = anthropic.Anthropic(api_key=api_key)
+    response = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=4096,
+        system=system if system else "",
+        messages=[{"role": "user", "content": prompt}],
+        tools=[{"type": "web_search_20250305", "name": "web_search",
+                "max_uses": max_searches}],
+    )
+    text = "\n".join(
+        block.text for block in response.content
+        if getattr(block, "type", "") == "text"
+    ).strip()
+    if not text:
+        raise ValueError("Web research returned no text content")
+    return text
+
+
 def call_gemini_flash(prompt: str, system: str = "", temperature: float = 0.3) -> str:
     """Legacy wrapper. Calls Gemini 2.5 Flash with retry."""
     last_error: Exception | None = None

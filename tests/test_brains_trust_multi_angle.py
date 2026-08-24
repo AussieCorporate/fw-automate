@@ -18,16 +18,26 @@ import flatwhite.dashboard.api as api
 
 
 def _capture_route(monkeypatch):
+    # Stubs the whole 25-Aug voice-chain path: api.route captures the first
+    # (GENERATE) call; voice_pipeline.route covers shape+strip; web_research
+    # is stubbed so no test ever touches the live web.
     captured = {}
 
     def fake_route(task_type, prompt, system="", model_override=None):
-        captured["task_type"] = task_type
-        captured["prompt"] = prompt
-        captured["system"] = system
-        captured["model_override"] = model_override
+        if "task_type" not in captured:
+            captured["task_type"] = task_type
+            captured["prompt"] = prompt
+            captured["system"] = system
+            captured["model_override"] = model_override
         return "Drafted Brains Trust body."
 
+    import flatwhite.classify.voice_pipeline as vp
+    import flatwhite.model_router as mr
     monkeypatch.setattr(api, "route", fake_route)
+    monkeypatch.setattr(vp, "route",
+                        lambda task_type, prompt, system="", model_override=None:
+                        "Drafted Brains Trust body.")
+    monkeypatch.setattr(mr, "web_research", lambda *a, **k: "NOTHING_FOUND")
     monkeypatch.setattr(api, "list_available_models",
                         lambda: [{"id": "claude-sonnet-4-6"}])
     return captured
