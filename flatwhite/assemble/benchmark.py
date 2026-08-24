@@ -44,6 +44,10 @@ _SEGMENT_MATCHERS: dict[str, dict[str, list[str]]] = {
     # (see ANALYSIS.md "structural drift" note) — both count toward
     # "brains_trust", the real FW dashboard section id for this segment.
     "brains_trust":     {"include": ["THE BRAINS TRUST", "THE ECONOMIC SCOOP"], "exclude": []},
+    # Added 25 Aug 2026 with their dashboard/assembly counterparts.
+    "auscorp_events":   {"include": ["AUSCORP EVENTS"], "exclude": []},
+    "salary_survey":    {"include": ["SALARY SURVEY"], "exclude": []},
+    "odd_picks":        {"include": ["ODD PICKS"], "exclude": []},
 }
 
 

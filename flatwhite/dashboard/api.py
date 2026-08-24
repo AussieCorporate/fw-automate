@@ -1587,6 +1587,9 @@ _REAL_SEGMENT_HEADINGS: dict[str, str] = {
     "off_the_clock": "OFF THE CLOCK",
     "thread": "THREAD OF THE WEEK - r/AUSCORP",
     "big_conversation": "THE BIG CONVERSATION",
+    # Added 25 Aug 2026: in 10/10 real editions but the dashboard never knew
+    # it existed. A simple editable card page, filled by hand each week.
+    "auscorp_events": "AUSCORP EVENTS",
 }
 
 # Identical every week per beehiiv_fw_ground_truth_ANALYSIS.md ("the only
@@ -1680,6 +1683,19 @@ async def api_assemble_edition(request: Request) -> JSONResponse:
     if sponsor_wanted and not sponsor_included:
         missing_ready.append("sponsor")
 
+    # Salary Survey promo: a reusable block, on ~6/10 real editions. Handled
+    # at assembly like the sponsor (include-toggle + editable text) rather
+    # than as a running-order segment, so a no-promo week never blocks the
+    # editorial gate. Added 25 Aug 2026.
+    survey = body.get("salary_survey") or {}
+    if survey.get("include") and (survey.get("text") or "").strip():
+        blocks.append({
+            "section": "salary_survey",
+            "label": "2026 AUSCORP SALARY SURVEY",
+            "html": format_segment_block("2026 AUSCORP SALARY SURVEY", survey["text"].strip()),
+            "benchmark": benchmark_segment("salary_survey", survey["text"].strip()),
+        })
+
     # Odd Picks + Feedback Loop: handled at assembly, not as running-order work
     # pages (per spec). Odd Picks only when Victor supplied text; Feedback Loop
     # always, as fixed boilerplate.
@@ -1701,6 +1717,15 @@ async def api_assemble_edition(request: Request) -> JSONResponse:
                       "target_max": None, "n_editions": 0},
     })
 
+    # "Missed last week's newsletter?" footer (7/10 real editions, always
+    # dead last): auto-filled from the most recent published FW edition via
+    # the beehiiv API. Fails soft - a beehiiv outage just means no footer
+    # this run, reported via missed_last_week_included (its own field, not
+    # missing_ready, which is for running-order segments).
+    missed = _missed_last_week_block()
+    if missed:
+        blocks.append(missed)
+
     assembled_html = "".join(b["html"] for b in blocks)
 
     return JSONResponse({
@@ -1709,7 +1734,137 @@ async def api_assemble_edition(request: Request) -> JSONResponse:
         "assembled_html": assembled_html,
         "missing_ready": missing_ready,
         "sponsor_included": sponsor_included,
+        "missed_last_week_included": bool(missed),
     })
+
+
+# The Flat White publication on beehiiv. Deliberately a constant, not the
+# BEEHIIV_PUB_ID env var - that env var points at Pick & Scroll (it feeds the
+# Top Picks scrape); this one is Flat White itself.
+_FW_BEEHIIV_PUB_ID = "pub_6210ff81-d440-4e09-916d-42fe436f0d05"
+
+
+def _latest_published_edition() -> dict | None:
+    """{"title": str, "url": str} for the most recent published FW edition,
+    or None on any failure (no key, network, API change)."""
+    import requests as _requests
+
+    key = os.getenv("BEEHIIV_API_KEY")
+    if not key:
+        return None
+    try:
+        r = _requests.get(
+            f"https://api.beehiiv.com/v2/publications/{_FW_BEEHIIV_PUB_ID}/posts",
+            headers={"Authorization": f"Bearer {key}"},
+            params={"status": "confirmed", "limit": 1,
+                    "order_by": "publish_date", "direction": "desc"},
+            timeout=15,
+        )
+        r.raise_for_status()
+        posts = r.json().get("data") or []
+        if not posts:
+            return None
+        p = posts[0]
+        title, url = p.get("title"), p.get("web_url")
+        return {"title": title, "url": url} if title and url else None
+    except Exception:
+        return None
+
+
+def _missed_last_week_block() -> dict | None:
+    """The auto-built "Missed last week's newsletter?" footer block, or None
+    when the last edition can't be fetched. Added 25 Aug 2026 - in 7/10 real
+    editions but never produced by the dashboard."""
+    from flatwhite.assemble.beehiiv_format import format_segment_block
+
+    latest = _latest_published_edition()
+    if not latest:
+        return None
+    label = "MISSED LAST WEEK'S NEWSLETTER?"
+    text = f"[{latest['title']}]({latest['url']})"
+    return {"section": "missed_last_week", "label": label,
+            "html": format_segment_block(label, text),
+            "benchmark": {"status": "no_data", "word_count": None,
+                          "target_avg": None, "target_min": None,
+                          "target_max": None, "n_editions": 0}}
+
+
+@app.post("/api/edition-meta")
+async def api_edition_meta(request: Request) -> JSONResponse:
+    """Generate the edition's subject line + preview text, calibrated on the
+    real published titles. Added 25 Aug 2026 - this existed only in the dead
+    Composer path before.
+
+    Body: {"model": str | None}. Reads this week's saved editorial intro and
+    Big Conversation from section_outputs.
+    Returns: {"subject": str, "preview": str}
+    """
+    from flatwhite.db import load_all_section_outputs
+
+    body = await request.json()
+    override = _safe_override(body.get("model") or None)
+    week_iso = get_current_week_iso()
+    outputs = load_all_section_outputs(week_iso)
+    intro = (outputs.get("editorial") or {}).get("output_text", "")
+    bigconv = (outputs.get("big_conversation") or {}).get("output_text", "")
+    if not intro and not bigconv:
+        return JSONResponse(
+            {"error": "Nothing to write a subject from yet - draft the "
+                      "editorial intro or the Big Conversation first."},
+            status_code=400)
+
+    real_titles = _real_edition_titles()
+    prompt = (
+        "Write the email subject line and preview text for this week's Flat "
+        "White newsletter.\n\n"
+        "REAL SUBJECT LINES FROM PUBLISHED EDITIONS - match this register "
+        "exactly (short, plain, usually riffing on the Big Conversation "
+        "topic, often a question or a blunt verdict, never clickbait or "
+        "colon-subtitle constructions):\n"
+        + "\n".join(f"- {t}" for t in real_titles) + "\n\n"
+        "THIS WEEK'S BIG CONVERSATION:\n" + (bigconv or "(not written yet)") + "\n\n"
+        "THIS WEEK'S INTRO:\n" + (intro or "(not written yet)") + "\n\n"
+        "Rules: subject under 8 words, no em dashes, Australian English, "
+        "no emoji. Preview text: one sentence, under 15 words, teasing the "
+        "edition without repeating the subject.\n\n"
+        "Output EXACTLY two lines:\n"
+        "SUBJECT: <subject>\n"
+        "PREVIEW: <preview>"
+    )
+    try:
+        raw = route(task_type="hook", prompt=prompt,
+                    system="You write email subject lines for The Aussie Corporate's Flat White newsletter.",
+                    model_override=override)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+    subject = preview = ""
+    for line in raw.splitlines():
+        if line.strip().upper().startswith("SUBJECT:"):
+            subject = line.split(":", 1)[1].strip()
+        elif line.strip().upper().startswith("PREVIEW:"):
+            preview = line.split(":", 1)[1].strip()
+    if not subject:
+        return JSONResponse({"error": f"Model returned an unexpected shape: {raw[:200]}"}, status_code=500)
+    return JSONResponse({"subject": strip_reader_dashes(subject),
+                         "preview": strip_reader_dashes(preview),
+                         "week_iso": week_iso})
+
+
+def _real_edition_titles() -> list[str]:
+    """Published FW titles for subject-line calibration: the parsed corpus
+    plus a hardcoded tail of recent editions (the corpus ends 6 Jul 2026)."""
+    titles: list[str] = []
+    try:
+        import json as _json
+        gt = _json.loads((Path(__file__).resolve().parents[2] / "data" / "beehiiv_fw_ground_truth.json").read_text())
+        titles = [e.get("title", "") for e in gt if e.get("title")]
+    except Exception:
+        pass
+    titles += ["Thank you for applying to this role", "When your boss calls you 'babe'",
+               "To tell or not to tell", "Verbal offers don't mean jack",
+               "Cover letter, yes or no?"]
+    return [t for t in titles if t][-12:]
 
 
 # ── Brains Trust angle pool (read-only Trading Strategy research bank) ──────

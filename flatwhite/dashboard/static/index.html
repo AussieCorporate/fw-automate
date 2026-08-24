@@ -768,6 +768,12 @@ var SEGMENTS = [
   // defaults to "manual" rather than "notready".
   { id: "thread",           name: "Thread of the Week",  status: "manual" },
   { id: "big_conversation", name: "Big Conversation",    status: "notready" },
+  // AusCorp Events: in 10/10 published editions but missing from the dash
+  // until 25 Aug 2026. A simple editable card, filled by hand each week.
+  // (The Salary Survey promo, ~6/10 editions, lives on the Assemble page as
+  // an include-toggle like the sponsor, so a no-promo week never blocks the
+  // editorial gate.)
+  { id: "auscorp_events",   name: "AusCorp Events",      status: "notready" },
 ];
 
 // The segments with a real, already-built section behind them today.
@@ -775,7 +781,7 @@ var SEGMENTS = [
 // below fetches its data via loadPageData() before rendering — Content bank
 // is not one of the running-order SEGMENTS, has no ready/not-ready concept,
 // and _segmentStatus() is never called with it, so this addition is safe.
-var _REAL_SEGMENTS = { editorial: 1, pulse: 1, big_conversation: 1, off_the_clock: 1, top_picks: 1, insidetrack: 1, brains_trust: 1, bank: 1 };
+var _REAL_SEGMENTS = { editorial: 1, pulse: 1, big_conversation: 1, off_the_clock: 1, top_picks: 1, insidetrack: 1, brains_trust: 1, auscorp_events: 1, bank: 1 };
 var _SEGMENT_TITLES = { bank: "Content bank", sources: "Sources", assemble: "Assemble to beehiiv" };
 var _dragFromIndex = null;
 
@@ -996,6 +1002,7 @@ function render() {
       case "editorial": renderEditorial(bodyEl); break;
       case "thread": renderThread(bodyEl); break;
       case "brains_trust": renderBrains(bodyEl); break;
+      case "auscorp_events": renderAusCorpEvents(bodyEl); break;
       case "assemble": renderAssemble(bodyEl); break;
       case "bank": renderBank(bodyEl); break;
       default:
@@ -1079,6 +1086,31 @@ function proceedEditorial() {
   api("/api/proceed-section", { method: "POST", body: { section: "editorial", model: model, data: data } })
     .then(function(d) { S.sectionOutputs.editorial = { output_text: d.output, model_used: d.model }; S.loading.editorial = false; render(); fillOutput('editorial'); showToast("Editorial written"); })
     .catch(function(e) { S.loading.editorial = false; render(); showToast("Error: " + e.message, "error"); });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SECTION: AUSCORP EVENTS (added 25 Aug 2026)
+   A simple editable card: Victor types the week's events, saves, marks
+   ready. Images are added in beehiiv. Template matches the published shape.
+   ═══════════════════════════════════════════════════════════════════════ */
+var AUSCORP_EVENTS_TEMPLATE =
+  "* **AusCorp Runs | Sydney | Coming Soon** 👀\n\n" +
+  "* **AusCorp Singles Event | Sydney | Coming Soon** 👀";
+
+function renderAusCorpEvents(el) {
+  var h = '<div class="sh"><div><h2>AusCorp Events</h2><div class="sub">The week\'s events block. Type it, Save, Mark ready. Event posters/photos get added in beehiiv.</div></div></div>';
+  h += '<div class="card mb20">';
+  h += '<button class="btn btn-sm btn-secondary mb8" onclick="fillEventsTemplate()">Insert template</button>';
+  h += outputBox('auscorp_events');
+  h += '</div>';
+  el.innerHTML = h;
+  fillOutput('auscorp_events');
+}
+
+function fillEventsTemplate() {
+  var ta = $("output-auscorp_events");
+  if (ta && !ta.value.trim()) { ta.value = AUSCORP_EVENTS_TEMPLATE; }
+  else if (ta) { showToast("There's already text - clear it first if you want the template", "error"); }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -3110,11 +3142,33 @@ function renderAssemble(el) {
   h += '<textarea class="form-input mb8" id="asm-sponsor-text" placeholder="Sponsor pitch text..." oninput="S.assembleSponsorText=this.value">' + esc(S.assembleSponsorText || "") + '</textarea>';
   h += '<textarea class="form-input mb8" id="asm-odd-picks" placeholder="Odd Picks from last week (optional, one per line)..." oninput="S.assembleOddPicks=this.value">' + esc(S.assembleOddPicks || "") + '</textarea>';
 
+  // Salary Survey promo: reusable block on ~6/10 editions. Like the sponsor,
+  // an include-toggle here rather than a running-order segment (25 Aug 2026).
+  if (S.assembleSurveyText === undefined) S.assembleSurveyText = SALARY_SURVEY_TEMPLATE;
+  h += '<div class="fb mb8"><label><input type="checkbox" id="asm-survey-on" onchange="S.assembleSurveyOn=this.checked"' +
+       (S.assembleSurveyOn ? ' checked' : '') + '> Include Salary Survey promo this week</label></div>';
+  h += '<textarea class="form-input mb8" id="asm-survey-text" oninput="S.assembleSurveyText=this.value">' + esc(S.assembleSurveyText) + '</textarea>';
+
   h += '<button class="btn btn-primary mb8" onclick="buildAssembly()">Build assembly</button>';
+
+  // Subject line + preview text: lived only in the dead Composer before
+  // (25 Aug 2026). Uses this week's saved intro + Big Conversation.
+  h += '<div class="card mb20" style="margin-top:8px;">';
+  h += '<div style="font-size:13px;font-weight:600;margin-bottom:6px;">Subject line + preview text</div>';
+  h += '<button class="btn btn-sm btn-secondary mb8" onclick="generateEditionMeta()"' + (S.editionMetaLoading ? ' disabled' : '') + '>' + (S.editionMetaLoading ? 'Generating…' : 'Generate from intro + Big Conversation') + '</button>';
+  if (S.editionMeta) {
+    h += '<input class="form-input mb8" value="' + escAttr(S.editionMeta.subject || "") + '" onfocus="this.select()">';
+    h += '<input class="form-input mb8" value="' + escAttr(S.editionMeta.preview || "") + '" onfocus="this.select()">';
+    h += '<p style="font-size:11px;color:var(--text-3);margin:0;">Copy these into beehiiv\'s subject and preview fields. Edit freely first.</p>';
+  }
+  h += '</div>';
 
   if (S.assembly) {
     if (S.assembly.missing_ready.length) {
       h += '<p class="assemble-missing">Not ready / no saved output: ' + esc(S.assembly.missing_ready.join(", ")) + '</p>';
+    }
+    if (S.assembly.missed_last_week_included === false) {
+      h += '<p class="assemble-missing">Could not fetch last week\'s edition from beehiiv, so the "Missed last week\'s newsletter?" footer is not included - add it by hand.</p>';
     }
     S.assembly.blocks.forEach(function(b) {
       var bm = b.benchmark;
@@ -3131,20 +3185,37 @@ function renderAssemble(el) {
   el.innerHTML = h;
 }
 
+// The standard promo copy from the published editions; editable per week.
+var SALARY_SURVEY_TEMPLATE =
+  "We're still collecting anonymous salary data for [our biggest survey yet](https://tally.so/r/J9eqvo) " +
+  "and the more people who contribute, the harder it gets for anyone to be underpaid without knowing it. " +
+  "Anonymous, takes 2 minutes and the results go straight back to the community.\n\n" +
+  "**[Submit your salary](https://tally.so/r/J9eqvo)**";
+
 function buildAssembly() {
   S.assembleSponsorOn = $("asm-sponsor-on").checked;
   S.assembleSponsorName = $("asm-sponsor-name").value;
   S.assembleSponsorText = $("asm-sponsor-text").value;
   S.assembleOddPicks = $("asm-odd-picks").value;
+  S.assembleSurveyOn = $("asm-survey-on").checked;
+  S.assembleSurveyText = $("asm-survey-text").value;
 
   api("/api/assemble-edition", { method: "POST", body: {
     segments: SEGMENTS.map(function(s) { return { id: s.id, status: _segmentStatus(s) }; }),
     sponsor: { include: S.assembleSponsorOn, name: S.assembleSponsorName, text: S.assembleSponsorText },
     odd_picks_text: S.assembleOddPicks,
+    salary_survey: { include: S.assembleSurveyOn, text: S.assembleSurveyText },
   }}).then(function(d) {
     S.assembly = d;
     render();
   }).catch(function(e) { showToast("Assemble failed: " + e.message, "error"); });
+}
+
+function generateEditionMeta() {
+  S.editionMetaLoading = true; render();
+  api("/api/edition-meta", { method: "POST", body: { model: null } })
+    .then(function(d) { S.editionMeta = d; S.editionMetaLoading = false; render(); showToast("Subject + preview generated"); })
+    .catch(function(e) { S.editionMetaLoading = false; render(); showToast("Error: " + e.message, "error"); });
 }
 
 function copyAssembledHtml() {

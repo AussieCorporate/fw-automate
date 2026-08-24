@@ -26,7 +26,11 @@ def assemble_client(tmp_path: Path):
         db_module.save_section_output(week_iso, "thread", "#### [_**Bunking with a colleague**_](https://reddit.com/x)\n\nA thread.", "m")
         import flatwhite.dashboard.api as api_module
         from fastapi.testclient import TestClient
-        yield TestClient(api_module.app), week_iso
+        # The missed-last-week footer fetches the latest published edition
+        # from beehiiv; tests never touch the network, so default to "fetch
+        # failed" (None). Tests that want the footer patch this themselves.
+        with patch.object(api_module, "_latest_published_edition", lambda: None):
+            yield TestClient(api_module.app), week_iso
 
 
 _BASE_SEGMENTS = [
@@ -178,3 +182,54 @@ def test_no_ready_segments_returns_empty_blocks_not_error(assemble_client):
     assert resp.status_code == 200
     # Furniture (feedback loop) still present even with zero real segments.
     assert resp.json()["blocks"][-1]["section"] == "feedback_loop"
+
+
+# ─── 25 Aug 2026 additions: salary survey, missed-last-week, events ─────────
+
+
+def test_salary_survey_included_only_when_toggled_on(assemble_client):
+    client, _ = assemble_client
+    resp_without = client.post("/api/assemble-edition", json={"segments": _BASE_SEGMENTS})
+    assert "salary_survey" not in [b["section"] for b in resp_without.json()["blocks"]]
+
+    resp_with = client.post("/api/assemble-edition", json={
+        "segments": _BASE_SEGMENTS,
+        "salary_survey": {"include": True, "text": "Submit your salary [HERE](https://tally.so/r/J9eqvo)."},
+    })
+    sections = [b["section"] for b in resp_with.json()["blocks"]]
+    assert "salary_survey" in sections
+    survey_block = next(b for b in resp_with.json()["blocks"] if b["section"] == "salary_survey")
+    assert "2026 AUSCORP SALARY SURVEY" in survey_block["label"]
+
+
+def test_missed_last_week_footer_auto_built_from_latest_edition(assemble_client, monkeypatch):
+    client, _ = assemble_client
+    import flatwhite.dashboard.api as api_module
+    monkeypatch.setattr(api_module, "_latest_published_edition",
+                        lambda: {"title": "Cover letter, yes or no?",
+                                 "url": "https://theaussiecorporate.beehiiv.com/p/cover-letter-yes-or-no"})
+    resp = client.post("/api/assemble-edition", json={"segments": _BASE_SEGMENTS})
+    body = resp.json()
+    assert body["missed_last_week_included"] is True
+    assert body["blocks"][-1]["section"] == "missed_last_week"
+    assert "Cover letter, yes or no?" in body["blocks"][-1]["html"]
+
+
+def test_missed_last_week_fetch_failure_is_reported_not_silent(assemble_client):
+    client, _ = assemble_client
+    resp = client.post("/api/assemble-edition", json={"segments": _BASE_SEGMENTS})
+    body = resp.json()
+    assert body["missed_last_week_included"] is False
+    assert "missed_last_week" not in [b["section"] for b in body["blocks"]]
+
+
+def test_auscorp_events_is_a_real_running_order_segment(assemble_client):
+    client, week_iso = assemble_client
+    db_module.save_section_output(week_iso, "auscorp_events",
+                                  "* **AusCorp Runs | Sydney | Coming Soon**", "manual")
+    segments = _BASE_SEGMENTS + [{"id": "auscorp_events", "status": "ready"}]
+    resp = client.post("/api/assemble-edition", json={"segments": segments})
+    blocks = resp.json()["blocks"]
+    events = next((b for b in blocks if b["section"] == "auscorp_events"), None)
+    assert events is not None
+    assert "AUSCORP EVENTS" in events["label"]
