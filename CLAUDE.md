@@ -67,6 +67,16 @@ What he cut, and the rules that replaced it:
 LENGTH is now 240-320 words with a hard 340 ceiling. The old 260-380 band let
 drafts reach 400+.
 
+## Big Conversation register rule (24 Aug 2026, from Victor's edits)
+
+The drafts' failure mode is OVER-ENGINEERING, not just scaffolding: every paragraph
+ending on a quotable line, coined phrases where ordinary idioms exist. Victor's edits
+always go from clever to ordinary ("can't untell them" -> "can't take it back"). The
+house voice actively uses common idioms/cliches ("dodged a bullet", "red flag") and
+plain connective openers. Full evidence-based spec: `docs/big-conversation-published-spec.md`.
+Enforced in the skill's `generate-prompt.md` (REGISTER section) and
+`voice_pipeline.py` catalogue entries 24-26. Do not re-polish these rules from theory.
+
 ## FW editorial intro — no skill exists yet (13 Jul 2026, from Victor)
 
 The Flat White editorial introduction skill now EXISTS: ~/.claude/skills/flat-white-intro/SKILL.md (built 13 Jul 2026 from the real published format — source: data/beehiiv_fw_ground_truth.json, 10 real editions, segment-parsed). The dash's _proceed_editorial should be recalibrated against that skill + corpus before being trusted.

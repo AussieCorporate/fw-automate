@@ -362,7 +362,11 @@ STRIP_CLAUDE_PHRASING_SYSTEM = (
     "re-say what the draft already says.\n"
     "- NO NEW FIGURE OF SPEECH. No fresh antithesis, no balanced pair, no "
     "aphorism, no em dash, no punchy closer. Replacing one engineered "
-    "pattern with a cleverer one is the failure this stage exists to catch.\n"
+    "pattern with a cleverer one is the failure this stage exists to catch. "
+    "The ONE exception: a common spoken idiom (the phrase everyone already "
+    "says - 'take it back', 'dodged a bullet', 'red flag') is ALLOWED as a "
+    "replacement, and for catalogue entry 25 it is the required fix. The "
+    "ordinary idiom is the house voice; only FRESH phrasing is banned.\n"
     "- PLAIN ANGLO words in the plainest order that carries the meaning. If "
     "your rewrite is more elegant than the sentence it replaces, it is "
     "wrong - make it plainer.\n"
@@ -511,7 +515,21 @@ CLAUDE_TELL_CATALOGUE = '''\
 
     PSEUDO-ANALYTIC VERBS: "delve into", "dive into", "deep dive", "unpack", "explore the nuances", "navigate the landscape", "navigate the complexities", "underscores", "highlights the need for", "sheds light on", "serves as a reminder", "serves as a testament", "stands as a testament", "a testament to", "speaks volumes", "plays a crucial role", "plays a pivotal role", "plays a vital role", "raises important questions", "begs the question".
 
-    ABSTRACTION NOUNS AND CORPORATE GLOSS: "landscape" (figurative), "ecosystem" (figurative), "tapestry", "myriad", "plethora", "realm", "journey" (figurative), "paradigm shift", "game-changer", "key takeaway", "actionable insights", "best-in-class", "seamless", "robust", "leverage" (verb), "foster", "boasts", "a stark reminder", "a double-edged sword", "the elephant in the room", "a perfect storm".
+    ABSTRACTION NOUNS AND CORPORATE GLOSS: "landscape" (figurative), "ecosystem" (figurative), "tapestry", "myriad", "plethora", "realm", "journey" (figurative), "paradigm shift", "game-changer", "key takeaway", "actionable insights", "best-in-class", "seamless", "robust", "leverage" (verb), "foster", "boasts", "a stark reminder", "the elephant in the room", "a perfect storm".
+    (Removed from this list 24 Aug 2026: "a double-edged sword" - Victor's own 10 Aug intro uses it. Spoken idiom is house voice; this list is essay filler only.)
+
+24. MIC-DROP PARAGRAPH CLOSERS - a paragraph ending on a quotable reversal or wry compressed line. The single biggest draft-vs-published gap found 24 Aug 2026 (docs/big-conversation-published-spec.md): every drafted paragraph ended on one, no published paragraph does.
+    Real examples (all from real drafts, none survived to print): "That's a favour rather than a policy, and it leaves when they do." / "It's a humiliating amount of admin for something an adult already said yes to." / "...this is the best behaviour they're capable of." / "The mistakes are the only part guaranteed a close read."
+    Published endings for contrast: "None of it is personal." / "Sometimes the team simply needs another person." / "Both of those are true at the same time."
+    Deletion rule: ONE such closer is allowed per piece - keep the best one (prefer the piece's final line). For every other occurrence, delete the closer and end the paragraph on the preceding plain sentence; if the fact in the closer is load-bearing, rewrite it as a plain statement of that fact under the guardrails.
+
+25. CLEVER COINAGE WHERE AN IDIOM EXISTS - a freshly coined phrase or compression doing the job of an expression people actually say.
+    Real example (Victor's own edit, 10 Aug): draft "You just can't untell them." shipped as "you can't take it back." Other draft examples that never shipped: "which manager you drew", "quietly reclassed as annual leave", "priced as something you pay for".
+    Deletion rule: replace the coinage with the common idiom or plain phrase for the same fact. This is the ONE case where the replacement being an idiom (even a cliche) is correct - the ordinary phrase IS the house voice. Never replace it with a different fresh phrase.
+
+26. WRY-UNDERSTATEMENT TICS - the "more often than it should / than you'd think / than anyone admits" family, "has a way of [verb]ing", and "quietly [verb]" as an atmosphere word ("quietly regret", "go quietly boring").
+    Real examples (two drafts, same tic): "works more often than it should" / "beats the direct version more often than it should".
+    Deletion rule: delete the tic clause; state the plain claim ("works", "beats the direct version") or, where frequency genuinely matters, say it flat ("usually works"). For "quietly", delete the word - the verb survives alone.
 '''
 
 STRIP_CLAUDE_PHRASING_PROMPT = (

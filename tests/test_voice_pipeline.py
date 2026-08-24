@@ -72,12 +72,13 @@ def test_strip_prompt_carries_the_veto_caution():
     assert "flag it in your output instead of deleting it" in low
 
 
-def test_tell_catalogue_has_all_23_entries():
-    """22 structural patterns, plus entry 23, the stock-phrase vocabulary
-    added 17 Aug 2026 after word-level filler kept surviving the strip."""
+def test_tell_catalogue_has_all_26_entries():
+    """22 structural patterns, entry 23 the stock-phrase vocabulary (17 Aug
+    2026), plus entries 24-26 added 24 Aug 2026 from the draft-vs-published
+    register diff (docs/big-conversation-published-spec.md)."""
     import re
     headings = re.findall(r"^\d+\. ", vp.CLAUDE_TELL_CATALOGUE, flags=re.MULTILINE)
-    assert len(headings) == 23, f"expected 23 catalogue entries, found {len(headings)}"
+    assert len(headings) == 26, f"expected 26 catalogue entries, found {len(headings)}"
 
 
 def test_tell_catalogue_includes_findings_new_entries():
@@ -85,6 +86,39 @@ def test_tell_catalogue_includes_findings_new_entries():
     assert "announced wrap-up openers" in low
     assert "done properly" in low and "done the right way" in low
     assert "end-placed reader reassurance" in low
+
+
+def test_tell_catalogue_carries_the_register_entries():
+    """24 Aug 2026: the drafts' failure mode is over-engineering (every
+    paragraph ends on a quotable line, coined phrases where idioms exist).
+    The catalogue must name it, and the idiom substitution must be the
+    required fix for entry 25 - it is Victor's own documented edit
+    ('can't untell them' -> 'can't take it back')."""
+    low = vp.CLAUDE_TELL_CATALOGUE.lower()
+    assert "mic-drop paragraph closers" in low
+    assert "clever coinage where an idiom exists" in low
+    assert "wry-understatement tics" in low
+    assert "can't take it back" in low
+
+
+def test_idiom_replacement_is_the_allowed_exception_to_no_new_figures():
+    """The rewrite guardrail bans fresh figures of speech but must allow the
+    common spoken idiom as a replacement - the ordinary phrase is the house
+    voice, and banning it would ban the exact edit Victor makes by hand."""
+    low = vp.STRIP_CLAUDE_PHRASING_SYSTEM.lower()
+    assert "common spoken idiom" in low
+    assert "only fresh phrasing is banned" in low
+
+
+def test_stock_list_no_longer_bans_victors_own_idioms():
+    """'a double-edged sword' shipped in Victor's own 10 Aug intro. The stock
+    list is essay filler only; spoken idiom must not be on it."""
+    import re
+    stock_entry = vp.CLAUDE_TELL_CATALOGUE.split("23. STOCK PHRASES")[1].split("24. ")[0]
+    banned_lines = "\n".join(
+        l for l in stock_entry.splitlines() if not l.strip().startswith("(Removed")
+    )
+    assert "double-edged sword" not in banned_lines.lower()
 
 
 def test_allowed_repairs_are_narrow():
