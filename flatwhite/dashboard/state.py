@@ -642,6 +642,18 @@ _MASS_OUTLET_DOMAINS = {
     "theguardian.com",
     "smh.com.au",
     "gourmettraveller.com.au",
+    # Extended 25 Aug 2026: the 24 Aug edition's picks all came from these
+    # kinds of outlets (Urban List roundup, Secret Sydney what's-on, Vogue
+    # handbag listicle) - exactly the mass coverage the segment is meant to
+    # avoid amplifying.
+    "theurbanlist.com",
+    "secretsydney.com",
+    "secretmelbourne.com",
+    "vogue.com.au",
+    "broadsheet.com.au",
+    "delicious.com.au",
+    "news.com.au",
+    "9honey.nine.com.au",
 }
 
 
@@ -674,6 +686,14 @@ _MASS_OUTLET_TITLE_NAMES = {
     "smh",
     "sydney morning herald",
     "gourmet traveller",
+    "urban list",
+    "secret sydney",
+    "secret melbourne",
+    "vogue",
+    "broadsheet",
+    "delicious",
+    "news.com.au",
+    "9honey",
 }
 
 

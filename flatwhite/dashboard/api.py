@@ -288,24 +288,9 @@ def api_seed_tags() -> JSONResponse:
     return JSONResponse({"tags": [{"tag": t, "count": c} for t, c in sorted_tags]})
 
 
-@app.get("/api/off-the-clock")
-def api_off_the_clock() -> JSONResponse:
-    """Return Off the Clock candidates grouped by category for current week."""
-    candidates = load_otc_candidates()
-    picks = load_otc_picks()
-    week_iso = get_current_week_iso()
-    _conn = get_connection()
-    _row = _conn.execute(
-        "SELECT max(pulled_at) FROM raw_items WHERE week_iso = ?", (week_iso,)
-    ).fetchone()
-    _conn.close()
-    last_scraped_at = _row[0] if _row else None
-    return JSONResponse({
-        "candidates": candidates,
-        "picks": picks,
-        "week_iso": week_iso,
-        "last_scraped_at": last_scraped_at,
-    })
+# (The OTC endpoints were defined twice, identically - here and further down.
+# The duplicates here were removed 25 Aug 2026; the registrations that count
+# live next to the other OTC handlers.)
 
 
 @app.get("/api/inside-track")
@@ -445,32 +430,6 @@ async def api_add_whisper(request: Request) -> JSONResponse:
     conn.close()
 
     return JSONResponse({"id": curated_id, "raw_id": raw_id, "week_iso": week_iso})
-
-
-@app.post("/api/off-the-clock/pick")
-async def api_otc_pick(request: Request) -> JSONResponse:
-    """Save an editor's Off the Clock pick for a category.
-
-    Body: {"curated_item_id": int, "category": str, "blurb": str}
-    """
-    body = await request.json()
-    curated_item_id = body.get("curated_item_id")
-    category = body.get("category")
-    blurb = body.get("blurb", "")
-
-    if not isinstance(curated_item_id, int):
-        return JSONResponse({"error": "curated_item_id must be an integer"}, status_code=400)
-    if category not in ("otc_eating", "otc_watching", "otc_reading", "otc_wearing", "otc_going"):
-        return JSONResponse({"error": "Invalid category"}, status_code=400)
-    if not blurb.strip():
-        return JSONResponse({"error": "blurb is required"}, status_code=400)
-
-    row_id = save_otc_pick(
-        category=category,
-        curated_item_id=curated_item_id,
-        editor_blurb=blurb,
-    )
-    return JSONResponse({"id": row_id, "week_iso": get_current_week_iso()})
 
 
 @app.post("/api/save-draft")

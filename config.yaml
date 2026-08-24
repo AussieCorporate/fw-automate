@@ -517,12 +517,21 @@ off_the_clock:
   max_age_days: 7
   max_items_per_source: 10
   google_news_queries:
+    # Re-sourced 25 Aug 2026 to Victor's brief: niche/cool venues over
+    # mass-covered ones, streaming hits for watching, trend-now for wearing.
     eating:
       - "best new restaurant sydney"
       - "best new restaurant melbourne"
       - "new cafe opening sydney"
       - "new cafe opening melbourne"
+      - "hidden gem restaurant sydney"
+      - "hidden gem restaurant melbourne"
+      - "new wine bar sydney"
+      - "new small bar melbourne"
     watching:
+      - "netflix top 10 australia"
+      - "new on netflix australia"
+      - "new on stan binge australia"
       - "best show streaming australia"
       - "netflix australia must watch"
       - "best new movie australia"
@@ -538,11 +547,16 @@ off_the_clock:
       - "fashion drop australia"
       - "new collection australia"
       - "uniqlo australia"
+      - "viral fashion trend australia"
+      - "sneaker drop australia"
     going:
       - "things to do sydney this week"
       - "things to do melbourne this week"
       - "exhibition opening sydney"
       - "exhibition opening melbourne"
+      - "pop up sydney"
+      - "pop up melbourne"
+      - "immersive experience sydney"
   rss_feeds:
     # Eating — Sydney
     - name: "CP Sydney Food & Drink"
@@ -588,16 +602,30 @@ off_the_clock:
     # classifier guessed. Their content is already covered by the food-drink and
     # arts-entertainment sub-feeds above.
     #
+    # Wearing — trend-now sources (added 25 Aug 2026; feeds verified live)
+    - name: "Russh"
+      url: "https://www.russh.com/feed/"
+      category_hint: "wearing"
+      city: "national"
+    - name: "Man of Many Fashion"
+      url: "https://manofmany.com/fashion/feed"
+      category_hint: "wearing"
+      city: "national"
     # Reading — section feeds, not whole-publication firehoses.
-    # "The Conversation AU" (all articles) and "Crikey" were removed: both are
-    # whole-site feeds, so tagging them "reading" flooded the category with politics
-    # and sport ("Albanese faces rank-and-file revolt", "Socceroos knocked out").
-    - name: "The Conversation AU Books"
-      url: "https://theconversation.com/au/books/articles.atom"
+    # Re-sourced 25 Aug 2026 to Victor's brief: reading = UPSKILLING or
+    # HEALTH. The Conversation Books/Arts feeds were removed - they fed
+    # literary criticism and celebrity/royal book news (a royal memoir
+    # shipped 24 Aug), which the brief explicitly rules out.
+    - name: "The Conversation AU Health"
+      url: "https://theconversation.com/au/health/articles.atom"
       category_hint: "reading"
       city: "national"
-    - name: "The Conversation AU Arts"
-      url: "https://theconversation.com/au/arts/articles.atom"
+    - name: "Psyche"
+      url: "https://psyche.co/feed"
+      category_hint: "reading"
+      city: "national"
+    - name: "Aeon"
+      url: "https://aeon.co/feed.rss"
       category_hint: "reading"
       city: "national"
     - name: "Guardian AU Life and Style"
@@ -613,13 +641,25 @@ off_the_clock:
       url: "https://www.timeout.com/melbourne/feed.rss"
       category_hint: "going"
       city: "melbourne"
-    # Watching — TV/film, AU-focused
+    # Going — niche experiences (added 25 Aug 2026)
+    - name: "Man of Many Lifestyle"
+      url: "https://manofmany.com/lifestyle/feed"
+      category_hint: "going"
+      city: "national"
+    # Watching — movies/TV/streaming, AU-focused. ScreenHub removed 25 Aug
+    # 2026: it is screen-INDUSTRY trade press and fed a video-game preview
+    # into the published Watching slot (24 Aug edition). The classifier now
+    # also discards games/trade items as a second line of defence.
     - name: "Guardian AU TV & Radio"
       url: "https://www.theguardian.com/au/tv-and-radio/rss"
       category_hint: "watching"
       city: "national"
-    - name: "ScreenHub AU"
-      url: "https://www.screenhub.com.au/feed/"
+    - name: "Pedestrian.TV Entertainment"
+      url: "https://www.pedestrian.tv/entertainment/feed"
+      category_hint: "watching"
+      city: "national"
+    - name: "Man of Many Entertainment"
+      url: "https://manofmany.com/entertainment/feed"
       category_hint: "watching"
       city: "national"
   # Reddit lifestyle sources removed — surfaced too much off-topic / forum chatter.

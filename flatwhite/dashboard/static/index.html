@@ -2118,6 +2118,44 @@ function renderOTCBody() {
   return h;
 }
 
+/* Picks used to live only in this tab's JS state, so a page refresh lost
+   every selection (found 25 Aug 2026). They now persist server-side per week
+   as JSON under the reserved section id "otc_selection" - not a real segment,
+   so it never appears on the board or in assembly. */
+var _otcSaveTimer = null;
+function saveOTCSelection() {
+  clearTimeout(_otcSaveTimer);
+  _otcSaveTimer = setTimeout(function() {
+    var plain = {};
+    Object.keys(S.otcSelection || {}).forEach(function(cat) {
+      var s = S.otcSelection[cat];
+      plain[cat] = { mode: s.mode, candidateIndex: s.candidateIndex,
+                     customUrl: s.customUrl, customContent: s.customContent,
+                     blurb: s.blurb };
+    });
+    api("/api/section-output/otc_selection", {
+      method: "POST", body: { output_text: JSON.stringify(plain) }
+    }).catch(function() {});
+  }, 600);
+}
+
+function hydrateOTCSelection() {
+  var saved = S.sectionOutputs && S.sectionOutputs.otc_selection;
+  if (!saved || !saved.output_text) return;
+  try {
+    var plain = JSON.parse(saved.output_text);
+    Object.keys(plain).forEach(function(cat) {
+      var s = plain[cat] || {};
+      S.otcSelection[cat] = { mode: s.mode || "candidate",
+                              candidateIndex: s.candidateIndex || 0,
+                              swapOpen: false,
+                              customUrl: s.customUrl || "",
+                              customContent: s.customContent || "",
+                              blurb: s.blurb || "", generating: false };
+    });
+  } catch (e) { /* corrupt saved state: start fresh rather than crash */ }
+}
+
 function toggleOTCSwap(cat) {
   var sel = _otcSel(cat);
   sel.swapOpen = !sel.swapOpen;
@@ -2130,21 +2168,25 @@ function pickOTCCandidate(cat, idx) {
   sel.swapOpen = false;
   var next = _otcCandidate(cat, idx);
   sel.blurb = next ? (next.summary || "") : "";
+  saveOTCSelection();
   render();
 }
 
 function toggleOTCCustom(cat) {
   var sel = _otcSel(cat);
   sel.mode = sel.mode === "custom" ? "candidate" : "custom";
+  saveOTCSelection();
   render();
 }
 
 function updateOTCCustomField(cat, field, value) {
   _otcSel(cat)[field] = value;
+  saveOTCSelection();
 }
 
 function updateOTCBlurb(cat, value) {
   _otcSel(cat).blurb = value;
+  saveOTCSelection();
 }
 
 function generateOTCCustomBlurb(cat) {
@@ -2159,7 +2201,7 @@ function generateOTCCustomBlurb(cat) {
   // that produces the FULLY FORMATTED entry (category header + title + [LINK]),
   // which would then get formatted a second time by the combined Generate call.
   api("/api/otc-custom-summary", { method: "POST", body: { category: cat, url: sel.customUrl || "", content: sel.customContent, model: model } })
-    .then(function(d) { sel.blurb = d.output; sel.generating = false; render(); showToast("Blurb generated for " + cat.replace("otc_", "")); })
+    .then(function(d) { sel.blurb = d.output; sel.generating = false; saveOTCSelection(); render(); showToast("Blurb generated for " + cat.replace("otc_", "")); })
     .catch(function(e) { sel.generating = false; render(); showToast("Error: " + e.message, "error"); });
 }
 
@@ -3202,6 +3244,7 @@ function init() {
     S.modelDefaults = results[0].section_defaults || {};  // recommended model per section
     try { S.proceedModel = JSON.parse(localStorage.getItem("fw_proceedModel") || "{}"); } catch(e) {}
     S.sectionOutputs = results[1].outputs || {};
+    hydrateOTCSelection();
     S.weekIso = results[1].week_iso || results[2].week_iso || "";
     S.pulse = results[2].pulse;
     S.signals = results[2].signals || [];
