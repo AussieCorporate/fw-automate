@@ -125,10 +125,76 @@ def test_strip_runs_automatically_when_a_big_conversation_run_succeeds(tmp_path)
     result = strip_stage.strip_topic_after_run(
         "Teams:Slack Monitoring", {"status": "done"},
         find_piece=lambda topic: piece,
-        strip_fn=lambda d: d + "\n---CHANGES---\n- Deleted \"At the end of the day,\" (entry 23)")
+        strip_fn=lambda d: d + "\n---CHANGES---\n- Deleted \"At the end of the day,\" (entry 23)",
+        save_fn=lambda body: None)
     assert result["status"] == "stripped"
     assert result["change_count"] == 1
     assert strip_stage.stripped_path_for(piece).exists()
+
+
+def test_a_stripped_piece_is_saved_as_the_weeks_section_output(tmp_path):
+    """The plumbing bug this fixes: a skill-run piece never reached
+    section_outputs, so Big Conversation could never go ready and the
+    editorial intro stayed locked forever."""
+    piece = _piece_file(tmp_path)
+    saved = []
+    strip_stage.strip_topic_after_run(
+        "Teams:Slack Monitoring", {"status": "done"},
+        find_piece=lambda topic: piece,
+        strip_fn=lambda d: d + "\n---CHANGES---\n- none",
+        save_fn=saved.append)
+    assert len(saved) == 1
+    assert "Nobody is reading your Teams chat" in saved[0]
+    # Only the prose is saved - never the BUILD map.
+    assert "p1_1_Tom.png" not in saved[0]
+
+
+def test_a_failed_strip_saves_nothing_to_section_outputs(tmp_path):
+    """An unstripped Claude piece must never silently become the week's
+    ready output - that is the house rule the strip stage exists for."""
+    piece = _piece_file(tmp_path)
+    saved = []
+    strip_stage.strip_topic_after_run(
+        "Teams:Slack Monitoring", {"status": "done"},
+        find_piece=lambda topic: piece,
+        strip_fn=lambda d: (_ for _ in ()).throw(ValueError("boom")),
+        save_fn=saved.append)
+    assert saved == []
+
+
+def test_an_over_ceiling_piece_gets_one_automatic_recut_before_the_strip(tmp_path):
+    """The skill's own generation has no code-enforced word ceiling, so the
+    dashboard checks mechanically and re-cuts once (25 Aug 2026)."""
+    long_prose = "\n\n".join("word " * 150 for _ in range(4))  # 600 words, over 365
+    p = tmp_path / "_Long_Topic_BIG_CONVERSATION.md"
+    p.write_text(long_prose + "\n\n---\n\n## BUILD\n")
+    recut_calls = []
+
+    def fake_recut(draft, segment, word_count):
+        recut_calls.append((segment, word_count))
+        return "\n\n".join("word " * 80 for _ in range(4))  # 320 words, inside band
+
+    result = strip_stage.strip_piece_file(
+        p, strip_fn=lambda d: d + "\n---CHANGES---\n- none", recut_fn=fake_recut)
+
+    assert recut_calls == [("big_conversation", 600)]
+    assert result["status"] == "stripped"
+    assert result["length_warnings"] == []
+
+
+def test_still_over_ceiling_after_recut_is_a_loud_warning_not_a_silent_ship(tmp_path):
+    long_prose = "\n\n".join("word " * 150 for _ in range(4))
+    p = tmp_path / "_Long_Topic_BIG_CONVERSATION.md"
+    p.write_text(long_prose + "\n\n---\n\n## BUILD\n")
+
+    result = strip_stage.strip_piece_file(
+        p, strip_fn=lambda d: d + "\n---CHANGES---\n- none",
+        recut_fn=lambda d, s, w: d)  # re-cut achieves nothing
+
+    assert result["status"] == "stripped"
+    assert len(result["length_warnings"]) == 1
+    assert "hard ceiling" in result["length_warnings"][0]
+    assert "LENGTH WARNINGS" in (tmp_path / "_Long_Topic_BIG_CONVERSATION_STRIPPED.md").read_text()
 
 
 def test_strip_is_not_attempted_when_the_run_failed(tmp_path):

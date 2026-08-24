@@ -1,9 +1,11 @@
-"""Generates Big Conversation angles and drafts using Gemini 2.5 Flash.
+"""Generates Big Conversation angles and drafts.
 
 generate_angles(): Analyses this week's classified items, proposes 3 editorial angles.
-draft_big_conversation(): Given a selected angle, writes a 200-300 word editorial.
+draft_big_conversation(): Given a selected angle, writes a 280-340 word editorial
+    and runs it through the full voice chain (SHAPE + GPT-5.4 STRIP) - wired
+    25 Aug 2026, previously stage 1 only.
 
-Both functions use task_type="big_conversation" which routes to Gemini 2.5 Flash.
+Stage-1 generation uses task_type="big_conversation" (Gemini 2.5 Flash).
 """
 
 from __future__ import annotations
@@ -137,19 +139,8 @@ def generate_angles(
     return validated
 
 
-def draft_big_conversation(headline: str, pitch: str, supporting_item_ids: list[int]) -> str:
-    """Draft a 200-300 word Big Conversation editorial via Gemini 2.5 Flash.
-
-    Input: headline (str), pitch (str), supporting_item_ids (list of curated_item IDs).
-    Action:
-    1. Read supporting items from curated_items joined with raw_items.
-    2. Format supporting items as bullet text.
-    3. Send to Gemini 2.5 Flash via route(task_type="big_conversation").
-    4. Return raw draft text.
-
-    Output: string containing editorial text (200-300 words).
-    Consumed by: Session 3 Big Conversation page, Session 4 newsletter assembler.
-    """
+def _generate_draft(headline: str, pitch: str, supporting_item_ids: list[int]) -> str:
+    """Stage 1 (GENERATE) only: the raw first draft, no shape/strip pass."""
     conn = get_connection()
     items: list[dict] = []
     for item_id in supporting_item_ids:
@@ -189,3 +180,41 @@ def draft_big_conversation(headline: str, pitch: str, supporting_item_ids: list[
         raise
 
     return draft.strip()
+
+
+def draft_big_conversation_chain(headline: str, pitch: str, supporting_item_ids: list[int]) -> dict:
+    """Full GENERATE -> SHAPE -> STRIP chain for a Big Conversation draft.
+
+    Wired 25 Aug 2026 - stage 2 (shape) and stage 3 (GPT-5.4 strip) previously
+    existed but were never called on this path, so drafts shipped raw.
+
+    Returns run_voice_chain()'s stage-by-stage dict (see voice_pipeline.py).
+    If the strip stage can't run, stage3_status is "not_stripped" and
+    stage3_error explains why - the chain never falls back to Claude.
+    """
+    from flatwhite.classify.voice_pipeline import run_voice_chain
+
+    return run_voice_chain(
+        "big_conversation",
+        lambda: _generate_draft(headline, pitch, supporting_item_ids),
+    )
+
+
+def draft_big_conversation(headline: str, pitch: str, supporting_item_ids: list[int]) -> str:
+    """Draft a Big Conversation editorial, shaped and stripped (full chain).
+
+    Kept as the string-returning entry point for existing callers (renderer
+    fallback, dashboard). Returns the final stage-3 text; length warnings and
+    an unstripped result are appended as a visible bracketed note rather than
+    silently dropped, so an unchecked piece can never pass as a checked one.
+    """
+    chain = draft_big_conversation_chain(headline, pitch, supporting_item_ids)
+    text = chain["stage3_stripped"]
+    notes = list(chain["length_warnings"])
+    if chain["stage3_status"] == "not_stripped" and chain["stage3_error"]:
+        notes.insert(0, chain["stage3_error"])
+    if notes:
+        text += "\n\n[VOICE PIPELINE WARNINGS - fix before shipping]\n" + "\n".join(
+            f"- {n}" for n in notes
+        )
+    return text

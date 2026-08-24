@@ -22,10 +22,11 @@ Evidence source for every number and forbidden pattern below:
 docs/voice-refresh-findings.md (17 Aug 2026, 6 published editions, 6 Jul -
 10 Aug 2026, pulled live from beehiiv). Published editions outrank rule text.
 
-Built 17 Aug 2026. Not yet wired into the dashboard - see
-docs/voice-prompts-refresh-report.md for exactly where the runner must call
-this once the dashboard's skill-run path (currently being repaired for a
-separate bug) is fixed.
+Built 17 Aug 2026. Wired 25 Aug 2026:
+    - Big Conversation drafting (big_conversation.draft_big_conversation and
+      the dashboard's _proceed_big_conversation) runs the full chain.
+    - The skill-run path runs the strip via dashboard/strip_stage.py plus a
+      mechanical length check with one automatic re-cut.
 """
 
 from __future__ import annotations

@@ -2060,11 +2060,16 @@ def _load_big_conv_evidence(
 
 def _proceed_big_conversation(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
     from flatwhite.classify.prompts import EDITORIAL_VOICE, BIG_CONVERSATION_DRAFT_SYSTEM, BIG_CONVERSATION_DRAFT_PROMPT
+    from flatwhite.classify.voice_pipeline import run_voice_chain
 
     override = _safe_override(model)
 
     if custom_prompt:
-        return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE, model_override=override)
+        # Free-form custom prompts skip the SHAPE stage (their output may not
+        # be a standard-shaped piece) but still get the GPT-5.4 strip - a
+        # Claude/Gemini draft must never ship unchecked for tells.
+        draft = route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE, model_override=override)
+        return _strip_only(draft)
 
     # Accept both field name variants (frontend sends title/summary, custom form sends headline/pitch)
     headline = data.get("headline") or data.get("title", "")
@@ -2079,7 +2084,35 @@ def _proceed_big_conversation(data: dict, model: str | None, custom_prompt: str 
         pitch=pitch,
         supporting_items=items_block,
     )
-    return route(task_type="editorial", prompt=prompt, system=BIG_CONVERSATION_DRAFT_SYSTEM, model_override=override)
+    chain = run_voice_chain(
+        "big_conversation",
+        lambda: route(task_type="editorial", prompt=prompt,
+                      system=BIG_CONVERSATION_DRAFT_SYSTEM, model_override=override),
+    )
+    return _chain_result_text(chain)
+
+
+def _chain_result_text(chain: dict) -> str:
+    """Final chain text with warnings kept visible, never silently dropped."""
+    text = chain["stage3_stripped"]
+    notes = list(chain.get("length_warnings") or [])
+    if chain.get("stage3_status") == "not_stripped" and chain.get("stage3_error"):
+        notes.insert(0, chain["stage3_error"])
+    if notes:
+        text += "\n\n[VOICE PIPELINE WARNINGS - fix before shipping]\n" + "\n".join(f"- {n}" for n in notes)
+    return text
+
+
+def _strip_only(draft: str) -> str:
+    """GPT-5.4 strip pass on a finished draft; on failure the draft comes back
+    with the honest not-stripped warning attached (never a Claude fallback)."""
+    from flatwhite.classify import voice_pipeline as vp
+
+    try:
+        parts = vp.split_strip_output(vp.strip_claude_phrasing(draft))
+        return parts["body"]
+    except Exception as exc:  # noqa: BLE001 - report, never fall back
+        return draft + "\n\n[VOICE PIPELINE WARNINGS - fix before shipping]\n- " + vp._describe_strip_failure(exc)
 
 
 def _proceed_finds(data: dict, model: str | None, custom_prompt: str | None = None) -> str:

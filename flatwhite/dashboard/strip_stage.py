@@ -49,15 +49,23 @@ def _count_changes(changes: str) -> int:
 
 
 def _failure(error: str) -> dict:
-    return {"status": "failed", "error": error, "path": None,
-            "changes": "", "flagged": "", "change_count": 0}
+    return {"status": "failed", "error": error, "path": None, "body": "",
+            "changes": "", "flagged": "", "change_count": 0,
+            "length_warnings": []}
 
 
-def strip_piece_file(piece_path: Path, *, strip_fn=None) -> dict:
+def strip_piece_file(piece_path: Path, *, strip_fn=None, recut_fn=None) -> dict:
     """Strip `piece_path`'s prose and write the result beside it.
 
     Returns {"status": "stripped"|"failed", "error": str|None, "path": str|None,
-    "changes": str, "flagged": str, "change_count": int}.
+    "body": str, "changes": str, "flagged": str, "change_count": int,
+    "length_warnings": list[str]}.
+
+    Length is checked mechanically before the strip (added 25 Aug 2026): the
+    skill's own generation has no code-enforced word ceiling, so an
+    over-ceiling piece gets ONE automatic re-cut pass (whole sentences deleted,
+    never rephrased) before stripping. Still over after that, it is reported in
+    length_warnings, never silently shipped.
 
     On failure NO file is written. A half-written or unstripped file sitting
     at the stripped path would read as "this was checked" when it wasn't,
@@ -71,11 +79,29 @@ def strip_piece_file(piece_path: Path, *, strip_fn=None) -> dict:
     if not prose:
         return _failure(f"No piece prose found in {piece_path.name} (nothing before the first '---').")
 
+    length_warnings: list[str] = []
+    counts = vp.check_length(prose, "big_conversation")
+    if counts["over_word_hard_ceiling"]:
+        cutter = recut_fn if recut_fn is not None else vp._recut_over_ceiling
+        try:
+            prose = cutter(prose, "big_conversation", counts["word_count"]).strip()
+        except Exception as exc:  # noqa: BLE001 - a failed re-cut is a warning, not a dead stop
+            length_warnings.append(f"Automatic re-cut failed ({exc}); piece is unshortened.")
+        counts = vp.check_length(prose, "big_conversation")
+        if counts["over_word_hard_ceiling"]:
+            ceiling = vp.LENGTH_SPECS["big_conversation"]["word_hard_ceiling"]
+            length_warnings.append(
+                f"Piece is {counts['word_count']} words, over the {ceiling}-word "
+                "hard ceiling even after one automatic re-cut. Cut it by hand "
+                "before shipping.")
+
     fn = strip_fn if strip_fn is not None else vp.strip_claude_phrasing
     try:
         raw = fn(prose)
     except Exception as exc:  # noqa: BLE001 - reported, never retried on Claude
-        return _failure(vp._describe_strip_failure(exc))
+        failure = _failure(vp._describe_strip_failure(exc))
+        failure["length_warnings"] = length_warnings
+        return failure
 
     parts = vp.split_strip_output(raw)
     out_path = stripped_path_for(piece_path)
@@ -91,13 +117,17 @@ def strip_piece_file(piece_path: Path, *, strip_fn=None) -> dict:
         "---CHANGES---",
         parts["changes"] or "- none",
     ]
+    if length_warnings:
+        body += ["", "---LENGTH WARNINGS---"] + [f"- {w}" for w in length_warnings]
     if parts["flagged"]:
         body += ["", "---FLAGGED FOR VICTOR---", parts["flagged"]]
     out_path.write_text("\n".join(body) + "\n")
 
     return {"status": "stripped", "error": None, "path": str(out_path),
+            "body": parts["body"],
             "changes": parts["changes"], "flagged": parts["flagged"],
-            "change_count": _count_changes(parts["changes"])}
+            "change_count": _count_changes(parts["changes"]),
+            "length_warnings": length_warnings}
 
 
 # Last strip outcome per topic, for the topic page. Success is read back off
@@ -106,20 +136,38 @@ def strip_piece_file(piece_path: Path, *, strip_fn=None) -> dict:
 _LAST_RESULT: dict[str, dict] = {}
 
 
+def _save_to_section_outputs(body_text: str) -> None:
+    """Default save hook: the finished, stripped piece becomes this week's
+    big_conversation section output, so the segment can go ready on the board
+    (and unlock the editorial intro) without a content-bank round-trip.
+    Added 25 Aug 2026 - before this, a skill-run piece never reached
+    section_outputs and the segment could never go green."""
+    from flatwhite.db import get_current_week_iso, save_section_output
+
+    save_section_output(get_current_week_iso(), "big_conversation", body_text,
+                        "big-conversation-skill + gpt-5.4 strip")
+
+
 def strip_topic_after_run(topic: str, record: dict | None, *,
-                          find_piece=None, strip_fn=None) -> dict:
+                          find_piece=None, strip_fn=None, save_fn=None) -> dict:
     """Run the strip for `topic` once its big-conversation run has finished.
 
     Wired in as the run's on_complete callback so the stage cannot be skipped,
     improvised, or "done by hand" on Claude by the writing agent.
+
+    On a successful strip the final body is also saved as this week's
+    big_conversation section output (see _save_to_section_outputs). A failed
+    or skipped strip saves nothing - an unstripped Claude piece must never
+    silently become the week's ready output.
 
     A run that did not finish is skipped entirely: there is no finished piece
     to strip, and stripping a half-written file would leave behind an artefact
     that reads as "this was checked".
     """
     if not record or record.get("status") != "done":
-        result = {"status": "skipped", "error": None, "path": None,
-                  "changes": "", "flagged": "", "change_count": 0}
+        result = {"status": "skipped", "error": None, "path": None, "body": "",
+                  "changes": "", "flagged": "", "change_count": 0,
+                  "length_warnings": []}
         _LAST_RESULT[topic] = result
         return result
 
@@ -131,6 +179,14 @@ def strip_topic_after_run(topic: str, record: dict | None, *,
             "it, so there was nothing to strip.")
     else:
         result = strip_piece_file(piece, strip_fn=strip_fn)
+
+    if result["status"] == "stripped" and result["body"]:
+        saver = save_fn if save_fn is not None else _save_to_section_outputs
+        try:
+            saver(result["body"])
+        except Exception as exc:  # noqa: BLE001 - the strip itself succeeded; report, don't lose it
+            result["error"] = f"Stripped fine, but saving to the week's section outputs failed: {exc}"
+
     _LAST_RESULT[topic] = result
     return result
 
