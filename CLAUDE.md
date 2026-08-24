@@ -22,6 +22,10 @@ then give Victor **http://localhost:8500/**. (Same as double-clicking `Start Fla
 
 - Reddit "script app" OAuth is broken — never build on it or scaffold it again.
 - Reddit links are excluded from OTC.
+- NO single "produce whole edition" button (Victor, 25 Aug 2026). The dash is
+  one button PER SEGMENT, pressed after Victor makes the human calls (topic
+  choice, screenshot picks, angle picks). Per-segment "Insert into beehiiv" is
+  the finish line. Do not re-propose full-edition automation.
 
 ## Definition of done for pipeline fixes
 
@@ -76,6 +80,15 @@ house voice actively uses common idioms/cliches ("dodged a bullet", "red flag") 
 plain connective openers. Full evidence-based spec: `docs/big-conversation-published-spec.md`.
 Enforced in the skill's `generate-prompt.md` (REGISTER section) and
 `voice_pipeline.py` catalogue entries 24-26. Do not re-polish these rules from theory.
+
+## Questions rule — RESOLVED by Victor (25 Aug 2026)
+
+The blanket "NO RHETORICAL QUESTIONS anywhere" rule is retired. Natural
+thinking-out-loud questions SHIP ("So why do we still ask for cover letters?" ran
+in the 24 Aug published edition). What stays banned is the essay device where a
+question announces the next topic ("The practical question is what happens
+when..."). Applies to Big Conversation and Brains Trust prompts; update
+`prompts.py` and the register spec's flagged item accordingly.
 
 ## FW editorial intro — no skill exists yet (13 Jul 2026, from Victor)
 
