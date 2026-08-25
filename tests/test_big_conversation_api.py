@@ -240,3 +240,45 @@ def test_run_status_reports_a_failed_run_with_its_plain_english_reason(bc_env):
     data = json.loads(result.body)
     assert data["status"] == "failed"
     assert data["error"] == "Claude Code isn't logged in on this Mac."
+
+
+# ─── No repeats: already-published topic detection (25 Aug 2026) ────────────
+# The bank offered "Career Pivoting" as the top untouched topic when it had
+# shipped on 23 Jun as "What a career pivot actually costs." The `processed`
+# flag only looks for a local assets folder, so anything published without
+# leaving one behind reads as brand new.
+
+def test_published_match_catches_the_career_pivoting_repeat():
+    import flatwhite.dashboard.api as api
+    editions = [{"title": "What a career pivot actually costs.", "url": "https://x/1"},
+                {"title": "Cover letter, yes or no?", "url": "https://x/2"}]
+    m = api._published_match("Career Pivoting", editions)
+    assert m is not None and "career pivot" in m["title"].lower()
+
+
+def test_published_match_handles_plurals_and_word_forms():
+    import flatwhite.dashboard.api as api
+    editions = [{"title": "Cover letter, yes or no?", "url": "https://x/2"}]
+    assert api._published_match("Cover Letters", editions) is not None
+
+
+def test_unrelated_topic_is_not_falsely_flagged():
+    import flatwhite.dashboard.api as api
+    editions = [{"title": "What a career pivot actually costs.", "url": "https://x/1"},
+                {"title": "Cover letter, yes or no?", "url": "https://x/2"}]
+    for topic in ("Payrise Excuses", "BO and Perfume", "Wellness Reimbursement"):
+        assert api._published_match(topic, editions) is None, topic
+
+
+def test_one_shared_word_is_not_enough_to_flag():
+    """'Career Pivoting' and 'Best Career Advice' share only 'career' - one
+    overlap must not be treated as the same topic."""
+    import flatwhite.dashboard.api as api
+    editions = [{"title": "Best career advice you ever got", "url": "https://x/3"}]
+    assert api._published_match("Career Pivoting", editions) is None
+
+
+def test_lookup_failure_never_hides_the_bank():
+    """A beehiiv outage must leave every topic usable, just unflagged."""
+    import flatwhite.dashboard.api as api
+    assert api._published_match("Career Pivoting", []) is None

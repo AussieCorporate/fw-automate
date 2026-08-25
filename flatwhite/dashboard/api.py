@@ -1823,6 +1823,81 @@ def _latest_published_edition(pub_id: str | None = None) -> dict | None:
         return None
 
 
+# ── "Has this topic already shipped?" ───────────────────────────────────────
+# Added 25 Aug 2026 after the bank offered "Career Pivoting" as the top
+# UNDRAFTED topic when it had been published on 23 Jun as "What a career pivot
+# actually costs." The bank's `processed` flag only checks for a local assets
+# folder, so any topic published without leaving one behind looks brand new.
+# Victor's rule: no repeats.
+#
+# Matching a folder name to an edition title is inherently fuzzy, so this
+# WARNS rather than hides: the topic still appears, flagged with the edition
+# it looks like it became, and Victor archives it if the match is right.
+
+_STOPWORDS = {"the", "and", "for", "with", "your", "you", "our", "what", "when",
+              "does", "did", "are", "was", "not", "but", "from", "how", "why",
+              "who", "this", "that", "actually", "really", "into", "out", "off",
+              "yes", "no", "or", "vs", "a", "an", "of", "in", "on", "at", "to",
+              "it", "is", "be", "do", "we", "my", "me", "they", "them"}
+
+
+def _stem(word: str) -> str:
+    """Crude stemmer, enough to match a folder name to an edition title
+    ("Pivoting" -> "pivot", "Letters" -> "letter")."""
+    w = re.sub(r"[^a-z0-9]", "", word.lower())
+    for suffix in ("ing", "ed", "es", "s"):
+        if len(w) > 4 and w.endswith(suffix):
+            return w[: -len(suffix)]
+    return w
+
+
+def _content_words(text: str) -> set[str]:
+    return {s for s in (_stem(w) for w in text.split()) if s and s not in _STOPWORDS and len(s) > 2}
+
+
+def _published_editions_cached(_cache: dict = {}) -> list[dict]:
+    """Published FW editions as [{"title","url"}], fetched once per process.
+    Empty list on any failure - a lookup outage must not hide the bank."""
+    if "editions" in _cache:
+        return _cache["editions"]
+    import requests as _requests
+
+    key = os.getenv("BEEHIIV_API_KEY")
+    editions: list[dict] = []
+    if key:
+        try:
+            for page in (1, 2):
+                r = _requests.get(
+                    f"https://api.beehiiv.com/v2/publications/{_FW_BEEHIIV_PUB_ID}/posts",
+                    headers={"Authorization": f"Bearer {key}"},
+                    params={"status": "confirmed", "limit": 50, "page": page,
+                            "order_by": "publish_date", "direction": "desc"},
+                    timeout=15)
+                r.raise_for_status()
+                batch = r.json().get("data") or []
+                if not batch:
+                    break
+                editions += [{"title": p.get("title", ""), "url": p.get("web_url", "")}
+                             for p in batch if p.get("title")]
+        except Exception:
+            editions = []
+    _cache["editions"] = editions
+    return editions
+
+
+def _published_match(topic: str, editions: list[dict]) -> dict | None:
+    """The published edition this topic folder looks like it became, or None.
+    Needs at least two shared content words, so "Cover Letters" matches
+    "Cover letter, yes or no?" but not every edition mentioning letters."""
+    topic_words = _content_words(topic)
+    if len(topic_words) < 2:
+        return None
+    for ed in editions:
+        if len(topic_words & _content_words(ed["title"])) >= 2:
+            return ed
+    return None
+
+
 def _missed_last_week_block() -> dict | None:
     """The auto-built "Missed last week's newsletter?" footer block, or None
     when the last edition can't be fetched. Added 25 Aug 2026 - in 7/10 real
@@ -3338,8 +3413,12 @@ def api_big_conversation_topics() -> JSONResponse:
     false) if the Instagram output folder isn't present on this machine."""
     archived = load_topic_archive_state()
     topics = _bcb.list_topic_folders()
+    # No repeats (Victor, 25 Aug 2026): flag any topic that looks like it has
+    # already shipped, so a published topic can't be picked again as "new".
+    editions = _published_editions_cached()
     for t in topics:
         t["archived"] = archived.get(t["topic"], False)
+        t["published_as"] = _published_match(t["topic"], editions)
     return JSONResponse({"topics": topics, "root_exists": _bcb.INSTAGRAM_OUTPUT_DIR.is_dir()})
 
 

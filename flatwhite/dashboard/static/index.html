@@ -1728,6 +1728,15 @@ function renderBigConvBank() {
     h += '<div class="bc-topic-card">';
     h += '<div class="bc-topic-name">' + esc(t.topic) + '</div>';
     h += '<div class="bc-topic-meta">' + t.reply_count + ' submissions' + (t.processed ? ' &middot; piece drafted' : '') + '</div>';
+    // No repeats (25 Aug 2026). "Career Pivoting" was offered as the top
+    // untouched topic when it had already shipped in June, because the bank
+    // only looked for a local assets folder. This warns before you spend
+    // forty minutes regenerating something readers have already had.
+    if (t.published_as) {
+      h += '<div style="font-size:11px;color:var(--warn,#b26a00);border:1px solid var(--warn,#b26a00);border-radius:6px;padding:6px 8px;margin:6px 0;">';
+      h += '⚠️ Looks like this already ran as <a href="' + escAttr(t.published_as.url) + '" target="_blank"><b>' + esc(t.published_as.title) + '</b></a>. Check before processing, then Archive it.';
+      h += '</div>';
+    }
     h += '<div class="bc-topic-actions">';
     h += '<button class="btn btn-sm btn-primary" onclick="openBigConvTopic(' + jsq(t.topic) + ')">Open</button>';
     h += '<button class="btn btn-sm btn-secondary" onclick="archiveBigConvTopic(' + jsq(t.topic) + ')">Archive</button>';
