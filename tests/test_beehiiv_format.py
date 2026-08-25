@@ -160,14 +160,14 @@ def test_hyphen_lines_are_not_bullets_because_pull_quote_attribution():
 
 def test_divider_line_survives_as_published_em_dash_furniture():
     html = md_to_editor_html("First entry. [LINK](https://x.com)\n\n———————————————————————————\n\nSecond entry.")
-    assert "<p>" + "—" * 27 + "</p>" in html
+    assert '<div data-type="horizontalRule"><hr></div>' in html
     # And the dash stripper still runs on prose around it.
     assert " - " not in html.split("</p>")[0]
 
 
 def test_plain_hyphen_divider_also_recognised():
     html = md_to_editor_html("Top\n\n---\n\nBottom")
-    assert "<p>" + "—" * 27 + "</p>" in html
+    assert '<div data-type="horizontalRule"><hr></div>' in html
 
 
 def test_single_newlines_inside_a_block_become_br():
@@ -214,5 +214,5 @@ def test_full_off_the_clock_block_round_trips_to_published_shape():
     assert "<strong>GOING</strong><br><strong>23 splendid things to do this September</strong>" in html_out
     assert '<a href="https://secretsydney.com/x">LINK</a>' in html_out
     assert '<a href="https://example.com/y">LINK</a>' in html_out
-    assert "<p>" + "—" * 27 + "</p>" in html_out
+    assert '<div data-type="horizontalRule"><hr></div>' in html_out
     assert "**" not in html_out  # no raw markdown survives

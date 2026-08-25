@@ -128,8 +128,12 @@ def _inline(text: str) -> str:
 # not apply to it. It must be detected BEFORE strip_reader_dashes, which
 # would otherwise mangle it into a row of " - " fragments.
 _DIVIDER_LINE = re.compile(r"^[—―–\-]{3,}$")
-# The exact divider paragraph the published editions use.
-_PUBLISHED_DIVIDER = "—" * 27
+# Confirmed 25 Aug 2026 by reading a published edition's editor HTML: the
+# divider between Off the Clock entries is a real horizontal RULE node, not a
+# paragraph of dashes. Emitting the rule means it renders as the editor's own
+# divider (and stays a divider if Victor edits around it) instead of a line of
+# text that happens to look like one.
+_PUBLISHED_DIVIDER_HTML = '<div data-type="horizontalRule"><hr></div>'
 
 # The Inside Track's "[Screenshot: IMG_1234.jpg]" placement markers tell Victor
 # which screenshot goes where; they are NOT reader copy. Rendered as an
@@ -169,7 +173,7 @@ def md_to_editor_html(text: str) -> str:
         if not para:
             continue
         if _DIVIDER_LINE.match(para):
-            parts.append(f"<p>{_PUBLISHED_DIVIDER}</p>")
+            parts.append(_PUBLISHED_DIVIDER_HTML)
             continue
         para = strip_reader_dashes(para)
         heading_match = _HEADING4.match(para)
