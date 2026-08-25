@@ -2297,7 +2297,18 @@ def _proceed_off_the_clock(data: dict, model: str | None, custom_prompt: str | N
     if custom_prompt:
         return route(task_type="editorial", prompt=custom_prompt, system=EDITORIAL_VOICE, model_override=override)
 
-    picks = data.get("picks", [])
+    prompt = _build_otc_prompt(data.get("picks", []))
+    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE, model_override=override)
+
+
+def _build_otc_prompt(picks: list) -> str:
+    """The ONE Off the Clock prompt builder, shared by the generate path and
+    the prompt-preview endpoint.
+
+    Previously these were two hand-maintained copies that had already drifted
+    apart (the preview version had lost the bold marks and the divider), so
+    the preview showed a different prompt from the one that actually ran.
+    """
     picks_block = "\n\n".join(
         "Category: {}\nTitle: {}{}".format(
             p.get("category", ""),
@@ -2307,35 +2318,39 @@ def _proceed_off_the_clock(data: dict, model: str | None, custom_prompt: str | N
         for p in picks
     )
 
+    # Output format audited against the published editions 25 Aug 2026: the
+    # category and title are BOLD, sit on adjacent lines in one block, and
+    # entries are separated by the long dash divider (which the beehiiv
+    # converter preserves as furniture). Published category names are the
+    # -ING forms: EATING, WATCHING, READING, WEARING, GOING.
     prompt = (
         "Write the Off the Clock entries for Flat White.\n\n"
         f"{picks_block}\n\n"
-        "For each item, write EXACTLY this format:\n\n"
-        "CATEGORY (uppercase, one word: EATING, WATCHING, READING, WEARING, or GOING)\n"
-        "A catchy title (4-8 words, sentence case, no period)\n\n"
+        "For each item, write EXACTLY this format (bold marks included):\n\n"
+        "**CATEGORY** (uppercase, one word: EATING, WATCHING, READING, WEARING, or GOING)\n"
+        "**A catchy title (4-8 words, sentence case, no period)**\n\n"
         "One sentence that is dry, specific, fun and engaging. Not a review. A statement from "
         "someone who already knows. Australian English. No filler intensifiers. The sentence "
-        "should make you want to click. End with LINK\n\n"
+        "should make you want to click. End with [LINK](url) using the URL provided for the item.\n\n"
+        "Separate entries with a line containing only:\n"
+        "———————————————————————————\n\n"
         "EXAMPLES OF THE RIGHT OUTPUT:\n\n"
-        "EATING\n"
-        "The dinner with no commute costs\n\n"
+        "**EATING**\n"
+        "**The dinner with no commute costs**\n\n"
         "Melbourne's Elpiet Group is covering your transport costs to get you through the door "
         "of their Italian restaurants, which, given fuel prices, is either generous hospitality "
-        "or very good marketing. LINK\n\n"
-        "WATCHING\n"
-        "The Office spin-off dropped last week\n\n"
+        "or very good marketing. [LINK](https://example.com/elpiet)\n\n"
+        "———————————————————————————\n\n"
+        "**WATCHING**\n"
+        "**The Office spin-off dropped last week**\n\n"
         "The Office spin-off drops this week, so if you were planning to be productive on Friday "
-        "afternoon, now you have a reason not to be. LINK\n\n"
-        "READING\n"
-        "Should you keep your holiday flights?\n\n"
-        "With the Iran conflict escalating, here's a practical rundown for Australian travellers "
-        "trying to work out whether their upcoming flights are still worth keeping. LINK\n\n"
+        "afternoon, now you have a reason not to be. [LINK](https://example.com/office)\n\n"
         "---\n\n"
-        "Replace LINK with [LINK](url) using the URL provided for each item.\n"
-        "One entry per item. Blank line between category header and blurb. "
-        "Blank line between entries."
+        "The category and title lines are ADJACENT (no blank line between them), "
+        "both bold. Blank line before the blurb. The divider line between "
+        "entries, but not after the last one. Nothing else."
     )
-    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_VOICE, model_override=override)
+    return prompt
 
 
 def _proceed_inside_track(data: dict, model: str | None, custom_prompt: str | None = None) -> str:
@@ -2915,23 +2930,8 @@ async def api_preview_prompt(request: Request) -> JSONResponse:
 
         elif section == "off_the_clock":
             picks = data.get("picks", [])
-            picks_block = "\n\n".join(
-                "Category: {}\nTitle: {}{}".format(
-                    p.get("category", ""),
-                    p.get("title", ""),
-                    ("\nURL: " + p["url"]) if p.get("url") else "",
-                ) + "\nDraft blurb: {}".format(p.get("blurb", ""))
-                for p in picks
-            )
-            prompt = (
-                "Write the Off the Clock entries for Flat White.\n\n"
-                f"{picks_block}\n\n"
-                "For each item, output EXACTLY this format:\n\n"
-                "CATEGORY (uppercase: EATING, WATCHING, READING, WEARING, or GOING)\n"
-                "A catchy title (4-8 words, sentence case)\n\n"
-                "One dry, specific, fun sentence. Not a review. Australian English. End with [LINK](url).\n\n"
-                "Blank line between entries."
-            )
+            # Same builder the generate path uses - never a second copy.
+            prompt = _build_otc_prompt(picks)
             context_breakdown = {
                 "signals": [], "signal_intelligence": [],
                 "composite": {},

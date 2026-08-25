@@ -2848,18 +2848,39 @@ function renderTopPicksFeaturesPanel() {
   return h;
 }
 
+/* The published Top Picks / Odd Picks line shape (audited against real
+   editions 25 Aug 2026):
+
+     * **Coles took its website and app offline after a viral post**, sending
+       24-packs to as little as $27. [LINK](https://...)
+
+   A bullet, a BOLD lead clause, the rest as plain prose, then a markdown
+   [LINK]. The old builder emitted a bare sentence and a naked URL, so nothing
+   was bolded, nothing was a list, and the URL pasted into beehiiv as plain
+   text rather than a hyperlink.
+
+   The bold lead is split at the first ", " (comma-SPACE, so figures like
+   "$1,230" never split). No comma means the whole sentence is the lead. It's
+   a first pass Victor edits in the output box, not a guess he's stuck with. */
 function _pickLine(p) {
   var s = (p.summary || p.title || "").replace(/\s+/g, " ").trim();
   if (!s) return null;
   if (!/[.!?]$/.test(s)) s += ".";
-  return s + " " + (p.url || "");
+
+  var lead = s, rest = "";
+  var cut = s.indexOf(", ");
+  if (cut > 0) { lead = s.slice(0, cut); rest = s.slice(cut + 1); }
+
+  var line = "* **" + lead + "**" + (rest ? " " + rest : "");
+  if (p.url) line += " [LINK](" + p.url + ")";
+  return line;
 }
 
 function buildTopPicksOutput() {
   var lists = _picksLists();
   var biz = lists.business.filter(function(p, i) { return S.topPicksBizChecked && S.topPicksBizChecked[i]; });
   if (!biz.length) { showToast("Select at least one business pick first", "error"); return; }
-  var text = biz.map(_pickLine).filter(Boolean).join("\n\n");
+  var text = biz.map(_pickLine).filter(Boolean).join("\n");
   // Persist into state + backend so the built block survives re-renders and is
   // ready to Mark ready / Insert - no separate Save step needed.
   S.sectionOutputs.top_picks = S.sectionOutputs.top_picks || {};
@@ -2876,7 +2897,7 @@ function copyOddPicks() {
   var lists = _picksLists();
   var odd = lists.odd.filter(function(p, i) { return S.topPicksOddChecked && S.topPicksOddChecked[i]; });
   if (!odd.length) { showToast("Select at least one odd pick first", "error"); return; }
-  var text = odd.map(_pickLine).filter(Boolean).join("\n\n");
+  var text = odd.map(_pickLine).filter(Boolean).join("\n");
   navigator.clipboard.writeText(text).then(function() { showToast(odd.length + " odd picks copied"); },
     function() { showToast("Copy failed", "error"); });
 }
@@ -2885,7 +2906,7 @@ function buildOddPicksOutput() {
   var lists = _picksLists();
   var odd = lists.odd.filter(function(p, i) { return S.topPicksOddChecked && S.topPicksOddChecked[i]; });
   if (!odd.length) { showToast("Select at least one odd pick first", "error"); return; }
-  var text = odd.map(_pickLine).filter(Boolean).join("\n\n");
+  var text = odd.map(_pickLine).filter(Boolean).join("\n");
   // Its own saved block ("ODD PICKS FROM LAST WEEK"), insertable on its own.
   S.sectionOutputs.odd_picks = S.sectionOutputs.odd_picks || {};
   S.sectionOutputs.odd_picks.output_text = text;

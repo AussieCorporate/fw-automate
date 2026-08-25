@@ -138,3 +138,81 @@ def test_scheme_relative_link_is_not_clickable():
     as unsafe, same as an explicit dangerous scheme."""
     html = md_to_editor_html("[here](//evil.example.com/phish)")
     assert "href=" not in html
+
+
+# ─── 25 Aug 2026 formatting audit: shapes from the published editions ────────
+
+
+def test_bullet_lines_become_a_real_list():
+    html = md_to_editor_html("* **Coles took its site offline**, after a viral post. [LINK](https://x.com/a)\n* **Aldi is cutting range**, as profit fell. [LINK](https://x.com/b)")
+    assert html.startswith("<ul><li><p>")
+    assert html.count("<li>") == 2
+    assert "<strong>Coles took its site offline</strong>" in html
+    assert '<a href="https://x.com/a">LINK</a>' in html
+    assert "* " not in html  # no literal asterisks survive
+
+
+def test_hyphen_lines_are_not_bullets_because_pull_quote_attribution():
+    html = md_to_editor_html('"A quotable line."\n\n- Jarden')
+    assert "<ul>" not in html
+    assert "<p>- Jarden</p>" in html
+
+
+def test_divider_line_survives_as_published_em_dash_furniture():
+    html = md_to_editor_html("First entry. [LINK](https://x.com)\n\n———————————————————————————\n\nSecond entry.")
+    assert "<p>" + "—" * 27 + "</p>" in html
+    # And the dash stripper still runs on prose around it.
+    assert " - " not in html.split("</p>")[0]
+
+
+def test_plain_hyphen_divider_also_recognised():
+    html = md_to_editor_html("Top\n\n---\n\nBottom")
+    assert "<p>" + "—" * 27 + "</p>" in html
+
+
+def test_single_newlines_inside_a_block_become_br():
+    # The published Off the Clock shape: bold category line + bold title line.
+    html = md_to_editor_html("**GOING**\n**A one-night show under the bridge**\n\nThe blurb sentence. [LINK](https://x.com)")
+    assert "<p><strong>GOING</strong><br><strong>A one-night show under the bridge</strong></p>" in html
+
+
+def test_blockquote_for_thread_top_comment():
+    html = md_to_editor_html('> _"We\'ve come full circle."_ - Top Comment')
+    assert html.startswith("<blockquote><p>")
+    assert "<em>" in html and "Top Comment" in html
+
+
+def test_prose_em_dashes_still_stripped_inside_paragraphs():
+    html = md_to_editor_html("A soft patch — it is what it is.")
+    assert "—" not in html
+    assert "soft patch - it is" in html
+
+
+def test_screenshot_marker_renders_as_an_obvious_placeholder_not_prose():
+    html_out = md_to_editor_html("[Screenshot: IMG_1928.jpg]\n\nThe punchy line about it.")
+    assert "Screenshot goes here: IMG_1928.jpg" in html_out
+    assert "<em>" in html_out
+    assert "<p>The punchy line about it.</p>" in html_out
+
+
+def test_chart_marker_keeps_its_source_caption():
+    html_out = md_to_editor_html("Beef prices are climbing.\n\n[CHART - Source: MLA, Morgan Stanley Research]\n\nProtein too.")
+    assert "Chart goes here - Source: MLA, Morgan Stanley Research" in html_out
+    # The prose around it is untouched.
+    assert "<p>Beef prices are climbing.</p>" in html_out
+    assert "<p>Protein too.</p>" in html_out
+
+
+def test_full_off_the_clock_block_round_trips_to_published_shape():
+    """End-to-end on the real published Off the Clock shape."""
+    text = ("**GOING**\n**23 splendid things to do this September**\n\n"
+            "Sydney is putting on a show for spring. [LINK](https://secretsydney.com/x)\n\n"
+            "———————————————————————————\n\n"
+            "**EATING**\n**A tiny trattoria in Marrickville**\n\n"
+            "Twelve seats and no bookings. [LINK](https://example.com/y)")
+    html_out = md_to_editor_html(text)
+    assert "<strong>GOING</strong><br><strong>23 splendid things to do this September</strong>" in html_out
+    assert '<a href="https://secretsydney.com/x">LINK</a>' in html_out
+    assert '<a href="https://example.com/y">LINK</a>' in html_out
+    assert "<p>" + "—" * 27 + "</p>" in html_out
+    assert "**" not in html_out  # no raw markdown survives

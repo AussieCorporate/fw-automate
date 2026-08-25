@@ -122,30 +122,85 @@ def _inline(text: str) -> str:
     return _process_marks(escaped)
 
 
+# A paragraph that is nothing but dashes (em dashes, hyphens, or a mix, 3+
+# long) is the divider furniture the published editions run between Off the
+# Clock entries and events - NOT prose punctuation, so the em-dash rule does
+# not apply to it. It must be detected BEFORE strip_reader_dashes, which
+# would otherwise mangle it into a row of " - " fragments.
+_DIVIDER_LINE = re.compile(r"^[—―–\-]{3,}$")
+# The exact divider paragraph the published editions use.
+_PUBLISHED_DIVIDER = "—" * 27
+
+# The Inside Track's "[Screenshot: IMG_1234.jpg]" placement markers tell Victor
+# which screenshot goes where; they are NOT reader copy. Rendered as an
+# obvious placeholder so one left in by accident reads as a to-do, never as a
+# sentence in the newsletter.
+_SCREENSHOT_MARKER = re.compile(r"^\[Screenshot:\s*(.+?)\]$", re.IGNORECASE)
+
+# The Brains Trust's "[CHART - Source: MLA, Morgan Stanley Research]" markers
+# say which chart sits between which paragraphs, and carry the Source caption
+# that ships UNDER the chart in the published editions. Same treatment.
+_CHART_MARKER = re.compile(r"^\[CHART\s*[-–—:]?\s*(.*?)\]$", re.IGNORECASE)
+
+
 def md_to_editor_html(text: str) -> str:
     """Convert FW markdown-ish text into a beehiiv-editor HTML fragment.
 
-    Blank lines separate paragraphs. A line starting '#### ' becomes an <h4>
-    (Thread of the Week's real published title format). Everything else is
-    wrapped in <p>. Returns "" for empty/whitespace-only input.
+    Blank lines separate blocks. Supported block shapes (audited against the
+    published editions, 25 Aug 2026):
+      - '#### ...' -> <h4> (Thread of the Week's real title format)
+      - consecutive '* ...' lines -> <ul><li> (Top Picks / Odd Picks / Events)
+        ('- ' deliberately does NOT start a bullet: '- Jarden' is a pull-quote
+        attribution line, not a list item)
+      - '> ...' lines -> <blockquote> (Thread of the Week's top comment)
+      - a line of dashes -> the published em-dash divider paragraph
+      - anything else -> <p>, with single newlines inside the block kept as
+        <br> (Off the Clock's bold category line + bold title line share one
+        block in the published editions)
+    Returns "" for empty/whitespace-only input.
     """
-    text = strip_reader_dashes(text.strip())
-    if not text:
+    if not text or not text.strip():
         return ""
 
-    paragraphs = re.split(r"\n\s*\n", text)
+    paragraphs = re.split(r"\n\s*\n", text.strip())
     parts: list[str] = []
     for para in paragraphs:
         para = para.strip()
         if not para:
             continue
+        if _DIVIDER_LINE.match(para):
+            parts.append(f"<p>{_PUBLISHED_DIVIDER}</p>")
+            continue
+        para = strip_reader_dashes(para)
         heading_match = _HEADING4.match(para)
         if heading_match:
             parts.append(f"<h4>{_inline(heading_match.group(1))}</h4>")
-        else:
-            # Collapse internal single newlines into spaces — one paragraph tag.
-            collapsed = " ".join(line.strip() for line in para.split("\n") if line.strip())
-            parts.append(f"<p>{_inline(collapsed)}</p>")
+            continue
+        lines = [ln.strip() for ln in para.split("\n") if ln.strip()]
+        if len(lines) == 1:
+            marker = _SCREENSHOT_MARKER.match(lines[0])
+            if marker:
+                parts.append(
+                    '<p><em>[ Screenshot goes here: '
+                    f'{html.escape(marker.group(1), quote=True)} ]</em></p>')
+                continue
+            chart = _CHART_MARKER.match(lines[0])
+            if chart:
+                caption = html.escape(chart.group(1).strip(), quote=True)
+                parts.append(
+                    "<p><em>[ Chart goes here"
+                    + (f" - {caption}" if caption else "")
+                    + " ]</em></p>")
+                continue
+        if lines and all(ln.startswith("* ") for ln in lines):
+            items = "".join(f"<li><p>{_inline(ln[2:].strip())}</p></li>" for ln in lines)
+            parts.append(f"<ul>{items}</ul>")
+            continue
+        if lines and all(ln.startswith(">") for ln in lines):
+            quoted = " ".join(ln.lstrip(">").strip() for ln in lines)
+            parts.append(f"<blockquote><p>{_inline(quoted)}</p></blockquote>")
+            continue
+        parts.append(f"<p>{'<br>'.join(_inline(ln) for ln in lines)}</p>")
     return "".join(parts)
 
 
