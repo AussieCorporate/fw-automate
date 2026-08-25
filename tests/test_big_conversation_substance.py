@@ -97,3 +97,14 @@ def test_skill_cardinal_rule_allows_the_aggregate_community():
         return
     assert "never retell an INDIVIDUAL submission" in text
     assert "when we put the question to the community" in text.lower()
+
+
+def test_announced_transitions_entry_distinguishes_scaffolding_from_a_claim():
+    """The strip deleted "The problem is what AI has done to the rest." from the
+    Cover Letters piece and Victor put a blunter version back ("The real problem
+    is AI."). A sentence that ASSERTS something is content, not scaffolding."""
+    from flatwhite.classify.voice_pipeline import CLAUDE_TELL_CATALOGUE as CAT
+    entry = CAT.split("14. ANNOUNCED TRANSITIONS")[1].split("15. ")[0]
+    assert "over-firing" in entry
+    assert "The real problem is AI" in entry
+    assert "asserts" in entry.lower()

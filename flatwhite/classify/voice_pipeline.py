@@ -473,9 +473,11 @@ CLAUDE_TELL_CATALOGUE = '''\
     Real example: "the ones who bounce back... the ones who quietly regret it... then there's the group that complicates the whole framing."
     Deletion rule: delete the third (or later) bucket entirely; keep at most two.
 
-14. ANNOUNCED TRANSITIONS - a sentence whose only job is to announce the paragraph join.
-    Real example: "Then there's the group that complicates the whole framing."
+14. ANNOUNCED TRANSITIONS - a sentence whose ONLY job is to announce the paragraph join.
+    Real example: "Then there's the group that complicates the whole framing." (also "Then there's everyone who didn't choose it.")
     Deletion rule: delete the announcing sentence; the paragraph now opens directly with the information that followed it.
+    NARROWED 25 Aug 2026 - this entry was over-firing. On the Cover Letters piece it deleted "The problem is what AI has done to the rest.", and Victor put a blunter version straight back in: "The real problem is AI." That sentence NAMES THE SUBJECT of the paragraph and carries a claim, so it is content, not scaffolding.
+    The test: strip the sentence of its connective opener and ask whether anything is left being asserted. "Then there's the group that complicates the whole framing" asserts nothing about the world - it only tells the reader a paragraph is starting, so it goes. "The problem is what AI has done to the rest" asserts that AI is the problem, so it stays. When a sentence both announces AND asserts, keep the assertion and cut the announcing words in front of it ("Then there's the fact that X" -> "X").
 
 15. THE FULL-CIRCLE CALLBACK - ending by mirroring the opening phrase or image.
     Deletion rule: delete the mirrored final sentence/clause; end on the line before it.
