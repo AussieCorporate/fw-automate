@@ -71,11 +71,34 @@ def test_word_count_is_computed_not_assumed(fixture_corpus):
 
 def test_real_corpus_loads_and_maps_known_segments():
     """Integration check against the ACTUAL shipped corpus — no network, just
-    confirms the segment-name matchers still line up with real header text."""
+    confirms the segment-name matchers still line up with real header text.
+
+    "insidetrack" is deliberately NOT in this list. Since the corpus refresh of
+    25 Aug 2026 the parser strips images, and The Inside Track is an
+    images-only segment (Victor's rule, independently confirmed: it has no
+    prose in any recent edition), so it has nothing to benchmark. "pulse" is
+    also out — the segment was decommissioned 25 Aug 2026.
+    """
     benchmark._load_profiles.cache_clear()
-    for section_id in ("editorial", "big_conversation", "top_picks", "insidetrack",
-                        "thread", "pulse", "off_the_clock", "brains_trust"):
+    for section_id in ("editorial", "big_conversation", "top_picks",
+                        "thread", "off_the_clock", "brains_trust"):
         result = benchmark.benchmark_segment(section_id, "word " * 100)
         assert result["status"] != "no_data", f"{section_id} did not match any real segment name"
         assert result["n_editions"] >= 1
     benchmark._load_profiles.cache_clear()
+
+
+def test_inside_track_has_no_measurable_text_because_it_is_images_only():
+    benchmark._load_profiles.cache_clear()
+    result = benchmark.benchmark_segment("insidetrack", "word " * 100)
+    assert result["status"] == "no_data"
+    benchmark._load_profiles.cache_clear()
+
+
+def test_word_count_ignores_link_urls_and_divider_rows():
+    """A markdown URL is not reader-visible text; counting it raw made Off the
+    Clock measure 196 against a 186 ceiling when the rendered text is 156."""
+    md = "**EATING**\n**A title**\n\nA short blurb. [LINK](https://example.com/a/very/long/slug-here?x=1)"
+    # **EATING** / **A / title** / A / short / blurb. / LINK  = 7 visible words
+    assert benchmark._word_count(md) == 7
+    assert benchmark._word_count("Top\n\n———————————————————————————\n\nBottom") == 2

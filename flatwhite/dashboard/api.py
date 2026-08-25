@@ -1743,6 +1743,13 @@ async def api_assemble_edition(request: Request) -> JSONResponse:
 
     assembled_html = "".join(b["html"] for b in blocks)
 
+    # Whole-edition length. Nothing checked this before 25 Aug 2026: every
+    # segment could sit inside its own band while the edition ran long overall.
+    from flatwhite.assemble.benchmark import benchmark_edition
+
+    total_words = sum((b["benchmark"] or {}).get("word_count") or 0 for b in blocks)
+    edition_benchmark = benchmark_edition(total_words)
+
     return JSONResponse({
         "week_iso": week_iso,
         "blocks": blocks,
@@ -1750,6 +1757,7 @@ async def api_assemble_edition(request: Request) -> JSONResponse:
         "missing_ready": missing_ready,
         "sponsor_included": sponsor_included,
         "missed_last_week_included": bool(missed),
+        "edition_benchmark": edition_benchmark,
     })
 
 
@@ -1887,15 +1895,39 @@ def _published_editions_cached(_cache: dict = {}) -> list[dict]:
 
 def _published_match(topic: str, editions: list[dict]) -> dict | None:
     """The published edition this topic folder looks like it became, or None.
-    Needs at least two shared content words, so "Cover Letters" matches
-    "Cover letter, yes or no?" but not every edition mentioning letters."""
+
+    Two shared content words is the default bar ("Cover Letters" ->
+    "Cover letter, yes or no?"). But a SINGLE shared word is enough when that
+    word is distinctive - it appears in at most two published titles across
+    the whole run.
+
+    Why: the two-word bar missed "Payrise Excuses" -> "Getting denied a
+    payrise." (8 Jun 2026), because the only shared word is "payrise". That
+    near-shipped a repeat and cost a 40-minute regeneration. "payrise" occurs
+    in one title out of 54, so on its own it is decisive; "career" occurs in
+    several, so on its own it is not.
+    """
     topic_words = _content_words(topic)
-    if len(topic_words) < 2:
+    if not topic_words:
         return None
+
+    freq: dict[str, int] = {}
     for ed in editions:
-        if len(topic_words & _content_words(ed["title"])) >= 2:
-            return ed
-    return None
+        for w in _content_words(ed["title"]):
+            freq[w] = freq.get(w, 0) + 1
+
+    best: dict | None = None
+    for ed in editions:
+        shared = topic_words & _content_words(ed["title"])
+        if not shared:
+            continue
+        if len(shared) >= 2 or any(freq.get(w, 0) <= 2 for w in shared):
+            # Prefer the strongest overlap when several editions match.
+            if best is None or len(shared) > best["_shared"]:
+                best = {**ed, "_shared": len(shared)}
+    if best:
+        best.pop("_shared", None)
+    return best
 
 
 def _missed_last_week_block() -> dict | None:
@@ -2475,7 +2507,15 @@ def _build_otc_prompt(picks: list) -> str:
         "---\n\n"
         "The category and title lines are ADJACENT (no blank line between them), "
         "both bold. Blank line before the blurb. The divider line between "
-        "entries, but not after the last one. Nothing else."
+        "entries, but not after the last one. Nothing else.\n"
+        "\n"
+        "LENGTH (added 25 Aug 2026 - this segment had no length rule and ran "
+        "long): the WHOLE section is 105-180 words across all five entries, "
+        "aiming at about 165. Measured across the 17 editions published since "
+        "1 May 2026. That is roughly 25-30 words per entry INCLUDING its two "
+        "header lines, so each blurb is ONE sentence, not two. If a blurb needs "
+        "a second sentence to make sense, the pick is too complicated - say "
+        "the simplest true thing about it instead."
     )
     return prompt
 

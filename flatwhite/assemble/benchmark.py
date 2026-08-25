@@ -22,6 +22,14 @@ from typing import Any
 
 GROUND_TRUTH_PATH = Path(__file__).parent.parent.parent / "data" / "beehiiv_fw_ground_truth.json"
 
+# Only editions on/after this date count toward the benchmark. The corpus now
+# refreshes from beehiiv (scripts/refresh_ground_truth.py) and reaches back to
+# 2022, but Victor's standing rule is to weight recent editions - the 2022-23
+# newsletter was a different product and its lengths would drag every band.
+# 1 May 2026 keeps the last ~17 editions, the same window the voice specs were
+# built from.
+RECENT_SINCE = "2026-05-01"
+
 # FW dashboard section id -> substrings that identify it in the real corpus's
 # segment "name" field (case-insensitive "in" match). Ordered matchers checked
 # in the order given; a name matching more than one FW section id (e.g. "ODD
@@ -51,7 +59,19 @@ _SEGMENT_MATCHERS: dict[str, dict[str, list[str]]] = {
 }
 
 
+# A markdown link's URL is not reader-visible text: in the rendered email it
+# lives in the href, so the published corpus never counted it. Segment drafts
+# are stored as markdown, so counting them raw inflated every link-heavy
+# segment - Off the Clock measured 196 against a 186 ceiling when the rendered
+# text is 156 (found 25 Aug 2026 while trimming that segment to length).
+_MD_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_DIVIDER_ONLY = re.compile(r"^\s*[—―–\-]{3,}\s*$", re.MULTILINE)
+
+
 def _word_count(text: str) -> int:
+    """Words a reader actually sees: link text without its URL, no divider rows."""
+    text = _MD_LINK.sub(r"\1", text)
+    text = _DIVIDER_ONLY.sub(" ", text)
     return len([w for w in re.split(r"\s+", text.strip()) if w])
 
 
@@ -72,6 +92,8 @@ def _load_profiles() -> dict[str, dict[str, Any]]:
     if not GROUND_TRUTH_PATH.exists():
         return {}
     editions = json.loads(GROUND_TRUTH_PATH.read_text())
+
+    editions = [e for e in editions if str(e.get("date", "")) >= RECENT_SINCE] or editions
 
     counts: dict[str, list[int]] = {sid: [] for sid in _SEGMENT_MATCHERS}
     for edition in editions:
@@ -95,6 +117,51 @@ def _load_profiles() -> dict[str, dict[str, Any]]:
             "n": len(values),
         }
     return profiles
+
+
+@lru_cache(maxsize=1)
+def _edition_totals() -> dict[str, Any] | None:
+    """Total words per published edition, over the recent window. Used to check
+    the WHOLE edition length, which nothing checked before 25 Aug 2026 - every
+    segment could sit inside its own band while the edition as a whole ran
+    long."""
+    if not GROUND_TRUTH_PATH.exists():
+        return None
+    editions = json.loads(GROUND_TRUTH_PATH.read_text())
+    editions = [e for e in editions if str(e.get("date", "")) >= RECENT_SINCE] or editions
+    totals = []
+    for e in editions:
+        t = sum(s.get("word_count") if s.get("word_count") is not None
+                else _word_count(s.get("text", "")) for s in e.get("segments", []))
+        if t:
+            totals.append(t)
+    if not totals:
+        return None
+    totals.sort()
+    return {"avg": round(sum(totals) / len(totals), 1), "min": totals[0],
+            "max": totals[-1], "median": totals[len(totals) // 2], "n": len(totals)}
+
+
+def benchmark_edition(total_words: int) -> dict[str, Any]:
+    """Compare a whole assembled edition's word count to the published range.
+
+    Returns the same shape as benchmark_segment so the frontend can render it
+    with the existing chip code.
+    """
+    profile = _edition_totals()
+    if profile is None:
+        return {"word_count": total_words, "target_avg": None, "target_min": None,
+                "target_max": None, "status": "no_data", "n_editions": 0}
+    if total_words < profile["min"]:
+        status = "short"
+    elif total_words > profile["max"]:
+        status = "long"
+    else:
+        status = "within"
+    return {"word_count": total_words, "target_avg": profile["avg"],
+            "target_min": profile["min"], "target_max": profile["max"],
+            "target_median": profile["median"],
+            "status": status, "n_editions": profile["n"]}
 
 
 def benchmark_segment(section_id: str, text: str) -> dict[str, Any]:

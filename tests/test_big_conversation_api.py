@@ -270,12 +270,30 @@ def test_unrelated_topic_is_not_falsely_flagged():
         assert api._published_match(topic, editions) is None, topic
 
 
-def test_one_shared_word_is_not_enough_to_flag():
-    """'Career Pivoting' and 'Best Career Advice' share only 'career' - one
-    overlap must not be treated as the same topic."""
+def test_one_shared_COMMON_word_is_not_enough_to_flag():
+    """One overlap only counts when the shared word is DISTINCTIVE - rare
+    across the published run. 'career' appears in several titles, so sharing
+    it alone must not flag a topic as already published."""
     import flatwhite.dashboard.api as api
-    editions = [{"title": "Best career advice you ever got", "url": "https://x/3"}]
+    editions = [
+        {"title": "Best career advice you ever got", "url": "https://x/3"},
+        {"title": "The career ladder is a myth", "url": "https://x/4"},
+        {"title": "Career break, career suicide?", "url": "https://x/5"},
+    ]
     assert api._published_match("Career Pivoting", editions) is None
+
+
+def test_one_shared_DISTINCTIVE_word_is_enough_to_flag():
+    """The two-word bar missed 'Payrise Excuses' -> 'Getting denied a
+    payrise.' and nearly shipped a repeat. 'payrise' is rare, so it decides."""
+    import flatwhite.dashboard.api as api
+    editions = [
+        {"title": "Getting denied a payrise.", "url": "https://x/6"},
+        {"title": "Best career advice you ever got", "url": "https://x/3"},
+        {"title": "The career ladder is a myth", "url": "https://x/4"},
+    ]
+    m = api._published_match("Payrise Excuses", editions)
+    assert m is not None and "payrise" in m["title"].lower()
 
 
 def test_lookup_failure_never_hides_the_bank():
