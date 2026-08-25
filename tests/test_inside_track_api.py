@@ -118,7 +118,14 @@ def test_proceed_inside_track_custom_prompt_bypasses_default():
     assert mock_route.call_args.kwargs["prompt"] == "Just write this exact thing."
 
 
-def test_proceed_section_endpoint_routes_insidetrack():
+def test_insidetrack_generation_is_refused_because_the_segment_is_manual():
+    """Victor, 25 Aug 2026: The Inside Track is images-only and MANUAL.
+
+    All 10 published editions carry zero lines of prose in this segment, so
+    the old "write up each screenshot" path produced copy that only ever got
+    deleted. Generation is now refused outright; the dashboard builds a
+    [Screenshot: ...] placement list client-side instead.
+    """
     from flatwhite.dashboard.api import api_proceed_section
 
     class FakeRequest:
@@ -130,11 +137,6 @@ def test_proceed_section_endpoint_routes_insidetrack():
                 "custom_prompt": None,
             }
 
-    with patch("flatwhite.dashboard.api.route", return_value="[Screenshot: adam_0001.jpg]\nSomething punchy."):
-        with patch("flatwhite.dashboard.api.get_current_week_iso", return_value="2026-W28"):
-            result = asyncio.get_event_loop().run_until_complete(api_proceed_section(FakeRequest()))
-            data = json.loads(result.body)
-
-    assert data["section"] == "insidetrack"
-    assert data["output"] == "[Screenshot: adam_0001.jpg]\nSomething punchy."
-    assert data["week_iso"] == "2026-W28"
+    result = asyncio.get_event_loop().run_until_complete(api_proceed_section(FakeRequest()))
+    assert result.status_code == 400
+    assert "Unknown section" in json.loads(result.body)["error"]

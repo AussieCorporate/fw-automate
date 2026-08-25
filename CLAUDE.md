@@ -22,6 +22,17 @@ then give Victor **http://localhost:8500/**. (Same as double-clicking `Start Fla
 
 - Reddit "script app" OAuth is broken — never build on it or scaffold it again.
 - Reddit links are excluded from OTC.
+- **PULSE / AUSCORP STRESS INDEX IS DECOMMISSIONED** (Victor, 25 Aug 2026). It is
+  not part of the newsletter any more. Removed from the running order, the
+  assembly and the editorial-intro gate. Do not re-add it as a segment or
+  propose reviving it. (The signal scrapers/pulse package are left in the repo
+  untouched — only the newsletter segment is retired.)
+- **THE INSIDE TRACK IS MANUAL** (Victor, 25 Aug 2026). It is an IMAGES-ONLY
+  segment: screenshots placed by hand in beehiiv, no prose. Confirmed against
+  all 10 published editions (zero lines of prose in any of them). Never
+  generate AI copy for it.
+- **AUSCORP EVENTS IS MANUAL** (Victor, 25 Aug 2026). Victor types the week's
+  events himself. Do not build AI generation for it.
 - NO single "produce whole edition" button (Victor, 25 Aug 2026). The dash is
   one button PER SEGMENT, pressed after Victor makes the human calls (topic
   choice, screenshot picks, angle picks). Per-segment "Insert into beehiiv" is

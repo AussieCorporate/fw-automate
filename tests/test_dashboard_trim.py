@@ -1,8 +1,9 @@
 """Tests guarding the FW dashboard trim (branch fw-trim-segments).
 
-Victor's decision: keep only Pulse, Big Conversation, Off the Clock, Top
-Picks, Editorial (plus the already-disabled Salary Vault stub). Remove the
-tabs for The Lobby, Whispers, AMP's Finest, Events, Finds, Thread, Composer.
+Victor's decision: keep only Big Conversation, Off the Clock, Top Picks and
+Editorial (plus the already-disabled Salary Vault stub). Remove the tabs for
+The Lobby, Whispers, AMP's Finest, Events, Finds, Thread, Composer - and,
+since 25 Aug 2026, Pulse, which Victor decommissioned outright.
 
 Whispers/Finds/Thread are TAB-ONLY removals: their classifier sections stay
 in flatwhite/classify/classifier.py's VALID_SECTIONS because Big
@@ -22,8 +23,12 @@ import flatwhite.db as db_module
 
 _INDEX_HTML = Path(__file__).parent.parent / "flatwhite" / "dashboard" / "static" / "index.html"
 
-_CUT_NAV_IDS = {"lobby", "whispers", "amp_finest", "events", "finds", "thread", "assemble"}
-_KEPT_NAV_IDS = {"pulse", "big_conversation", "off_the_clock", "top_picks", "editorial"}
+# "pulse" moved from KEPT to CUT on 25 Aug 2026: Victor decommissioned the
+# AusCorp Stress Index, so the tab and the running-order segment are both gone.
+# The pulse scrapers/package stay in the repo; only the newsletter segment is
+# retired (see CLAUDE.md standing decisions).
+_CUT_NAV_IDS = {"lobby", "whispers", "amp_finest", "events", "finds", "thread", "assemble", "pulse"}
+_KEPT_NAV_IDS = {"big_conversation", "off_the_clock", "top_picks", "editorial"}
 
 
 def _nav_item_ids() -> set[str]:

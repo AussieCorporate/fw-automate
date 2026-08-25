@@ -1583,7 +1583,9 @@ _REAL_SEGMENT_HEADINGS: dict[str, str] = {
     # built + inserted from the Top Picks screen, but it has its own beehiiv card.
     "odd_picks": "ODD PICKS FROM LAST WEEK",
     "insidetrack": "THE INSIDE TRACK",
-    "pulse": "AUSCORP STRESS INDEX",
+    # "pulse" ("AUSCORP STRESS INDEX") removed 25 Aug 2026 - segment
+    # decommissioned by Victor. The pulse package and its scrapers stay in the
+    # repo; it is only retired as a newsletter segment.
     "off_the_clock": "OFF THE CLOCK",
     "thread": "THREAD OF THE WEEK - r/AUSCORP",
     "big_conversation": "THE BIG CONVERSATION",
@@ -2701,16 +2703,18 @@ async def api_proceed_section(request: Request) -> JSONResponse:
     custom_prompt = body.get("custom_prompt") or None
 
     proceed_fns = {
-        "pulse": _proceed_pulse,
         "big_conversation": _proceed_big_conversation,
         "finds": _proceed_finds,
-        # "thread" intentionally excluded: its tab is hidden (Victor's
-        # decision), so there is no UI path left to call it. _proceed_thread
-        # is left defined (unreferenced) rather than deleted, to keep this
-        # change minimal.
+        # Excluded on purpose, each left defined (unreferenced) rather than
+        # deleted, to keep the change minimal:
+        #   "thread"      - tab hidden, Victor pastes and formats by hand.
+        #   "pulse"       - segment DECOMMISSIONED 25 Aug 2026.
+        #   "insidetrack" - segment is images-only and MANUAL (25 Aug 2026).
+        #                   It never carried prose in any published edition,
+        #                   so generating copy for it produced content that
+        #                   would only be deleted.
         "off_the_clock": _proceed_off_the_clock,
         "editorial": _proceed_editorial,
-        "insidetrack": _proceed_inside_track,
         "brains_trust": _proceed_brains_trust,
     }
 

@@ -598,7 +598,7 @@ function $(id) { return document.getElementById(id); }
    that test in the same change. */
 var NAV_ITEMS = [
   { id: "editorial",   icon: "GM",  label: "Editorial" },
-  { id: "pulse",       icon: "◉", label: "Pulse" },
+  // Pulse tab removed 25 Aug 2026 - segment decommissioned by Victor.
   { id: "big_conversation", icon: "¶", label: "Big Conversation" },
   { id: "off_the_clock", icon: "🍷", label: "Off the Clock" },
   { id: "top_picks",   icon: "🏆", label: "Top Picks" },
@@ -761,7 +761,9 @@ var SEGMENTS = [
   { id: "brains_trust",     name: "Brains Trust",        status: "notready" },
   { id: "top_picks",        name: "Top Picks",           status: "notready" },
   { id: "insidetrack",      name: "The Inside Track",    status: "notready" },
-  { id: "pulse",            name: "Pulse",               status: "notready" },
+  // Pulse / AusCorp Stress Index was DECOMMISSIONED 25 Aug 2026 (Victor) and
+  // is no longer a segment. Removing it here also unblocks the editorial
+  // intro, which is gated on every running-order segment being ready.
   { id: "off_the_clock",    name: "Off the Clock",       status: "notready" },
   // Reddit scrape for Thread of the Week is retired (dead/403); the segment
   // itself stays and is filled in by hand (Victor pastes the thread), so it
@@ -781,7 +783,7 @@ var SEGMENTS = [
 // below fetches its data via loadPageData() before rendering — Content bank
 // is not one of the running-order SEGMENTS, has no ready/not-ready concept,
 // and _segmentStatus() is never called with it, so this addition is safe.
-var _REAL_SEGMENTS = { editorial: 1, pulse: 1, big_conversation: 1, off_the_clock: 1, top_picks: 1, insidetrack: 1, brains_trust: 1, auscorp_events: 1, bank: 1 };
+var _REAL_SEGMENTS = { editorial: 1, big_conversation: 1, off_the_clock: 1, top_picks: 1, insidetrack: 1, brains_trust: 1, auscorp_events: 1, bank: 1 };
 var _SEGMENT_TITLES = { bank: "Content bank", sources: "Sources", assemble: "Assemble to beehiiv" };
 var _dragFromIndex = null;
 
@@ -1093,24 +1095,49 @@ function proceedEditorial() {
    A simple editable card: Victor types the week's events, saves, marks
    ready. Images are added in beehiiv. Template matches the published shape.
    ═══════════════════════════════════════════════════════════════════════ */
+/* Corrected 25 Aug 2026. My first version was wrong on three counts, checked
+   against all 10 published editions: the 👀 sits BETWEEN the name and "Coming
+   Soon" (inside the pipe), entries sit under a month or category header, and
+   groups are separated by the divider. Placeholder entries carry no location -
+   locations appear only on confirmed events.
+
+   Two real shapes ship. The month-header one is the most recent (last 3
+   editions); the category one is what the 7 before it used. */
 var AUSCORP_EVENTS_TEMPLATE =
-  "* **AusCorp Runs | Sydney | Coming Soon** 👀\n\n" +
-  "* **AusCorp Singles Event | Sydney | Coming Soon** 👀";
+  "**SEPTEMBER**\n\n" +
+  "* **AusCorp Runs | **👀 **Coming Soon**\n" +
+  "* **AusCorp Singles Event | **👀 **Coming Soon**\n\n" +
+  "———————————————————————————\n\n" +
+  "**OCTOBER**\n\n" +
+  "* **AusCorp Pilates | **👀 **Coming Soon**";
+
+var AUSCORP_EVENTS_TEMPLATE_CATEGORY =
+  "**SPORTS**\n" +
+  "**AusCorp Runs x Sneaker Laundry | Sydney | Free Matcha**\n" +
+  "**Thursday 28th August 7AM**\n\n" +
+  "* **Morning Run + Free Matcha [HERE](https://theaussiecorporate.com/products/auscorp-runs)**\n\n" +
+  "———————————————————————————\n\n" +
+  "**SPORTS / SOCIAL**\n" +
+  "**AusCorp Singles Event | **👀 **Coming Soon**\n" +
+  "**September**";
 
 function renderAusCorpEvents(el) {
-  var h = '<div class="sh"><div><h2>AusCorp Events</h2><div class="sub">The week\'s events block. Type it, Save, Mark ready. Event posters/photos get added in beehiiv.</div></div></div>';
+  var h = '<div class="sh"><div><h2>AusCorp Events</h2><div class="sub">Manual. Type the week\'s events, Save, Mark ready. Event posters/photos get added in beehiiv.</div></div></div>';
   h += '<div class="card mb20">';
-  h += '<button class="btn btn-sm btn-secondary mb8" onclick="fillEventsTemplate()">Insert template</button>';
+  h += '<div style="font-size:12px;color:var(--text-3);margin-bottom:8px;">Start from one of the two shapes the real editions use:</div>';
+  h += '<button class="btn btn-sm btn-secondary mb8" onclick="fillEventsTemplate(\'month\')">Month headers (recent editions)</button> ';
+  h += '<button class="btn btn-sm btn-secondary mb8" onclick="fillEventsTemplate(\'category\')">Category headers (with a confirmed event)</button>';
   h += outputBox('auscorp_events');
   h += '</div>';
   el.innerHTML = h;
   fillOutput('auscorp_events');
 }
 
-function fillEventsTemplate() {
+function fillEventsTemplate(kind) {
   var ta = $("output-auscorp_events");
-  if (ta && !ta.value.trim()) { ta.value = AUSCORP_EVENTS_TEMPLATE; }
-  else if (ta) { showToast("There's already text - clear it first if you want the template", "error"); }
+  if (!ta) return;
+  if (ta.value.trim()) { showToast("There's already text - clear it first if you want a template", "error"); return; }
+  ta.value = (kind === "category") ? AUSCORP_EVENTS_TEMPLATE_CATEGORY : AUSCORP_EVENTS_TEMPLATE;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -2303,38 +2330,28 @@ function toggleInsideTrackPick(filename) {
   render();
 }
 
-function updateInsideTrackNote(filename, value) {
-  S.insideTrackNotes[filename] = value;
-}
+// proceedInsideTrack() and updateInsideTrackNote() were removed 25 Aug 2026:
+// the segment is images-only and manual, so there is no write-up step and no
+// per-screenshot note to feed one. buildInsideTrackList() replaces them.
 
-function proceedInsideTrack() {
-  var picked = Object.keys(S.insideTrackPicked);
-  if (!picked.length) { showToast("Tick at least one submission before writing up.", "error"); return; }
-  var selected = picked.map(function(f) { return { filename: f, note: S.insideTrackNotes[f] || "" }; });
-  var model = getModel("model-insidetrack");
-  S.loading.insidetrack = true;
-  render();
-  api("/api/proceed-section", { method: "POST", body: { section: "insidetrack", model: model, data: { selected: selected } } })
-    .then(function(d) {
-      S.sectionOutputs.insidetrack = { output_text: d.output, model_used: d.model };
-      S.loading.insidetrack = false;
-      render();
-      fillOutput('insidetrack');
-      showToast("Inside Track written up");
-    })
-    .catch(function(e) {
-      S.loading.insidetrack = false;
-      render();
-      showToast("Error: " + e.message, "error");
-    });
-}
+/* THE INSIDE TRACK IS MANUAL and IMAGES-ONLY (Victor, 25 Aug 2026).
 
+   All 10 published editions contain zero lines of prose in this segment - it
+   is screenshots placed by hand in beehiiv. The old "Write up selected" button
+   generated 1-2 AI sentences per screenshot, copy that has never appeared in
+   print, so it has been removed.
+
+   What the page does now: pick the screenshots to run, in order, and build the
+   placement list. Each picked screenshot becomes a [Screenshot: filename]
+   marker, which the beehiiv converter renders as a visible "screenshot goes
+   here" placeholder - a running order for Victor to drop the images against,
+   never reader-facing copy. */
 function renderInsideTrack(el) {
   var d = S.insideTrack;
   var pickedCount = Object.keys(S.insideTrackPicked).length;
 
   var h = '';
-  h += '<p style="color:var(--label2);font-size:13px;margin:0 0 14px;">Tick the gossip and redundancy screenshots to run, add a one-line note on what each shows, then write them up.</p>';
+  h += '<p style="color:var(--label2);font-size:13px;margin:0 0 14px;">Images only, no written copy. Tick the gossip and redundancy screenshots to run, in the order you want them, then build the placement list and drop the images into beehiiv against it.</p>';
 
   if (!d || !d.submissions || !d.submissions.length) {
     var msg = (d && d.folder_found === false)
@@ -2345,28 +2362,46 @@ function renderInsideTrack(el) {
     h += '<div class="it-grid">';
     d.submissions.forEach(function(s) {
       var picked = !!S.insideTrackPicked[s.filename];
+      var pos = _insideTrackOrder().indexOf(s.filename);
       h += '<div class="it-card' + (picked ? ' picked' : '') + '">';
       h += '<img class="it-thumb" src="' + escAttr(s.thumb_url) + '" onclick="toggleInsideTrackPick(' + jsq(s.filename) + ')" title="Click to ' + (picked ? 'un-tick' : 'tick') + '"/>';
       h += '<div class="it-body">';
-      h += '<div class="it-fname">' + esc(s.filename) + '</div>';
-      if (picked) {
-        h += '<textarea class="it-note" rows="2" placeholder="What does this show?" oninput="updateInsideTrackNote(' + jsq(s.filename) + ', this.value)">' + esc(S.insideTrackNotes[s.filename] || '') + '</textarea>';
-      }
+      h += '<div class="it-fname">' + (pos >= 0 ? '<strong>' + (pos + 1) + '.</strong> ' : '') + esc(s.filename) + '</div>';
       h += '</div></div>';
     });
     h += '</div>';
   }
 
   h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">';
-  h += modelSelect("model-insidetrack","insidetrack");
-  h += '<button class="btn btn-success" onclick="proceedInsideTrack()"' + (S.loading.insidetrack ? ' disabled' : '') + '>';
-  h += (S.loading.insidetrack ? 'Writing up…' : 'Write up selected (' + pickedCount + ')');
-  h += '</button></div>';
+  h += '<button class="btn btn-success" onclick="buildInsideTrackList()">Build placement list (' + pickedCount + ')</button>';
+  h += '</div>';
 
   h += outputBox('insidetrack');
 
   el.innerHTML = h;
   fillOutput('insidetrack');
+}
+
+function _insideTrackOrder() {
+  // Tick order is the running order. Object key order preserves insertion for
+  // plain string keys, which is what the picked map uses.
+  return Object.keys(S.insideTrackPicked || {}).filter(function(f) {
+    return S.insideTrackPicked[f];
+  });
+}
+
+function buildInsideTrackList() {
+  var picked = _insideTrackOrder();
+  if (!picked.length) { showToast("Tick at least one screenshot first", "error"); return; }
+  var text = picked.map(function(f) { return "[Screenshot: " + f + "]"; }).join("\n\n");
+  S.sectionOutputs.insidetrack = S.sectionOutputs.insidetrack || {};
+  S.sectionOutputs.insidetrack.output_text = text;
+  var ta = $("output-insidetrack");
+  if (ta) ta.value = text;
+  api("/api/section-output/insidetrack", { method: "POST", body: { output_text: text } })
+    .then(function() { showToast(picked.length + " screenshots saved to the Inside Track running order"); })
+    .catch(function() { showToast("Built, but auto-save failed - use Copy", "error"); });
+  render();
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -3275,7 +3310,7 @@ function renderBank(el) {
     // must match here too, or a pull "into" Brains Trust would silently
     // write to an orphaned "brains" section_outputs key that page never
     // reads.
-    ["editorial","brains_trust","top_picks","insidetrack","pulse","off_the_clock","thread","big_conversation"].forEach(function(sid) {
+    ["editorial","brains_trust","top_picks","insidetrack","off_the_clock","thread","big_conversation","auscorp_events"].forEach(function(sid) {
       h += '<option value="' + sid + '">' + sid + '</option>';
     });
     h += '</select> ';

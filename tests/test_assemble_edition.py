@@ -33,12 +33,13 @@ def assemble_client(tmp_path: Path):
             yield TestClient(api_module.app), week_iso
 
 
+# "pulse" is absent on purpose: the AusCorp Stress Index was decommissioned
+# 25 Aug 2026 and is no longer a running-order segment.
 _BASE_SEGMENTS = [
     {"id": "editorial", "status": "ready"},
     {"id": "brains_trust", "status": "notready"},
     {"id": "top_picks", "status": "notready"},
     {"id": "insidetrack", "status": "notready"},
-    {"id": "pulse", "status": "notready"},
     {"id": "off_the_clock", "status": "notready"},
     {"id": "thread", "status": "ready"},
     {"id": "big_conversation", "status": "ready"},
@@ -51,7 +52,7 @@ def test_assemble_returns_only_ready_segments_in_running_order(assemble_client):
     assert resp.status_code == 200
     body = resp.json()
     ids_in_order = [b["section"] for b in body["blocks"] if b["section"] in
-                    ("editorial", "brains_trust", "top_picks", "insidetrack", "pulse",
+                    ("editorial", "brains_trust", "top_picks", "insidetrack",
                      "off_the_clock", "thread", "big_conversation")]
     assert ids_in_order == ["editorial", "thread", "big_conversation"]
 
@@ -60,7 +61,7 @@ def test_not_ready_segments_are_flagged_missing_not_silently_dropped(assemble_cl
     client, _ = assemble_client
     resp = client.post("/api/assemble-edition", json={"segments": _BASE_SEGMENTS})
     missing = resp.json()["missing_ready"]
-    assert set(missing) == {"brains_trust", "top_picks", "insidetrack", "pulse", "off_the_clock"}
+    assert set(missing) == {"brains_trust", "top_picks", "insidetrack", "off_the_clock"}
 
 
 def test_each_block_has_html_and_benchmark(assemble_client):
