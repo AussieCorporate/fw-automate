@@ -29,7 +29,15 @@ _MAX_CONCURRENT = 2
 
 # Hard ceiling per run. The skill reads dozens of screenshots and drafts, so
 # minutes are normal; this only catches a genuinely stuck run.
-_DEFAULT_TIMEOUT_SEC = 900
+#
+# Raised from 15 to 45 minutes on 25 Aug 2026 after a real run. The
+# "Career Pivoting" topic (482 submissions) took about 40 minutes and was
+# killed at 15, which is worse than it sounds: the piece HAD been written,
+# but a timed-out run is marked "failed", and a failed run skips the strip
+# stage and the save to section_outputs. So a perfectly good piece was
+# reported as a failure and silently never made it into the edition. Big
+# topics are the norm, not the exception, so the ceiling has to clear them.
+_DEFAULT_TIMEOUT_SEC = 2700
 
 # Keep only the tail of output so the registry stays small.
 _OUTPUT_TAIL_CHARS = 6000
@@ -147,7 +155,10 @@ def _execute_inner(run_id: str, argv: list[str], cwd: str, timeout: int,
         out, _ = proc.communicate()
         _set(run_id, status="failed", ended_at=time.time(),
              error=f"The run took longer than {timeout // 60} minutes and was "
-                   "stopped. Try again, or run the skill by hand.",
+                   "stopped. Check the topic folder before re-running: a "
+                   "long run often finishes writing the piece before it is "
+                   "stopped, and a piece that exists can be used as-is "
+                   "rather than generated again from scratch.",
              output=(out or "")[-_OUTPUT_TAIL_CHARS:])
         return
 
