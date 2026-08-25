@@ -126,3 +126,34 @@ def test_24_aug_offenders_are_demoted(temp_db):
     assert grouped["otc_eating"][0]["title"].startswith("A tiny family-run")
     assert grouped["otc_wearing"][0]["title"].startswith("A local label's")
     assert grouped["otc_going"][0]["title"].startswith("A one-night immersive")
+
+
+# ─── Reader feedback, 26 Aug 2026: morning-show-tier sources are EXCLUDED ───
+# "I would absolutely not go to nine news or yahoo news for any lifestyle."
+# These are dropped outright, not merely ranked behind niche outlets.
+
+def test_low_trust_lifestyle_sources_are_excluded_not_just_demoted(temp_db):
+    _seed_item(temp_db, "The only supermarket spreadable butter this expert will eat",
+               "https://www.nine.com.au/lifestyle/food/butter-20260812.html", "otc_eating", 9.0)
+    _seed_item(temp_db, "New hack allegedly promises restful sleep",
+               "https://www.news.com.au/lifestyle/health/sleep-hack/news-story/abc", "otc_reading", 9.0)
+    _seed_item(temp_db, "A tiny family-run trattoria opened in Marrickville",
+               "https://example.com.au/trattoria", "otc_eating", 3.0)
+    _seed_item(temp_db, "How being on-call disrupts your sleep",
+               "https://theconversation.com/on-call-sleep", "otc_reading", 3.0)
+    with patch.object(db_module, "DB_PATH", temp_db):
+        grouped = load_otc_candidates(week_iso=TEST_WEEK)
+    eating = [r["title"] for r in grouped["otc_eating"]]
+    reading = [r["title"] for r in grouped["otc_reading"]]
+    assert not any("nine.com.au" in (r or "") for r in eating)
+    assert eating == ["A tiny family-run trattoria opened in Marrickville"]
+    assert reading == ["How being on-call disrupts your sleep"]
+
+
+def test_low_trust_detected_by_google_news_title_suffix_too():
+    from flatwhite.dashboard.state import is_low_trust_lifestyle
+    assert is_low_trust_lifestyle("https://news.google.com/rss/articles/CBMi_x",
+                                  "Some lifestyle piece - news.com.au")
+    assert is_low_trust_lifestyle("https://www.yahoo.com/lifestyle/x", None)
+    assert not is_low_trust_lifestyle("https://theconversation.com/x",
+                                      "A real study - The Conversation")

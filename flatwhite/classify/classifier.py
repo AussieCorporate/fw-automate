@@ -660,14 +660,51 @@ def _validate_otc_result(result: dict, raw_item: dict) -> dict:
     return result
 
 
-def classify_all_otc_unclassified() -> dict:
+def reclassify_all_otc(week_iso: str | None = None) -> int:
+    """Clear this week's OTC classifications so they can be scored again.
+
+    Added 25 Aug 2026. The classifier only ever looks at UNCLASSIFIED rows, so
+    improving the OTC prompt did nothing to items already scored under the old
+    one - and because the shortlist is capped at 3 per category by score, the
+    stale high-scoring picks kept winning and the better new items never
+    surfaced. Victor had to pick around them by hand.
+
+    Deletes the curated_items rows for this week's lifestyle lane and marks the
+    raw items unclassified. The raw items themselves are untouched, so nothing
+    needs re-scraping. Returns how many rows were reset.
+    """
+    w = week_iso or get_current_week_iso()
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT ci.id AS cid, ri.id AS rid FROM curated_items ci
+           JOIN raw_items ri ON ci.raw_item_id = ri.id
+           WHERE ri.week_iso = ? AND ri.lane = 'lifestyle'""",
+        (w,),
+    ).fetchall()
+    if rows:
+        conn.executemany("DELETE FROM curated_items WHERE id = ?",
+                         [(r["cid"],) for r in rows])
+        conn.executemany("UPDATE raw_items SET classified = 0 WHERE id = ?",
+                         [(r["rid"],) for r in rows])
+        conn.commit()
+    conn.close()
+    return len(rows)
+
+
+def classify_all_otc_unclassified(reclassify: bool = False) -> dict:
     """Classify all unclassified lifestyle raw_items for the current week.
 
     Uses batch classification for efficiency (same as editorial classifier).
+    With reclassify=True, this week's existing OTC classifications are cleared
+    first so every item is scored again under the current prompt.
     Returns: dict with keys: total, curated, discarded, failed, skipped.
     """
-    conn = get_connection()
     week_iso = get_current_week_iso()
+    if reclassify:
+        reset = reclassify_all_otc(week_iso)
+        print(f"  Re-classify: cleared {reset} existing OTC classifications for {week_iso}")
+
+    conn = get_connection()
 
     unclassified = conn.execute(
         "SELECT * FROM raw_items WHERE classified = 0 AND lane = 'lifestyle' AND week_iso = ?",

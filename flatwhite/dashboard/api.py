@@ -1021,6 +1021,14 @@ _SECTION_RUNNERS: dict[str, list[tuple[str, "Callable"]]] = {
     "classify_otc": [
         ("Classify OTC", lambda: __import__("flatwhite.classify.classifier", fromlist=["classify_all_otc_unclassified"]).classify_all_otc_unclassified()),
     ],
+    # Re-score EVERY item this week under the current prompt, not just the ones
+    # never seen before. Needed whenever the OTC scoring prompt changes: the
+    # normal pass only looks at unclassified rows, so old high-scoring picks
+    # kept winning the 3-per-category shortlist and better new items never
+    # surfaced (25 Aug 2026).
+    "reclassify_otc": [
+        ("Re-classify all OTC", lambda: __import__("flatwhite.classify.classifier", fromlist=["classify_all_otc_unclassified"]).classify_all_otc_unclassified(reclassify=True)),
+    ],
     "big_conversation": [
         ("Reddit RSS",  lambda: __import__("flatwhite.editorial.reddit_rss",             fromlist=["pull_reddit_editorial"]).pull_reddit_editorial()),
         ("Google News", lambda: __import__("flatwhite.editorial.google_news_editorial",  fromlist=["pull_google_news_editorial"]).pull_google_news_editorial()),

@@ -657,6 +657,53 @@ _MASS_OUTLET_DOMAINS = {
 }
 
 
+# Outlets a reader explicitly told us they do not trust for lifestyle content
+# (reader feedback, 26 Aug 2026): "I would absolutely not go to nine news or
+# yahoo news for any lifestyle... There are Instagram influencers and even
+# buzzfeed articles that I would trust more." and "surely we can do better
+# than nine news and yahoo news?"
+#
+# These are EXCLUDED from Off the Clock outright, not merely ranked behind
+# niche outlets like the mass-outlet list above. A Time Out write-up of a real
+# venue is still a real venue; a morning-show lifestyle segment is the thing
+# the reader said makes the section lose them.
+_LOW_TRUST_LIFESTYLE_DOMAINS = {
+    "nine.com.au",
+    "9honey.nine.com.au",
+    "news.com.au",
+    "yahoo.com",
+    "au.news.yahoo.com",
+    "au.lifestyle.yahoo.com",
+    "7news.com.au",
+    "dailymail.co.uk",
+}
+
+_LOW_TRUST_TITLE_NAMES = {
+    "nine.com.au", "9honey", "news.com.au", "yahoo", "7news", "daily mail",
+}
+
+
+def _domain_of(url: str | None) -> str:
+    if not url or "//" not in url:
+        return ""
+    domain = url.split("/")[2].lower()
+    return domain[4:] if domain.startswith("www.") else domain
+
+
+def is_low_trust_lifestyle(url: str | None, title: str | None = None) -> bool:
+    """True if this item comes from an outlet readers told us they distrust for
+    lifestyle. Checked by domain and, for Google-News-sourced rows whose URL is
+    a news.google.com redirect, by the "- Publisher" title suffix."""
+    domain = _domain_of(url)
+    if domain and any(domain == d or domain.endswith("." + d)
+                      for d in _LOW_TRUST_LIFESTYLE_DOMAINS):
+        return True
+    if title and " - " in title:
+        suffix = title.rsplit(" - ", 1)[-1].strip().lower()
+        return any(name in suffix for name in _LOW_TRUST_TITLE_NAMES)
+    return False
+
+
 def _is_mass_outlet(url: str | None) -> bool:
     if not url or "//" not in url:
         return False
@@ -757,6 +804,11 @@ def load_otc_candidates(week_iso: str | None = None) -> dict[str, list[dict[str,
         d = dict(row)
         section = d["section"]
         if section in grouped:
+            # Reader feedback, 26 Aug 2026: morning-show-tier outlets actively
+            # cost us credibility in this section, so they are dropped outright
+            # rather than ranked behind niche ones.
+            if is_low_trust_lifestyle(d.get("url"), d.get("title")):
+                continue
             # Deduplicate by normalised title within each category
             title_key = (d.get("title") or "").strip().lower()
             if title_key and title_key in seen_titles[section]:

@@ -174,8 +174,11 @@ def test_an_over_ceiling_piece_gets_one_automatic_recut_before_the_strip(tmp_pat
         recut_calls.append((segment, word_count))
         return "\n\n".join("word " * 80 for _ in range(4))  # 320 words, inside band
 
+    # shape_fn is a passthrough so this test stays offline and still exercises
+    # the re-cut path with the original 600-word draft.
     result = strip_stage.strip_piece_file(
-        p, strip_fn=lambda d: d + "\n---CHANGES---\n- none", recut_fn=fake_recut)
+        p, strip_fn=lambda d: d + "\n---CHANGES---\n- none", recut_fn=fake_recut,
+        shape_fn=lambda d, seg: d)
 
     assert recut_calls == [("big_conversation", 600)]
     assert result["status"] == "stripped"
@@ -189,7 +192,8 @@ def test_still_over_ceiling_after_recut_is_a_loud_warning_not_a_silent_ship(tmp_
 
     result = strip_stage.strip_piece_file(
         p, strip_fn=lambda d: d + "\n---CHANGES---\n- none",
-        recut_fn=lambda d, s, w: d)  # re-cut achieves nothing
+        recut_fn=lambda d, s, w: d,   # re-cut achieves nothing
+        shape_fn=lambda d, seg: d)    # nor does shaping
 
     assert result["status"] == "stripped"
     assert len(result["length_warnings"]) == 1
@@ -277,3 +281,60 @@ def test_only_deleted_and_rewrote_bullets_count_as_changes(tmp_path):
                             "- Rewrote \"it's worth noting that x\" as \"x\" (entry 23)\n"
                             "- Nothing else matched the catalogue."))
     assert result["change_count"] == 2
+
+
+# ─── SHAPE runs only when the piece is actually out of shape (26 Aug 2026) ──
+
+def _long_piece(tmp_path, paragraphs, words_each):
+    p = tmp_path / "_Long_BIG_CONVERSATION.md"
+    body = "\n\n".join("word " * words_each for _ in range(paragraphs))
+    p.write_text(body + "\n\n---\n\n## BUILD\n")
+    return p
+
+
+def test_shape_is_skipped_when_the_piece_is_already_in_band(tmp_path):
+    """The skill shapes its own draft; both real runs landed in band. Running
+    a Claude cutting pass on a good piece would rewrite it for no gain."""
+    p = _long_piece(tmp_path, 4, 80)  # 320 words, 4 paragraphs = in band
+    called = []
+    strip_stage.strip_piece_file(
+        p, strip_fn=lambda d: d + "\n---CHANGES---\n- none",
+        shape_fn=lambda d, s: called.append(s) or d)
+    assert called == [], "shape must not run on a piece already inside the band"
+
+
+def test_shape_runs_when_the_piece_is_over_the_word_target(tmp_path):
+    p = _long_piece(tmp_path, 4, 100)  # 400 words, over the 340 target
+    called = []
+
+    def fake_shape(draft, segment):
+        called.append(segment)
+        return "\n\n".join("word " * 80 for _ in range(4))
+
+    r = strip_stage.strip_piece_file(
+        p, strip_fn=lambda d: d + "\n---CHANGES---\n- none", shape_fn=fake_shape)
+    assert called == ["big_conversation"]
+    assert r["status"] == "stripped"
+    assert r["length_warnings"] == []
+
+
+def test_shape_runs_when_there_are_too_many_paragraphs(tmp_path):
+    p = _long_piece(tmp_path, 6, 40)  # 240 words but 6 paragraphs
+    called = []
+    strip_stage.strip_piece_file(
+        p, strip_fn=lambda d: d + "\n---CHANGES---\n- none",
+        shape_fn=lambda d, s: called.append(s) or "\n\n".join("word " * 70 for _ in range(4)))
+    assert called == ["big_conversation"]
+
+
+def test_a_failed_shape_is_a_warning_not_a_dead_stop(tmp_path):
+    p = _long_piece(tmp_path, 4, 100)
+
+    def boom(draft, segment):
+        raise RuntimeError("shape model unavailable")
+
+    r = strip_stage.strip_piece_file(
+        p, strip_fn=lambda d: d + "\n---CHANGES---\n- none",
+        shape_fn=boom, recut_fn=lambda d, s, w: "\n\n".join("word " * 80 for _ in range(4)))
+    assert r["status"] == "stripped"
+    assert any("Shape pass failed" in w for w in r["length_warnings"])

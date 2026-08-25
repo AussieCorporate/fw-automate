@@ -2282,6 +2282,10 @@ function renderOTC(el) {
   p1 += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">';
   p1 += '<button class="btn btn-primary" onclick="runSection(\'off_the_clock\')">SCRAPE</button>';
   p1 += '<button class="btn btn-sm btn-secondary" onclick="runSection(\'classify_otc\')">Classify OTC</button>';
+  // Re-score everything under the current prompt. The normal Classify only
+  // looks at items it has never seen, so after a scoring change the old picks
+  // keep winning the top-3 shortlist (25 Aug 2026).
+  p1 += '<button class="btn btn-sm btn-secondary" onclick="runSection(\'reclassify_otc\')" title="Score every item this week again under the current rules, not just new ones">Re-score all</button>';
   if (S.loading.off_the_clock) p1 += renderSectionProgress('off_the_clock');
   var _ps = formatScrapedDate(S.lastScraped && S.lastScraped.off_the_clock);
   if (_ps) p1 += '<span class="scraped-badge">Scraped ' + _ps + '</span>';
@@ -2906,6 +2910,13 @@ function renderTopPicksFeaturesPanel() {
    The bold lead is split at the first ", " (comma-SPACE, so figures like
    "$1,230" never split). No comma means the whole sentence is the lead. It's
    a first pass Victor edits in the output box, not a guess he's stuck with. */
+/* Outlets a reader named as ones they would not trust for lifestyle
+   (feedback, 26 Aug 2026). Off the Clock drops these outright server-side;
+   here in Top/Odd Picks they are only flagged, because these come from real
+   click data and a big hard-news story from one of them is still worth
+   running. Keep in step with _LOW_TRUST_LIFESTYLE_DOMAINS in state.py. */
+var LOW_TRUST_SOURCES = ["nine.com.au", "9honey", "news.com.au", "yahoo", "7news", "dailymail"];
+
 function _pickLine(p) {
   var s = (p.summary || p.title || "").replace(/\s+/g, " ").trim();
   if (!s) return null;
@@ -2989,6 +3000,13 @@ function renderTopPicksBody() {
     h += '<div style="flex:1;min-width:0;">';
     h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">';
     h += '<span style="font-size:18px;font-weight:700;color:var(--text-3);min-width:24px;">#' + (i + 1) + '</span>';
+    // Reader feedback 26 Aug 2026: morning-show-tier sources cost credibility,
+    // especially in Odd Picks where they cluster. These come from Pick & Scroll
+    // click data, which Victor curates by hand, so this flags rather than
+    // filters - a genuinely big story from one of these is still a big story.
+    if (LOW_TRUST_SOURCES.some(function(d) { return (p.source_domain || "").indexOf(d) !== -1; })) {
+      h += '<span class="bench-chip bench-long" title="A reader told us they do not trust this source for lifestyle. Fine for hard news, risky for Odd Picks.">low-trust source</span>';
+    }
     h += '<span class="chip" style="font-size:11px;">' + domain + '</span>';
     h += '</div>';
     h += '<p style="font-size:13px;line-height:1.5;margin:0 0 6px 0;color:var(--text-1);">' + summary + '</p>';

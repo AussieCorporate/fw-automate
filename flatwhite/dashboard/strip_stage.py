@@ -54,7 +54,7 @@ def _failure(error: str) -> dict:
             "length_warnings": []}
 
 
-def strip_piece_file(piece_path: Path, *, strip_fn=None, recut_fn=None) -> dict:
+def strip_piece_file(piece_path: Path, *, strip_fn=None, recut_fn=None, shape_fn=None) -> dict:
     """Strip `piece_path`'s prose and write the result beside it.
 
     Returns {"status": "stripped"|"failed", "error": str|None, "path": str|None,
@@ -80,7 +80,31 @@ def strip_piece_file(piece_path: Path, *, strip_fn=None, recut_fn=None) -> dict:
         return _failure(f"No piece prose found in {piece_path.name} (nothing before the first '---').")
 
     length_warnings: list[str] = []
+    spec = vp.LENGTH_SPECS["big_conversation"]
     counts = vp.check_length(prose, "big_conversation")
+
+    # SHAPE (stage 2), run CONDITIONALLY - added 26 Aug 2026.
+    #
+    # Stage 2 was never wired into this path. Wiring it unconditionally would
+    # be worse than leaving it out: the skill shapes its own draft and the two
+    # real runs both landed inside the band (339 and 331 words, 4 paragraphs),
+    # so an unconditional Claude cutting pass would rewrite good pieces for no
+    # gain. It runs only when the mechanical check says the piece is genuinely
+    # out of shape - too long, or too many paragraphs. SHAPE only ever cuts, so
+    # it is not run on a piece that is UNDER the band; nothing it does could
+    # help there.
+    too_long = counts["word_count"] > spec["word_target_max"]
+    too_many = counts["paragraph_count"] > spec["paragraph_target_max"]
+    if too_long or too_many:
+        shaper = shape_fn if shape_fn is not None else vp.shape_to_published
+        try:
+            shaped = shaper(prose, "big_conversation").strip()
+            if shaped:
+                prose = shaped
+                counts = vp.check_length(prose, "big_conversation")
+        except Exception as exc:  # noqa: BLE001 - shaping is a repair, not a gate
+            length_warnings.append(f"Shape pass failed ({exc}); piece left as drafted.")
+
     if counts["over_word_hard_ceiling"]:
         cutter = recut_fn if recut_fn is not None else vp._recut_over_ceiling
         try:
@@ -89,7 +113,7 @@ def strip_piece_file(piece_path: Path, *, strip_fn=None, recut_fn=None) -> dict:
             length_warnings.append(f"Automatic re-cut failed ({exc}); piece is unshortened.")
         counts = vp.check_length(prose, "big_conversation")
         if counts["over_word_hard_ceiling"]:
-            ceiling = vp.LENGTH_SPECS["big_conversation"]["word_hard_ceiling"]
+            ceiling = spec["word_hard_ceiling"]
             length_warnings.append(
                 f"Piece is {counts['word_count']} words, over the {ceiling}-word "
                 "hard ceiling even after one automatic re-cut. Cut it by hand "
@@ -149,7 +173,8 @@ def _save_to_section_outputs(body_text: str) -> None:
 
 
 def strip_topic_after_run(topic: str, record: dict | None, *,
-                          find_piece=None, strip_fn=None, save_fn=None) -> dict:
+                          find_piece=None, strip_fn=None, save_fn=None,
+                          shape_fn=None) -> dict:
     """Run the strip for `topic` once its big-conversation run has finished.
 
     Wired in as the run's on_complete callback so the stage cannot be skipped,
@@ -178,7 +203,7 @@ def strip_topic_after_run(topic: str, record: dict | None, *,
             f'The run for "{topic}" finished but no piece file was found for '
             "it, so there was nothing to strip.")
     else:
-        result = strip_piece_file(piece, strip_fn=strip_fn)
+        result = strip_piece_file(piece, strip_fn=strip_fn, shape_fn=shape_fn)
 
     if result["status"] == "stripped" and result["body"]:
         saver = save_fn if save_fn is not None else _save_to_section_outputs
