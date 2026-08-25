@@ -59,6 +59,19 @@ LENGTH_SPECS = {
         "paragraph_target_max": 4,
         "paragraph_hard_ceiling": 5,
     },
+    # Added 25 Aug 2026. Measured off the refreshed corpus (17 editions since
+    # 1 May 2026): the intro runs 142-203 words, median 163. Before this only
+    # Big Conversation and Brains Trust had a mechanical length check, so the
+    # intro was policed by prompt wording alone and drifted to the top of the
+    # band - Victor's note that the edition "shouldn't be so long overall".
+    "editorial": {
+        "word_target_min": 145,
+        "word_target_max": 180,   # aim at the median 163, not the 203 maximum
+        "word_hard_ceiling": 203,  # the observed published maximum
+        "paragraph_target_min": 2,
+        "paragraph_target_max": 3,
+        "paragraph_hard_ceiling": 3,
+    },
 }
 
 
@@ -601,7 +614,9 @@ def _recut_over_ceiling(draft: str, segment: str, word_count: int, *,
     is still over the ceiling after this, the chain reports it rather than
     calling this again."""
     spec = LENGTH_SPECS[segment]
-    segment_label = "THE BIG CONVERSATION" if segment == "big_conversation" else "THE BRAINS TRUST"
+    segment_label = {"big_conversation": "THE BIG CONVERSATION",
+                     "brains_trust": "THE BRAINS TRUST",
+                     "editorial": "THE EDITORIAL INTRO"}.get(segment, segment.upper())
     prompt = RECUT_PROMPT.format(
         words_over=word_count - spec["word_hard_ceiling"],
         ceiling=spec["word_hard_ceiling"],

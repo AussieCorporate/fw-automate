@@ -2604,7 +2604,41 @@ def _proceed_editorial(data: dict, model: str | None, custom_prompt: str | None 
         big_conversation_text=big_conversation_text or "(no Big Conversation output supplied)",
         other_segments=other_block,
     )
-    return route(task_type="editorial", prompt=prompt, system=EDITORIAL_INTRO_SYSTEM, model_override=override)
+    draft = route(task_type="editorial", prompt=prompt, system=EDITORIAL_INTRO_SYSTEM, model_override=override)
+    # Length check + GPT-5.4 strip, wired 25 Aug 2026. Until then the intro had
+    # NEITHER: its length was policed by prompt wording alone (and drifted to
+    # the top of the published band) and it never had AI tells removed, so
+    # Latinate diction like "the elaborate infrastructure colleagues build"
+    # went straight through. Big Conversation and Brains Trust both had this.
+    return _length_checked_and_stripped(draft, "editorial")
+
+
+def _length_checked_and_stripped(draft: str, segment: str) -> str:
+    """Cut to the published band if over the hard ceiling, then strip AI tells.
+
+    Shared by the shorter segments that do not need the full SHAPE stage but
+    still must not ship long or unstripped. Warnings are appended visibly
+    rather than dropped, the same contract as the full chain.
+    """
+    from flatwhite.classify import voice_pipeline as vp
+
+    notes: list[str] = []
+    counts = vp.check_length(draft, segment)
+    if counts["over_word_hard_ceiling"]:
+        try:
+            draft = vp._recut_over_ceiling(draft, segment, counts["word_count"]).strip()
+        except Exception as exc:  # noqa: BLE001 - a failed re-cut is a warning, not a dead stop
+            notes.append(f"Automatic re-cut failed ({exc}); length not corrected.")
+        counts = vp.check_length(draft, segment)
+        if counts["over_word_hard_ceiling"]:
+            ceiling = vp.LENGTH_SPECS[segment]["word_hard_ceiling"]
+            notes.append(f"Still {counts['word_count']} words after one re-cut, over the "
+                         f"{ceiling}-word ceiling. Trim by hand before shipping.")
+
+    body = _strip_only(draft)
+    if notes:
+        body += "\n\n[VOICE PIPELINE WARNINGS - fix before shipping]\n" + "\n".join(f"- {n}" for n in notes)
+    return body
 
 
 def _pool_source_pdf_ids(angles) -> list[int]:
