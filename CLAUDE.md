@@ -42,6 +42,26 @@ then give Victor **http://localhost:8500/**. (Same as double-clicking `Start Fla
 
 Committed + pushed + deployed (GCP VM `flatwhite`, `us-central1-a`, via `deploy/gcp_deploy.sh`) + cron enabled. A fix that exists only locally must be reported as "fixed locally, NOT deployed" — never as done.
 
+## THE GCP VM IS NOT REACHABLE — verified 25-26 Aug 2026, needs Victor's decision
+
+The "definition of done" above says a pipeline fix isn't done until it is
+deployed to the GCP VM `flatwhite`. **That step currently cannot be performed.**
+Checked directly: Compute Engine is not enabled on any project this account can
+see (`ps-scraper-479309`, `doga-email-automation`, `phonic-axle-452705-d7`), so
+`deploy/gcp_deploy.sh` has nothing to deploy to. The only AusCorp launchd job on
+this Mac points at the old Reddit Scraper folder on the Desktop, not at FW, and
+`cron/com.flatwhite.weekly.plist` has a dead path (below).
+
+So in practice **FW runs only when Victor presses the buttons in the dashboard.**
+That is the real workflow and it works.
+
+Do not enable APIs or create a VM without asking - it costs money. Three options
+for Victor to choose between: rebuild the VM, move the weekly schedule to a
+launchd job on this Mac (matching how his other jobs run), or accept the
+press-the-button workflow and rewrite the definition of done to match. Until he
+picks, report pipeline fixes as "done locally, no VM to deploy to" rather than
+either claiming deployment or claiming failure.
+
 ## Known broken config
 
 `cron/com.flatwhite.weekly.plist` hardcodes a dead path (`/Users/TAC/Desktop/AntiGravity/...`). The weekly launchd job cannot work from this repo location until those paths are fixed — check this first when the Wednesday run doesn't happen.
