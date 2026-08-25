@@ -62,9 +62,39 @@ LENGTH_SPECS = {
 }
 
 
+# The segment header a piece file opens with, and the bold declarative headline
+# that follows it. Neither is body prose: the header is a label and the headline
+# is furniture the published editions set apart from the paragraphs. Counting
+# them inflated the Payrise Excuses piece to 6 paragraphs against a ceiling of
+# 5 when it is really 4, and reported 347 words when the piece is 339 (caught
+# 25 Aug 2026 - the piece was correct and the checker was wrong).
+_SEGMENT_HEADER = re.compile(r"^\**\s*THE BIG CONVERSATION\s*\**$", re.IGNORECASE)
+_BOLD_ONLY_LINE = re.compile(r"^\*\*[^*].*[^*]\*\*$")
+
+
 def _strip_non_prose(text: str) -> str:
-    """Drops chart placeholder lines before counting - they aren't prose."""
-    return "\n".join(l for l in text.splitlines() if not l.strip().startswith("[CHART"))
+    """Drops chart placeholders, and - only in a piece FILE that opens with the
+    segment header - that header and the headline line beneath it.
+
+    The headline is only ever dropped when the header proves this is a piece
+    file. A bare draft (the shape the API's own generator returns, which has no
+    title by instruction) is left completely alone, so its first paragraph can
+    never be mistaken for a headline and silently uncounted.
+    """
+    lines = [l for l in text.splitlines() if not l.strip().startswith("[CHART")]
+
+    first = next((i for i, l in enumerate(lines) if l.strip()), None)
+    if first is None or not _SEGMENT_HEADER.match(lines[first].strip()):
+        return "\n".join(lines)
+
+    second = next((i for i in range(first + 1, len(lines)) if lines[i].strip()), None)
+    drop = {first}
+    if second is not None:
+        # The headline sits alone between the header and the first paragraph.
+        followed_by_blank = (second + 1 >= len(lines)) or not lines[second + 1].strip()
+        if followed_by_blank:
+            drop.add(second)
+    return "\n".join(l for i, l in enumerate(lines) if i not in drop)
 
 
 def _word_count(text: str) -> int:

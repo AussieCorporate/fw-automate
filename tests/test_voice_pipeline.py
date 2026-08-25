@@ -407,3 +407,32 @@ def test_strip_may_rewrite_under_guardrails_not_delete_only():
     assert "no new fact" in sys_prompt
     assert "no new figure of speech" in sys_prompt
     assert "plain anglo" in sys_prompt
+
+
+# ─── Header/headline must not be counted as body prose (25 Aug 2026) ────────
+
+def test_piece_file_header_and_headline_are_not_counted_as_paragraphs():
+    """The Payrise Excuses piece is 4 paragraphs; the checker reported 6 and
+    tripped the 5-paragraph ceiling because it counted the segment header and
+    the headline. The piece was right and the checker was wrong."""
+    text = ("THE BIG CONVERSATION\n\n"
+            "The reason comes after the number.\n\n"
+            "Para one.\n\nPara two.\n\nPara three.\n\nPara four.")
+    counts = vp.check_length(text, "big_conversation")
+    assert counts["paragraph_count"] == 4
+    assert counts["over_paragraph_hard_ceiling"] is False
+
+
+def test_a_bare_draft_with_no_header_keeps_its_first_paragraph():
+    """Guard against the greedy first version of this fix, which treated any
+    short opening sentence as a headline and silently dropped it."""
+    text = "One two three.\n\nFour five six seven."
+    assert vp._word_count(text) == 7
+    assert vp._paragraph_count(text) == 2
+
+
+def test_headline_only_dropped_when_the_segment_header_proves_a_piece_file():
+    with_header = "THE BIG CONVERSATION\n\nA headline line.\n\nBody one.\n\nBody two."
+    without = "A headline line.\n\nBody one.\n\nBody two."
+    assert vp._paragraph_count(with_header) == 2
+    assert vp._paragraph_count(without) == 3
