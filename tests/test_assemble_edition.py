@@ -234,3 +234,41 @@ def test_auscorp_events_is_a_real_running_order_segment(assemble_client):
     events = next((b for b in blocks if b["section"] == "auscorp_events"), None)
     assert events is not None
     assert "AUSCORP EVENTS" in events["label"]
+
+
+def test_forwarded_header_is_always_the_first_block(assemble_client):
+    """10/10 published editions open with it, verbatim. Standing furniture."""
+    client, _ = assemble_client
+    resp = client.post("/api/assemble-edition", json={"segments": _BASE_SEGMENTS})
+    blocks = resp.json()["blocks"]
+    assert blocks[0]["section"] == "forwarded_header"
+    assert "Was this email forwarded to you?" in blocks[0]["html"]
+    assert "next Tuesday" in blocks[0]["html"]
+
+
+def test_top_picks_carries_the_pick_and_scroll_promo(assemble_client, monkeypatch):
+    """The promo closes Top Picks in 10/10 editions; only its link changes."""
+    client, week_iso = assemble_client
+    import flatwhite.dashboard.api as api_module
+    monkeypatch.setattr(api_module, "_latest_ps_edition",
+                        lambda: {"title": "Pointless",
+                                 "url": "https://pickandscrollnews.beehiiv.com/p/pointless"})
+    db_module.save_section_output(week_iso, "top_picks", "* **A pick**, with detail. [LINK](https://x.com)", "m")
+    segments = [dict(s, status="ready") if s["id"] == "top_picks" else s for s in _BASE_SEGMENTS]
+    resp = client.post("/api/assemble-edition", json={"segments": segments})
+    tp = next(b for b in resp.json()["blocks"] if b["section"] == "top_picks")
+    assert "Flat White lands every week. The news doesn&#x27;t." in tp["html"] or "Flat White lands every week" in tp["html"]
+    assert "pickandscrollnews.beehiiv.com/p/pointless" in tp["html"]
+    assert "This morning&#x27;s newsletter" in tp["html"] or "This morning" in tp["html"]
+
+
+def test_ps_promo_still_ships_without_the_link_if_lookup_fails(assemble_client, monkeypatch):
+    client, week_iso = assemble_client
+    import flatwhite.dashboard.api as api_module
+    monkeypatch.setattr(api_module, "_latest_ps_edition", lambda: None)
+    db_module.save_section_output(week_iso, "top_picks", "* **A pick.** [LINK](https://x.com)", "m")
+    segments = [dict(s, status="ready") if s["id"] == "top_picks" else s for s in _BASE_SEGMENTS]
+    resp = client.post("/api/assemble-edition", json={"segments": segments})
+    tp = next(b for b in resp.json()["blocks"] if b["section"] == "top_picks")
+    assert "Flat White lands every week" in tp["html"]
+    assert "This morning" not in tp["html"]  # no dead link

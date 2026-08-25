@@ -1634,7 +1634,15 @@ async def api_assemble_edition(request: Request) -> JSONResponse:
     week_iso = get_current_week_iso()
     saved_outputs = load_all_section_outputs(week_iso)
 
-    blocks: list[dict] = []
+    # Standing top-of-edition furniture, above every segment (10/10 editions).
+    blocks: list[dict] = [{
+        "section": "forwarded_header",
+        "label": "",
+        "html": _FORWARDED_HEADER_HTML,
+        "benchmark": {"status": "no_data", "word_count": None,
+                      "target_avg": None, "target_min": None,
+                      "target_max": None, "n_editions": 0},
+    }]
     missing_ready: list[str] = []
     sponsor_included = False
 
@@ -1650,6 +1658,11 @@ async def api_assemble_edition(request: Request) -> JSONResponse:
 
         label = _REAL_SEGMENT_HEADINGS[section_id]
         text = saved["output_text"]
+        # Top Picks closes with the Pick & Scroll promo in 10/10 published
+        # editions; it is standing furniture, appended here rather than asked
+        # of the model (only its trailing link changes week to week).
+        if section_id == "top_picks":
+            text = text.rstrip() + "\n\n" + _ps_promo_markdown()
         blocks.append({
             "section": section_id,
             "label": label,
@@ -1744,19 +1757,56 @@ async def api_assemble_edition(request: Request) -> JSONResponse:
 # BEEHIIV_PUB_ID env var - that env var points at Pick & Scroll (it feeds the
 # Top Picks scrape); this one is Flat White itself.
 _FW_BEEHIIV_PUB_ID = "pub_6210ff81-d440-4e09-916d-42fe436f0d05"
+# Pick & Scroll, the daily sister newsletter. Its latest edition is linked from
+# the promo that closes the Top Picks block in every published edition.
+_PS_BEEHIIV_PUB_ID = "pub_e1737a85-8732-4f6c-827c-4843cd3c99a8"
+
+# The line every edition opens with, above the thumbnail (10/10 editions,
+# verbatim). Standing furniture like the Feedback Loop - no input needed.
+_FORWARDED_HEADER_HTML = (
+    '<p><em>Was this email forwarded to you? Get it yourself next Tuesday </em>'
+    '<a href="https://theaussiecorporate.beehiiv.com/subscribe">'
+    '<strong><em>here</em></strong></a><em>.</em></p>'
+)
+
+# The Pick & Scroll promo that closes the Top Picks block (10/10 editions).
+# Only the trailing link changes week to week.
+_PS_PROMO_TEXT = (
+    "Flat White lands every week. The news doesn't. Every weekday morning at "
+    "8:00am, we send you everything that happened across Australian business "
+    "and corporate news in a 2-minute read. Same team. Same voice. Just daily."
+)
 
 
-def _latest_published_edition() -> dict | None:
-    """{"title": str, "url": str} for the most recent published FW edition,
-    or None on any failure (no key, network, API change)."""
+def _latest_ps_edition() -> dict | None:
+    """{"title", "url"} for the most recent published Pick & Scroll edition."""
+    return _latest_published_edition(_PS_BEEHIIV_PUB_ID)
+
+
+def _ps_promo_markdown() -> str:
+    """The divider + promo blurb + 'This morning's newsletter' link that closes
+    Top Picks. Falls back to the promo without the link if the PS lookup fails,
+    rather than emitting a dead link."""
+    latest = _latest_ps_edition()
+    block = "———————————————————————————\n\n" + _PS_PROMO_TEXT
+    if latest:
+        block += f"\n\n**[This morning's newsletter]({latest['url']})**"
+    return block
+
+
+def _latest_published_edition(pub_id: str | None = None) -> dict | None:
+    """{"title": str, "url": str} for the most recent published edition of
+    `pub_id` (Flat White by default), or None on any failure (no key, network,
+    API change)."""
     import requests as _requests
 
+    pub_id = pub_id or _FW_BEEHIIV_PUB_ID
     key = os.getenv("BEEHIIV_API_KEY")
     if not key:
         return None
     try:
         r = _requests.get(
-            f"https://api.beehiiv.com/v2/publications/{_FW_BEEHIIV_PUB_ID}/posts",
+            f"https://api.beehiiv.com/v2/publications/{pub_id}/posts",
             headers={"Authorization": f"Bearer {key}"},
             params={"status": "confirmed", "limit": 1,
                     "order_by": "publish_date", "direction": "desc"},

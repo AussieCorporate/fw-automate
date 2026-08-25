@@ -42,3 +42,22 @@ def test_multiple_em_dashes_all_replaced():
     out = strip_reader_dashes("one — two — three")
     assert "—" not in out
     assert out == "one - two - three"
+
+
+def test_divider_lines_survive_the_dash_stripper():
+    """Caught on a real Off the Clock generation run, 25 Aug 2026: the
+    published divider between entries was being shredded into ' - ' fragments
+    before the text was ever stored."""
+    from flatwhite.utils.text_clean import strip_reader_dashes
+    divider = "—" * 27
+    text = f"First entry. [LINK](https://x.com)\n\n{divider}\n\nSecond entry — with a real em dash."
+    out = strip_reader_dashes(text)
+    assert divider in out, "divider furniture must be left alone"
+    # Prose em dashes are still stripped.
+    assert "Second entry - with a real em dash." in out
+    assert "—" not in out.replace(divider, "")
+
+
+def test_plain_hyphen_divider_also_survives():
+    from flatwhite.utils.text_clean import strip_reader_dashes
+    assert "---" in strip_reader_dashes("Top\n\n---\n\nBottom")
