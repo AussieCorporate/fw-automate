@@ -417,6 +417,20 @@ BIG_CONVERSATION_ANGLES_PROMPT = (
 # editions (docs/big-conversation-published-spec.md). The core published-vs-
 # draft finding: drafts are TOO WELL WRITTEN. Victor's edits always go from
 # clever to ordinary. Do not re-polish these rules from theory.
+#
+# SECOND finding, same day, from diffing all six draft/published pairs
+# (13 Jul - 24 Aug 2026): register was only half the problem. Drafts are also
+# TOO THIN. Every draft ends on analysis; every published piece ends on
+# counsel. Drafts carry no emotional beat, no joke, and never name the
+# community as the evidence. The SUBSTANCE section below is that half.
+#
+# NOTE ON WHERE THIS RUNS: real Big Conversation pieces are written by the
+# big-conversation SKILL (its own generate-prompt.md, in the Instagram
+# screenshotter repo), not by this prompt - the dashboard's frontend never
+# calls the server-side drafting path. This prompt is the fallback. The two
+# must say the same thing; the skill's copy is the one that ships, so change
+# both or neither. That duplication is a standing drift risk, exactly like
+# the Off the Clock prompt that had silently diverged.
 BIG_CONVERSATION_DRAFT_SYSTEM = (
     EDITORIAL_VOICE + "\n\n"
     "STRUCTURE FOR BIG CONVERSATION:\n"
@@ -477,7 +491,47 @@ BIG_CONVERSATION_DRAFT_SYSTEM = (
     "\n"
     "SENTENCES: short and clean, one idea per sentence. Do not stack three or more "
     "clauses into a run-on. Cut clever throwaway lines that carry no "
-    "information - the published edit always removes them."
+    "information - the published edit always removes them.\n"
+    "\n"
+    "SUBSTANCE - what the piece must CARRY (added 25 Aug 2026 from diffing all "
+    "six draft/published pairs, 13 Jul to 24 Aug). Everything above is FORM. "
+    "Drafts that follow the form perfectly still come out as four mechanisms "
+    "in a row: a how-it-works explainer, not a take. A draft is not finished "
+    "until it has all five:\n"
+    "1. COUNSEL, NOT ANALYSIS, AT THE CLOSE. Six times out of six the draft "
+    "closed on a clever aphorism and Victor replaced it with the reader being "
+    "told what to do, or given permission not to act. 'attach a cover letter "
+    "if they ask for one. Keep it to half a page' / 'it's also okay to let "
+    "this one go' / 'it's just up to you to prioritise accordingly'. Second "
+    "person, plain. An edge or an unresolved note may follow the advice, but "
+    "the advice must be there.\n"
+    "2. THE EMOTIONAL AND IDENTITY BEAT, and the removal of self-blame. Name "
+    "the feeling, not just the transaction: 'living rent-free in your head', "
+    "'your pride a little hurt', 'it's probably not because you fumbled on "
+    "your words in the interview', 'feeling like a grad all over again'. This "
+    "is the single most consistently missing ingredient.\n"
+    "3. THE OPERATIONAL CONDITION THE READER IS LIVING IN. One or two "
+    "sentences from outside the source material, but ONLY the kind that "
+    "changes what the reader should do this week: office-attendance mandates, "
+    "the approval chain and background checks, what AI has done to the "
+    "applicant pool, how EAP is funded and capped. Abstract or legal context "
+    "gets cut before print, so do not add research for its own sake. On a "
+    "pure-culture topic there may be none, and that is fine - do not force "
+    "it.\n"
+    "4. NAME THE COMMUNITY AS THE EVIDENCE, and read that aggregate as data "
+    "including its biases: 'when we put the question to the community, there "
+    "was a line right down the middle', 'based on what we're seeing'. The "
+    "sharpest version is the survivorship read: 'the people it didn't work "
+    "out for are far less likely to be the ones telling you about it.' Never "
+    "retell or name an INDIVIDUAL submission.\n"
+    "5. ONE RELEASE VALVE - a joke or an ordinary idiom, exactly one per "
+    "piece: 'gives you the ick', 'throw the cat amongst the pigeons', "
+    "'dodged a bullet', 'most learn pretty quick their parents aren't saving "
+    "lives'. Drafts produce dry irony and never a joke.\n"
+    "ALSO: both-sides it. Drafts pick a villain; the published piece adds the "
+    "concession that stops it reading as employer-bashing, then speaks to the "
+    "other half of the readership directly ('Both of those are true at the "
+    "same time.')."
 )
 
 BIG_CONVERSATION_DRAFT_PROMPT = (

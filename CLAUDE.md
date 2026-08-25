@@ -92,6 +92,30 @@ plain connective openers. Full evidence-based spec: `docs/big-conversation-publi
 Enforced in the skill's `generate-prompt.md` (REGISTER section) and
 `voice_pipeline.py` catalogue entries 24-26. Do not re-polish these rules from theory.
 
+## Big Conversation SUBSTANCE spec (25 Aug 2026) — the other half of the voice
+
+The 24 Aug register spec found drafts are too CLEVER. Diffing all six draft/published
+pairs found they are also too THIN. Six times out of six the draft closes on a clever
+aphorism and Victor replaces it with COUNSEL - telling the reader what to do or giving
+permission not to act. Drafts also never carry: the emotional beat / removal of
+self-blame, the operational condition the reader is living in (only the kind that changes
+their next move - abstract and legal context gets CUT), naming the community as the
+evidence base, or one joke/idiom per piece.
+
+**A previous refresh had written a CLOSING rule from theory that banned Victor's own
+published closing sentence** ("it's just up to you to prioritise accordingly", 20 Jul) and
+called four of six published closings a "failure mode". Corrected 25 Aug. Published
+editions outrank rule text - always.
+
+Full evidence: `docs/big-conversation-substance-spec.md`. Enforced in the skill's
+`generate-prompt.md` (WHAT THE PIECE MUST CARRY + rewritten CLOSING), its `voice-guide.md`
+(narrowed cardinal rule), and `BIG_CONVERSATION_DRAFT_SYSTEM`. Pinned by
+`tests/test_big_conversation_substance.py`. Do not re-polish from theory.
+
+**The generate prompt lives in TWO copies** - the skill's (which is what actually writes
+the pieces) and FW's `BIG_CONVERSATION_DRAFT_SYSTEM` (a fallback the frontend never
+calls). They have drifted once already. Change both or neither.
+
 ## Questions rule — RESOLVED by Victor (25 Aug 2026)
 
 The blanket "NO RHETORICAL QUESTIONS anywhere" rule is retired. Natural
