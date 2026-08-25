@@ -694,6 +694,26 @@ off_the_clock:
     - name: "The Conversation AU Health"
       url: "https://theconversation.com/au/health/articles.atom"
 
+  # ── Reddit product threads for ODD PICKS ONLY (Victor, 26 Aug 2026) ───────
+  # Approved on ONE condition: "ONLY if there's high engagement on that post."
+  # This does NOT reopen Reddit for Off the Clock - that exclusion stands, and
+  # this never touches the OTC classifier.
+  #
+  # min_score is per-subreddit because the subs are different sizes, and it is
+  # set deliberately high. Reddit access from this machine is intermittent
+  # (one call succeeds, the next 429s) and a degraded response comes back with
+  # nonsense scores like 2-5 on a million-member sub. A high bar means a bad
+  # response yields nothing rather than something wrong: the engagement gate
+  # doubles as a data-quality gate. If Reddit is unreachable, nothing appears.
+  reddit_review_subs:
+    - name: "BuyItForLife"
+      min_score: 1000
+      min_comments: 40
+    - name: "AusFrugal"
+      min_score: 300
+      min_comments: 25
+  reddit_review_time_filter: "week"
+
   # Reddit lifestyle sources removed — surfaced too much off-topic / forum chatter.
   # pull_off_the_clock() skips the Reddit branch when reddit_subreddits is absent
   # or empty, so no code change is needed; restore both blocks here to re-enable.

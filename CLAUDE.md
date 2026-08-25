@@ -21,7 +21,16 @@ then give Victor **http://localhost:8500/**. (Same as double-clicking `Start Fla
 ## Standing decisions (do not re-propose)
 
 - Reddit "script app" OAuth is broken — never build on it or scaffold it again.
-- Reddit links are excluded from OTC.
+- Reddit links are excluded from OTC. **This still stands.** Narrow exception
+  added 26 Aug 2026: Reddit product threads may feed ODD PICKS only, and only
+  when the post clears a high engagement bar (Victor: "ONLY if there's high
+  engagement on that post"). Per-sub floors live in `config.yaml`
+  `reddit_review_subs`. Reddit access from this Mac is intermittent — a call
+  succeeds, the next 429s, and a degraded response carries scores of 2-15 on a
+  sub whose real top-of-week is in the thousands — so the floors are set high
+  enough to double as a data-quality gate. Nothing qualifying means nothing
+  ships, which is the correct outcome. Do not lower the floors to "get some
+  results".
 - **PULSE / AUSCORP STRESS INDEX IS DECOMMISSIONED** (Victor, 25 Aug 2026). It is
   not part of the newsletter any more. Removed from the running order, the
   assembly and the editorial-intro gate. Do not re-add it as a segment or

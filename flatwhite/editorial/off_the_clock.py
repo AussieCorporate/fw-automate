@@ -420,3 +420,64 @@ def pull_expert_reviews() -> int:
         print(f"  {name}: {count} items")
         total += count
     return total
+
+
+def pull_reddit_reviews() -> int:
+    """Pull HIGH-ENGAGEMENT Reddit product threads for Odd Picks.
+
+    Victor approved Reddit here on 26 Aug 2026 on one condition: "ONLY if
+    there's high engagement on that post." So a post is only kept when it
+    clears BOTH the per-subreddit score and comment floors in config.
+
+    This does not reopen Reddit for Off the Clock - that exclusion stands, and
+    these land with the review_ source prefix, which the OTC classifier skips.
+
+    Reddit access from this machine is intermittent: a call succeeds, the next
+    429s, and a degraded response carries nonsense scores (2-5 on a
+    million-member sub). The floors are set high enough that such a response
+    yields nothing, so the engagement gate doubles as a data-quality gate.
+    Failure is soft and reported - never a silent empty run that looks like
+    "no good posts this week".
+    """
+    from flatwhite.utils.http import fetch_reddit_top_posts
+
+    cfg = _load_config() or {}
+    subs = cfg.get("reddit_review_subs") or []
+    if not subs:
+        return 0
+    time_filter = cfg.get("reddit_review_time_filter", "week")
+    week_iso = get_current_week_iso()
+
+    total = 0
+    for sub in subs:
+        name = sub.get("name")
+        if not name:
+            continue
+        min_score = int(sub.get("min_score", 1000))
+        min_comments = int(sub.get("min_comments", 40))
+        try:
+            posts = fetch_reddit_top_posts(name, time_filter=time_filter, limit=15)
+        except Exception as e:  # noqa: BLE001 - 429/403 is expected; say so, don't crash
+            print(f"  r/{name}: unreachable ({str(e)[:70]}) - no picks from here this week")
+            continue
+
+        kept = 0
+        for p in posts:
+            score = p.get("score") or 0
+            comments = p.get("num_comments") or 0
+            if score < min_score or comments < min_comments:
+                continue
+            if _insert_review_item(
+                title=f"{p.get('title')} [r/{name}, {score} upvotes]",
+                body=(p.get("body") or "")[:2000] or None,
+                source=f"{REVIEW_SOURCE_PREFIX}reddit_{name.lower()}",
+                url=p.get("url"),
+                week_iso=week_iso,
+                published_at=p.get("published") or None,
+            ):
+                kept += 1
+        best = max((p.get("score") or 0) for p in posts) if posts else 0
+        print(f"  r/{name}: {kept} of {len(posts)} cleared the bar "
+              f"(needs {min_score}+ upvotes and {min_comments}+ comments; best seen {best})")
+        total += kept
+    return total

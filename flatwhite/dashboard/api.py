@@ -1049,6 +1049,9 @@ _SECTION_RUNNERS: dict[str, list[tuple[str, "Callable"]]] = {
         ("Off the Clock", lambda: __import__("flatwhite.editorial.off_the_clock", fromlist=["pull_off_the_clock"]).pull_off_the_clock()),
         # Expert reviewers land on the same scrape but feed Odd Picks, not OTC.
         ("Expert reviews", lambda: __import__("flatwhite.editorial.off_the_clock", fromlist=["pull_expert_reviews"]).pull_expert_reviews()),
+        # Reddit product threads, Odd Picks only, and only ones clearing the
+        # engagement floors (Victor's condition, 26 Aug 2026).
+        ("Reddit reviews (high engagement only)", lambda: __import__("flatwhite.editorial.off_the_clock", fromlist=["pull_reddit_reviews"]).pull_reddit_reviews()),
         ("Prune stale",   lambda: __import__("flatwhite.db", fromlist=["prune_stale_raw_items"]).prune_stale_raw_items(max_age_days=7)),
         ("Classify OTC",  lambda: __import__("flatwhite.classify.classifier",     fromlist=["classify_all_otc_unclassified"]).classify_all_otc_unclassified()),
     ],
