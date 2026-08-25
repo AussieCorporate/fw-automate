@@ -343,3 +343,80 @@ def pull_off_the_clock() -> int:
                 print(f"  FAILED: {err}")
 
     return total_inserted
+
+
+# ── Expert product reviewers, for ODD PICKS (added 26 Aug 2026) ─────────────
+# Reader feedback named Wirecutter, the Strategist and CHOICE as the sort of
+# source they trust, against nine/yahoo which they do not. These land on their
+# own lane so the Off the Clock classifier never sees them: OTC's Wearing brief
+# is "trendy right now" and an expert review is evergreen by design, so routing
+# them there scored them 2/5 for exactly the right reason. Odd Picks is a
+# hand-picked list, so these need no LLM scoring - Victor ticks the good one.
+
+# raw_items.lane has a CHECK constraint (pulse/editorial/lifestyle), so these
+# ride the lifestyle lane and are told apart by their "review_" source prefix.
+# Rebuilding the table for a fourth lane is not worth it for a marker.
+REVIEWS_LANE = "lifestyle"
+REVIEW_SOURCE_PREFIX = "review_"
+
+
+def _insert_review_item(title, body, source, url, week_iso, published_at=None) -> int:
+    """Insert one expert-review item on the reviews lane. Same cross-lane URL
+    dedup as lifestyle: an evergreen review sits in the feed for months."""
+    conn = get_connection()
+    if url:
+        seen = conn.execute(
+            "SELECT 1 FROM raw_items WHERE url = ? AND lane = ? LIMIT 1",
+            (url, REVIEWS_LANE),
+        ).fetchone()
+        if seen:
+            conn.close()
+            return 0
+    cur = conn.execute(
+        """INSERT INTO raw_items (title, body, source, url, lane, week_iso, pulled_at, published_at)
+           VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?)""",
+        (title, body, source, url, REVIEWS_LANE, week_iso, published_at),
+    )
+    conn.commit()
+    row_id = cur.lastrowid
+    conn.close()
+    return row_id
+
+
+def pull_expert_reviews() -> int:
+    """Pull the expert-review feeds onto the reviews lane. Returns rows added."""
+    # _load_config() already returns the off_the_clock section.
+    cfg = _load_config() or {}
+    feeds = cfg.get("expert_review_feeds") or []
+    if not feeds:
+        return 0
+    max_items = cfg.get("max_items_per_source", 10)
+    max_age_days = cfg.get("max_age_days", 7)
+    week_iso = get_current_week_iso()
+
+    total = 0
+    for feed in feeds:
+        name, url = feed.get("name"), feed.get("url")
+        if not name or not url:
+            continue
+        try:
+            entries = fetch_rss(url, delay_seconds=0)
+        except Exception as e:  # noqa: BLE001 - one bad feed must not kill the rest
+            print(f"  {name}: {e}")
+            continue
+        count = 0
+        for entry in entries[:max_items]:
+            if not _is_recent(entry, max_age_days):
+                continue
+            if _insert_review_item(
+                title=entry["title"],
+                body=entry["body"][:2000] if entry["body"] else None,
+                source=f"review_{name.lower().replace(' ', '_')}",
+                url=entry["url"],
+                week_iso=week_iso,
+                published_at=entry.get("published") or None,
+            ):
+                count += 1
+        print(f"  {name}: {count} items")
+        total += count
+    return total

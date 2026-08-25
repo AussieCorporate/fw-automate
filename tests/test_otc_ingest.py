@@ -52,3 +52,23 @@ def test_same_title_from_a_different_feed_is_not_reinserted(tmp_path, monkeypatc
     )
     assert first > 0
     assert second == 0, "same title from another feed must not create a second row"
+
+
+# ─── Expert reviewers feed ODD PICKS, not Off the Clock (26 Aug 2026) ───────
+
+def test_expert_reviews_are_excluded_from_otc_classification():
+    """Reader feedback asked for Wirecutter/Strategist/CHOICE. Routing them
+    through Off the Clock was tried and was wrong: OTC's Wearing brief is
+    "trendy right now" and a tested review is evergreen, so the classifier
+    scored them 2/5 for exactly the right reason. They go to Odd Picks."""
+    import inspect
+    from flatwhite.classify import classifier
+    src = inspect.getsource(classifier.classify_all_otc_unclassified)
+    assert "review\\\\_%" in src or "review\\_%" in src, \
+        "OTC classification must exclude review_ sources"
+
+
+def test_review_items_ride_the_lifestyle_lane_because_of_the_check_constraint():
+    from flatwhite.editorial.off_the_clock import REVIEWS_LANE, REVIEW_SOURCE_PREFIX
+    assert REVIEWS_LANE == "lifestyle"
+    assert REVIEW_SOURCE_PREFIX == "review_"

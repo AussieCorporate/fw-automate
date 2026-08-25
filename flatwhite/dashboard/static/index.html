@@ -2957,6 +2957,66 @@ function copyOddPicks() {
     function() { showToast("Copy failed", "error"); });
 }
 
+/* Expert reviewers for Odd Picks (26 Aug 2026, from reader feedback).
+   Wirecutter, the Strategist and CHOICE were named as sources the reader
+   trusts, against nine/yahoo which they do not. Odd Picks is a hand-picked
+   list, so these are offered unscored and unfiltered - most weeks nothing here
+   will suit an AusCorp reader, and the point is that when one does, it is
+   sitting there rather than being replaced by a morning-show segment. */
+function renderExpertReviewPicks() {
+  var cands = S.expertReviews;
+  var h = '<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px;">';
+  h += '<div style="font-size:13px;font-weight:600;margin-bottom:4px;">Expert reviewers</div>';
+  h += '<div style="font-size:11px;color:var(--text-3);margin-bottom:8px;">Wirecutter, The Strategist and CHOICE. Tested reviews, not morning-show lifestyle. Most weeks there will be nothing here worth running, which is fine.</div>';
+  if (cands === undefined) {
+    h += '<button class="btn btn-sm btn-secondary" onclick="loadExpertReviews()">Load expert reviews</button></div>';
+    return h;
+  }
+  if (!cands.length) {
+    h += '<p style="font-size:12px;color:var(--text-3);">Nothing in the last week. Run the Off the Clock scrape to refresh.</p></div>';
+    return h;
+  }
+  cands.forEach(function(c, i) {
+    var checked = S.expertReviewChecked && S.expertReviewChecked[i];
+    h += '<div class="fr mb8" style="align-items:flex-start;gap:8px;">';
+    h += '<input type="checkbox"' + (checked ? ' checked' : '') + ' onchange="toggleExpertReview(' + i + ',this.checked)">';
+    h += '<div style="flex:1;min-width:0;"><div style="font-size:13px;">' + esc(c.title) + '</div>';
+    h += '<div style="font-size:11px;color:var(--text-3);">' + esc(c.source) + ' &middot; <a href="' + escAttr(c.url) + '" target="_blank">open</a></div>';
+    h += '</div></div>';
+  });
+  h += '<button class="btn btn-sm btn-secondary" onclick="addExpertReviewsToOddPicks()">Add ticked to the odd picks block</button>';
+  h += '</div>';
+  return h;
+}
+
+function loadExpertReviews() {
+  api("/api/odd-picks/candidates")
+    .then(function(d) { S.expertReviews = d.candidates || []; render(); })
+    .catch(function() { S.expertReviews = []; render(); });
+}
+
+function toggleExpertReview(i, on) {
+  S.expertReviewChecked = S.expertReviewChecked || {};
+  S.expertReviewChecked[i] = on;
+}
+
+function addExpertReviewsToOddPicks() {
+  var picked = (S.expertReviews || []).filter(function(_, i) {
+    return S.expertReviewChecked && S.expertReviewChecked[i];
+  });
+  if (!picked.length) { showToast("Tick at least one review first", "error"); return; }
+  var lines = picked.map(function(c) {
+    return "* **" + c.title + "** [LINK](" + c.url + ")";
+  });
+  var existing = (S.sectionOutputs.odd_picks && S.sectionOutputs.odd_picks.output_text) || "";
+  var text = existing ? existing.replace(/\s+$/, "") + "\n" + lines.join("\n") : lines.join("\n");
+  S.sectionOutputs.odd_picks = S.sectionOutputs.odd_picks || {};
+  S.sectionOutputs.odd_picks.output_text = text;
+  api("/api/section-output/odd_picks", { method: "POST", body: { output_text: text } })
+    .then(function() { showToast(picked.length + " expert review(s) added to Odd Picks"); render(); })
+    .catch(function() { showToast("Added, but auto-save failed - use Copy", "error"); });
+}
+
 function buildOddPicksOutput() {
   var lists = _picksLists();
   var odd = lists.odd.filter(function(p, i) { return S.topPicksOddChecked && S.topPicksOddChecked[i]; });
@@ -3179,6 +3239,7 @@ function renderTopPicks(el) {
   p2 += '</div>';
   p2 += '<div class="card mb20"><div style="font-weight:600;margin-bottom:10px;">Odd picks (One More Scroll) - pick 5</div>';
   p2 += renderPicksList(lists.odd, S.topPicksOddChecked, 'odd', 'No odd picks in this window.');
+  p2 += renderExpertReviewPicks();
   var oddOut = (S.sectionOutputs.odd_picks && S.sectionOutputs.odd_picks.output_text) || "";
   p2 += '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">';
   p2 += '<button class="btn btn-sm btn-primary" onclick="buildOddPicksOutput()">Build odd picks block</button>';

@@ -549,6 +549,14 @@ off_the_clock:
       - "uniqlo australia"
       - "viral fashion trend australia"
       - "sneaker drop australia"
+      # CHOICE publishes no RSS feed at all (nothing declared on the site,
+      # every candidate path 404s), so the only way to reach it is search.
+      # It returns roughly one item at a time, which is exactly right: Off
+      # the Clock needs ONE pick per category per week, so a source that
+      # surfaces one good tested review a week is doing its job. Reader
+      # feedback, 26 Aug 2026, asked for CHOICE by name.
+      - "site:choice.com.au review"
+      - "choice.com.au tested"
     going:
       - "things to do sydney this week"
       - "things to do melbourne this week"
@@ -662,6 +670,30 @@ off_the_clock:
       url: "https://manofmany.com/entertainment/feed"
       category_hint: "watching"
       city: "national"
+  # ── Expert product reviewers, for ODD PICKS (added 26 Aug 2026) ──────────
+  # Reader feedback: "surely we can do better than nine news and yahoo news?
+  # ... strategist (NYMag) and wirecutter (NYT) have great free to read reviews
+  # of products by experts and at least don't rely on a morning show."
+  #
+  # These deliberately do NOT feed Off the Clock. Tried that first and it was
+  # wrong: OTC's Wearing brief is "what's trendy at the moment", and expert
+  # reviews are evergreen by design, so the classifier scored them 2/5 with the
+  # correct reasoning ("not trending right now - they are evergreen, which is
+  # precisely the problem"). They belong in Odd Picks, which is where the
+  # morning-show items the reader objected to actually appeared.
+  #
+  # They land on their own lane ("reviews") so the OTC classifier ignores them
+  # entirely; Victor picks from them by hand in the Odd Picks list, the same
+  # way he already picks from Pick & Scroll click data. No LLM scoring - a
+  # human choosing from good sources is the whole point.
+  expert_review_feeds:
+    - name: "Wirecutter (NYT)"
+      url: "https://www.nytimes.com/wirecutter/feed/"
+    - name: "The Strategist (NY Mag)"
+      url: "https://feeds.feedburner.com/nymag/strategist"
+    - name: "The Conversation AU Health"
+      url: "https://theconversation.com/au/health/articles.atom"
+
   # Reddit lifestyle sources removed — surfaced too much off-topic / forum chatter.
   # pull_off_the_clock() skips the Reddit branch when reddit_subreddits is absent
   # or empty, so no code change is needed; restore both blocks here to re-enable.

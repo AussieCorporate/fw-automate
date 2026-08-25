@@ -432,6 +432,38 @@ async def api_add_whisper(request: Request) -> JSONResponse:
     return JSONResponse({"id": curated_id, "raw_id": raw_id, "week_iso": week_iso})
 
 
+@app.get("/api/odd-picks/candidates")
+def api_odd_picks_candidates() -> JSONResponse:
+    """Expert-review items for Odd Picks, newest first.
+
+    Added 26 Aug 2026 from reader feedback: "surely we can do better than nine
+    news and yahoo news? ... strategist (NYMag) and wirecutter (NYT) have great
+    free to read reviews of products by experts". Odd Picks is where the
+    morning-show items they objected to actually appeared, and it is a
+    hand-picked list, so these are offered unscored - a person choosing from
+    good sources is the point.
+    """
+    from flatwhite.editorial.off_the_clock import REVIEW_SOURCE_PREFIX
+
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT title, url, source, published_at, pulled_at FROM raw_items
+           WHERE lane = 'lifestyle' AND source LIKE ? ESCAPE '\\'
+           ORDER BY COALESCE(published_at, pulled_at) DESC LIMIT 40""",
+        (REVIEW_SOURCE_PREFIX.replace("_", "\\_") + "%",),
+    ).fetchall()
+    conn.close()
+
+    def _label(source: str) -> str:
+        return (source or "").replace(REVIEW_SOURCE_PREFIX, "").replace("_", " ").title()
+
+    return JSONResponse({"candidates": [
+        {"title": r["title"], "url": r["url"], "source": _label(r["source"]),
+         "published_at": r["published_at"]}
+        for r in rows
+    ]})
+
+
 @app.post("/api/save-draft")
 async def api_save_draft(request: Request) -> JSONResponse:
     """Save a Big Conversation draft.
@@ -1015,6 +1047,8 @@ _SECTION_RUNNERS: dict[str, list[tuple[str, "Callable"]]] = {
     ],
     "off_the_clock": [
         ("Off the Clock", lambda: __import__("flatwhite.editorial.off_the_clock", fromlist=["pull_off_the_clock"]).pull_off_the_clock()),
+        # Expert reviewers land on the same scrape but feed Odd Picks, not OTC.
+        ("Expert reviews", lambda: __import__("flatwhite.editorial.off_the_clock", fromlist=["pull_expert_reviews"]).pull_expert_reviews()),
         ("Prune stale",   lambda: __import__("flatwhite.db", fromlist=["prune_stale_raw_items"]).prune_stale_raw_items(max_age_days=7)),
         ("Classify OTC",  lambda: __import__("flatwhite.classify.classifier",     fromlist=["classify_all_otc_unclassified"]).classify_all_otc_unclassified()),
     ],

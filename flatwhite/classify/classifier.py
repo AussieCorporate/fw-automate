@@ -706,8 +706,14 @@ def classify_all_otc_unclassified(reclassify: bool = False) -> dict:
 
     conn = get_connection()
 
+    # Expert-review items ride the lifestyle lane but are NOT Off the Clock
+    # candidates: OTC's Wearing brief is "trendy right now" and a tested review
+    # is evergreen, so the classifier correctly scored them 2/5. They go to Odd
+    # Picks, hand-picked, so they are excluded here (26 Aug 2026).
     unclassified = conn.execute(
-        "SELECT * FROM raw_items WHERE classified = 0 AND lane = 'lifestyle' AND week_iso = ?",
+        """SELECT * FROM raw_items
+           WHERE classified = 0 AND lane = 'lifestyle' AND week_iso = ?
+             AND source NOT LIKE 'review\\_%' ESCAPE '\\'""",
         (week_iso,),
     ).fetchall()
     conn.close()
