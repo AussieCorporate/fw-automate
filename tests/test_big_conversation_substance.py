@@ -121,3 +121,43 @@ def test_skill_md_no_longer_repeats_the_retired_closing_rule():
     assert "WHAT THE PIECE MUST CARRY" in text
     # the retired instruction must not survive as a live rule
     assert "not a tidy \"up to you\" resolution — see" not in text
+
+
+# ─── The strip stage must not delete the close the generate stage now writes ──
+
+def test_entry_11_no_longer_deletes_the_published_closing_counsel():
+    """Entry 11 said "comforting the reader directly, opening OR closing" and
+    would have deleted 6/6 published Big Conversation closes one stage after
+    the generate prompt was fixed to require them."""
+    from flatwhite.classify.voice_pipeline import CLAUDE_TELL_CATALOGUE as CAT
+    entry = CAT.split("\n11.")[1].split("\n\n")[0]
+    assert "NARROWED HARD" in entry
+    assert "removal of self-blame" in entry.lower()
+    # the published closes are named as things to KEEP
+    assert "it's also okay to let this one go" in entry
+    assert "you can actually count on" in entry
+    assert "when in doubt on this entry, keep" in entry.lower()
+
+
+def test_entry_22_still_allows_the_practical_implication_close():
+    """BRAINS_TRUST_VOICE sanctions closing on the practical implication that
+    follows from the figures; entry 22 used to delete anything that 'advises'."""
+    from flatwhite.classify.voice_pipeline import CLAUDE_TELL_CATALOGUE as CAT
+    entry = CAT.split("\n22.")[1].split("\n\n")[0]
+    assert "NARROWED 25 Aug 2026" in entry
+    assert "follows from" in entry.lower()
+    # The live rule (first line) must no longer ban advice. The phrase still
+    # appears further down, quoted inside the correction note explaining what
+    # it used to say - that history is deliberate, so scope the check.
+    live_rule = entry.split("NARROWED")[0]
+    assert "comforts or advises" not in live_rule
+    assert "INSTEAD OF landing the economic mechanism" in live_rule
+
+
+def test_generate_and_strip_stages_agree_about_the_close():
+    """The whole point: what GENERATE is told to write, STRIP must not remove."""
+    from flatwhite.classify.prompts import BIG_CONVERSATION_DRAFT_SYSTEM as GEN
+    from flatwhite.classify.voice_pipeline import CLAUDE_TELL_CATALOGUE as CAT
+    assert "permission" in GEN.lower()          # generate: close on counsel/permission
+    entry11 = CAT.split("\n11.")[1].split("\n\n")[0].lower()
+    assert "permission not to act" in entry11   # strip: explicitly keeps it

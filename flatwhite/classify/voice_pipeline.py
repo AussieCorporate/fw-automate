@@ -461,9 +461,10 @@ CLAUDE_TELL_CATALOGUE = '''\
     Real example (shipped, Brains Trust, 22 Jun): "The Middle East conflict was the trigger but it's not really the cause."
     Deletion rule: delete the announcing sentence; let the facts that follow it stand on their own without the pivot being named.
 
-11. READER-VALIDATION REACH-THROUGH - comforting the reader directly, opening OR closing.
-    Real example (shipped, Big Conversation closing, 27 Jul): "It's why a rejection for your job app isn't rigged against you and not because you 'aren't good enough'."
-    Deletion rule: delete the reassurance clause/sentence; end the piece on the prior factual line instead.
+11. READER-VALIDATION REACH-THROUGH - empty flattery or comfort that carries no information: telling the reader they are not crazy, not alone, doing fine, that their feelings are valid.
+    NARROWED HARD, 25 Aug 2026. This entry was wrong and was about to undo the whole substance fix. It used to read "comforting the reader directly, opening OR closing" and cited the 27 Jul line "It's why a rejection for your job app isn't rigged against you and not because you 'aren't good enough'" as a tell. That line is not a tell - it is REMOVAL OF SELF-BLAME, one of the five things Victor consistently ADDS in his own edit (17 Aug: "it's probably not because you fumbled on your words in the interview"). As written, this entry would have deleted the closing counsel that 6 of 6 published Big Conversations end on: "having support outside of work is the part you can actually count on" (10 Aug), "it's also okay to let this one go" (3 Aug), "it's just up to you to prioritise accordingly" (20 Jul).
+    KEEP (never delete these): practical counsel at the close, permission not to act, and removal of self-blame that names a real cause ("not because you fumbled the interview" - the cause is the approval chain, which the piece explained).
+    Deletion rule: delete ONLY comfort that asserts nothing and advises nothing - "you're not imagining it", "you're not alone in this", "and that's completely valid", "give yourself credit". If the sentence tells the reader what to do, gives them permission not to act, or takes the blame off them by naming what actually caused it, it stays. When in doubt on this entry, KEEP - the cost of deleting a published-shape close is far higher than leaving one soft line in.
 
 12. THE PRIVILEGE-CHECK / EMPATHY PIVOT - a reflexive paragraph acknowledging the advice doesn't apply to people without options.
     Real example: "leverage is a circumstance, not a mindset."
@@ -505,8 +506,9 @@ CLAUDE_TELL_CATALOGUE = '''\
     Real examples (both shipped): "Done properly, visiting your parents' place of work can be a good thing." (13 Jul) / "Done the right way, people come home with a good story." (6 Jul)
     Deletion rule: delete the phrase and capitalise the word that follows; the concession content survives without the formula in front of it.
 
-22. END-PLACED READER REASSURANCE (Brains Trust) - a closing sentence that comforts or advises the reader directly instead of landing the economic mechanism.
-    Deletion rule: delete the reassurance clause; if an earlier sentence in the same paragraph already explains the mechanism, end there instead.
+22. END-PLACED READER REASSURANCE (Brains Trust ONLY - Big Conversation closes on counsel, see entry 11) - a closing sentence that comforts the reader INSTEAD OF landing the economic mechanism.
+    NARROWED 25 Aug 2026: this used to read "comforts or advises", which contradicted BRAINS_TRUST_VOICE's own closing rule - that prompt sanctions closing on "the economic mechanism ... or the concrete practical implication that follows from them". A practical implication that FOLLOWS FROM the figures is the sanctioned close and stays.
+    Deletion rule: delete comfort that REPLACES the explanation ("so there's no need to panic", "things will settle"). Keep a practical implication the figures actually support. If an earlier sentence in the same paragraph already explains the mechanism and the final one only soothes, end there instead.
 
 23. STOCK PHRASES - off-the-shelf AI filler at the word and phrase level. Entries 1-22 are structural shapes; this entry is the vocabulary. NEVER Victor's own writing, so it is EXEMPT from the hand-edit caution: fix every instance on sight, never flag one instead of fixing it.
     Deletion rule: delete the phrase and close the gap. The sentence almost always reads correctly starting from the word after it - capitalise the new opening word and drop a now-orphaned conjunction. Only if deleting genuinely breaks the sentence, rewrite the clause in plain Anglo under the three guardrails. Never swap one stock phrase for another (do not turn "at the end of the day" into "ultimately").
