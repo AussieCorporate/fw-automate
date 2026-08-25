@@ -108,3 +108,16 @@ def test_announced_transitions_entry_distinguishes_scaffolding_from_a_claim():
     assert "over-firing" in entry
     assert "The real problem is AI" in entry
     assert "asserts" in entry.lower()
+
+
+def test_skill_md_no_longer_repeats_the_retired_closing_rule():
+    """SKILL.md restated the banned-closing rule inline, which would have
+    partly undone the generate-prompt fix (found mid-run, 25 Aug 2026)."""
+    p = (_SKILL_REFS.parent / "SKILL.md")
+    if not p.is_file():
+        return
+    text = p.read_text()
+    assert "end on\nCOUNSEL" in text or "end on **COUNSEL" in text or "**end on\nCOUNSEL" in text
+    assert "WHAT THE PIECE MUST CARRY" in text
+    # the retired instruction must not survive as a live rule
+    assert "not a tidy \"up to you\" resolution — see" not in text
