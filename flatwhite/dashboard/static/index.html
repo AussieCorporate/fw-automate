@@ -380,6 +380,13 @@ var S = {
   tacCalendarCollapsed: {}, // {week_label: bool} which week groups are collapsed; survives refetches
   tacCalendarAddOpen: false,
   tacCalendarAddForm: null, // filled by _tacCalendarBlankAddForm() when the Add row form first opens
+  tacQuarterly: null,       // full tac_quarterly_planner list from GET /api/tac-instagram/quarterly (Task 9)
+  tacQuarterlyAddOpen: false,
+  tacQuarterlyAddForm: null, // filled by _tacQuarterlyBlankAddForm() when the Add form first opens
+  tacQuarterlyPlaybookOpen: false, // the 5 "SURVEY WEEK PLAYBOOK" rows (type="Survey Content") are a
+                                    // collapsed reference section, not among the real campaigns - see the
+                                    // Task 9 comment block above renderTacQuarterly()
+  tacQuarterlyGenerating: {}, // {quarterlyItemId: bool} in-flight guard for "Generate survey week"
   page: "pulse",
   weekIso: "",
   models: [],
@@ -1126,6 +1133,7 @@ function renderTacPage() {
   if (page.id === "today") { renderTacToday(); return; }
   if (page.id === "topic_bank") { renderTacTopicBank(); return; }
   if (page.id === "calendar") { renderTacCalendar(); return; }
+  if (page.id === "quarterly_planner") { renderTacQuarterly(); return; }
   pageEl.innerHTML = '<div class="page-h"><strong>' + esc(page.name) + '</strong></div>'
     + '<div class="page-b"><p style="color:var(--label2)">Coming in Task ' + page.task + '.</p></div>';
 }
@@ -1868,6 +1876,252 @@ function renderTacCalendarBody() {
   } else {
     groups.forEach(function(g) { h += _tacCalendarGroupHtml(g); });
   }
+
+  body.innerHTML = h;
+}
+
+/* ── TAC Instagram: Quarterly Planner (Task 9) ────────────
+   tac_quarterly_planner holds 12 real rows: 7 real campaigns/events
+   (type="Survey Campaign" or "Event") plus 5 "SURVEY WEEK PLAYBOOK" rows
+   (type="Survey Content" - "Monday - Launch", "Tuesday - Newsletter", etc.,
+   Task 1's importer note). Those 5 aren't campaigns - they're the reusable
+   Monday-Friday production checklist Victor runs every time a survey
+   launches, and they carry quarter_label copied from whichever real quarter
+   banner preceded them in the sheet (Q4 2026 today), which would otherwise
+   make Q4 look like it has 5 phantom campaigns. Display decision (this
+   task's call, per the brief's ruling): items grouped by quarter_label are
+   filtered to type !== "Survey Content" only; the 5 playbook rows render in
+   their own collapsed reference section below the quarters, with no
+   Generate button (they ARE the playbook the button produces, not something
+   to generate a playbook for).
+
+   "Generate survey week" only shows on type === "Survey Campaign" rows (not
+   "Event" - events don't have the Mon-Fri survey content plan). It disables
+   itself while its request is in flight (S.tacQuarterlyGenerating, keyed by
+   item id) and always re-enables, success or failure (Task 8's per-cell
+   in-flight lesson). The success toast has to name the week ("5 rows added
+   to the Calendar for the week of 2 Jun") but generate-survey-week's
+   response only carries created_row_ids, no dates - so after it succeeds
+   this refetches /calendar, finds the created ids, picks the one whose
+   day_of_week is "Monday", and reads the week off its post_date. */
+function _tacQuarterlyBlankAddForm() {
+  return {
+    item_number: "", campaign_event: "", type: "", launch_date: "",
+    close_event_date: "", results_publish: "", sponsor: false, notes: "",
+    quarter_label: ""
+  };
+}
+
+function _tacQuarterlyFetch() {
+  return api("/api/tac-instagram/quarterly")
+    .then(function(d) {
+      S.tacQuarterly = d.items || [];
+      renderTacQuarterlyBody();
+    })
+    .catch(function(e) {
+      S.tacQuarterly = null;
+      var body = $("tac-quarterly-body");
+      if (body) body.innerHTML = '<p style="color:var(--red)">Could not load the quarterly planner (' + esc(e.message) + '). Refresh the page to try again.</p>';
+    });
+}
+
+function renderTacQuarterly() {
+  var pageEl = $("tac-page");
+  if (!pageEl) return;
+  if (!S.tacQuarterlyAddForm) S.tacQuarterlyAddForm = _tacQuarterlyBlankAddForm();
+  if (!S.tacQuarterlyGenerating) S.tacQuarterlyGenerating = {};
+  pageEl.innerHTML = '<div class="page-h"><strong>Quarterly Planner</strong></div>'
+    + '<div class="page-b" id="tac-quarterly-body"><p style="color:var(--text-3)">Loading...</p></div>';
+  _tacQuarterlyFetch();
+}
+
+function toggleTacQuarterlyAddForm() {
+  S.tacQuarterlyAddOpen = !S.tacQuarterlyAddOpen;
+  if (S.tacQuarterlyAddOpen && !S.tacQuarterlyAddForm) S.tacQuarterlyAddForm = _tacQuarterlyBlankAddForm();
+  renderTacQuarterlyBody();
+}
+
+function toggleTacQuarterlyPlaybook() {
+  S.tacQuarterlyPlaybookOpen = !S.tacQuarterlyPlaybookOpen;
+  renderTacQuarterlyBody();
+}
+
+function addTacQuarterlyItem() {
+  var f = S.tacQuarterlyAddForm;
+  var name = (f.campaign_event || "").trim();
+  if (!name) { showToast("Add the campaign / event name first", "error"); return; }
+  var body = { campaign_event: name };
+  var n = parseInt(f.item_number, 10);
+  if (!isNaN(n)) body.item_number = n;
+  ["type", "launch_date", "close_event_date", "results_publish", "notes", "quarter_label"].forEach(function(k) {
+    var v = (f[k] || "").trim();
+    if (v) body[k] = v;
+  });
+  body.sponsor = f.sponsor ? 1 : 0;
+  api("/api/tac-instagram/quarterly", { method: "POST", body: body })
+    .then(function() {
+      S.tacQuarterlyAddForm = _tacQuarterlyBlankAddForm();
+      S.tacQuarterlyAddOpen = false;
+      showToast("Campaign added");
+      _tacQuarterlyFetch();
+    })
+    .catch(function(e) {
+      showToast("Could not add campaign (" + e.message + ")", "error");
+    });
+}
+
+// Success toast names the week (e.g. "5 rows added to the Calendar for the
+// week of 2 Jun") - generate-survey-week's own response only carries
+// created_row_ids, so this refetches /calendar to find the Monday row's
+// post_date once the insert succeeds. Disables the calling button for the
+// duration via S.tacQuarterlyGenerating and always re-enables it, on the
+// success path and the failure path alike.
+function generateTacSurveyWeek(itemId) {
+  if (!S.tacQuarterlyGenerating) S.tacQuarterlyGenerating = {};
+  if (S.tacQuarterlyGenerating[itemId]) return;
+  S.tacQuarterlyGenerating[itemId] = true;
+  renderTacQuarterlyBody();
+  api("/api/tac-instagram/quarterly/" + itemId + "/generate-survey-week", { method: "POST" })
+    .then(function(d) {
+      var ids = d.created_row_ids || [];
+      return api("/api/tac-instagram/calendar").then(function(cd) {
+        var created = (cd.rows || []).filter(function(r) { return ids.indexOf(r.id) !== -1; });
+        var monday = created.filter(function(r) { return r.day_of_week === "Monday"; })[0];
+        var weekText = "";
+        if (monday && monday.post_date) {
+          var parts = String(monday.post_date).trim().split(/\s+/); // "2 Jun 2026" -> "2 Jun"
+          weekText = parts.slice(0, 2).join(" ");
+        }
+        showToast(ids.length + " row" + (ids.length === 1 ? "" : "s") + " added to the Calendar" + (weekText ? " for the week of " + weekText : ""));
+      });
+    })
+    .catch(function(e) {
+      showToast("Could not generate the survey week (" + e.message + ")", "error");
+    })
+    .then(function() {
+      S.tacQuarterlyGenerating[itemId] = false;
+      renderTacQuarterlyBody();
+    });
+}
+
+function _tacQuarterlyGroups(items) {
+  var real = items.filter(function(i) { return i.type !== "Survey Content"; });
+  var order = [];
+  var map = {};
+  real.forEach(function(i) {
+    var key = i.quarter_label || "";
+    if (!Object.prototype.hasOwnProperty.call(map, key)) { map[key] = []; order.push(key); }
+    map[key].push(i);
+  });
+  return order.map(function(key) { return { quarter_label: key, items: map[key] }; });
+}
+
+function _tacQuarterlyPlaybookItems(items) {
+  return items.filter(function(i) { return i.type === "Survey Content"; });
+}
+
+function _tacQuarterlyCard(item) {
+  var h = '<div class="card mb8" style="padding:14px 16px;">';
+  h += '<div class="fr" style="justify-content:space-between;align-items:flex-start;gap:12px;">';
+  h += '<div style="flex:1;min-width:0;">';
+  h += '<div style="font-size:14px;font-weight:600;">' + esc(item.campaign_event) + '</div>';
+  h += '<div class="fr" style="gap:6px;flex-wrap:wrap;margin-top:6px;">';
+  if (item.type) h += '<span class="chip chip-default">' + esc(item.type) + '</span>';
+  if (item.sponsor) h += '<span class="chip chip-green">Sponsor</span>';
+  h += '</div>';
+  var dates = [];
+  if (item.launch_date) dates.push("Launch " + item.launch_date);
+  if (item.close_event_date) dates.push("Close " + item.close_event_date);
+  if (item.results_publish) dates.push("Results " + item.results_publish);
+  if (dates.length) h += '<div style="font-size:12px;color:var(--text-3);margin-top:6px;">' + esc(dates.join(" · ")) + '</div>';
+  if (item.notes) h += '<div style="font-size:13px;margin-top:8px;">' + esc(item.notes) + '</div>';
+  h += '</div>';
+  if (item.type === "Survey Campaign") {
+    var generating = !!(S.tacQuarterlyGenerating && S.tacQuarterlyGenerating[item.id]);
+    h += '<button class="btn btn-sm btn-success" style="white-space:nowrap;" onclick="generateTacSurveyWeek(' + item.id + ')"' + (generating ? ' disabled' : '') + '>' + (generating ? "Generating…" : "Generate survey week") + '</button>';
+  }
+  h += '</div></div>';
+  return h;
+}
+
+function _tacQuarterlyGroupHtml(g) {
+  var h = '<div style="margin-bottom:20px;">';
+  h += '<div style="font-size:13px;font-weight:700;margin-bottom:8px;color:var(--text-2);">' + esc(g.quarter_label || "No quarter") + '</div>';
+  g.items.forEach(function(item) { h += _tacQuarterlyCard(item); });
+  h += '</div>';
+  return h;
+}
+
+function _tacQuarterlyPlaybookHtml(items) {
+  var open = !!S.tacQuarterlyPlaybookOpen;
+  var h = '<div class="card mb20" style="padding:0;overflow:hidden;">';
+  h += '<div class="fr" style="justify-content:space-between;align-items:center;padding:10px 16px;cursor:pointer;background:var(--surface-warm);" onclick="toggleTacQuarterlyPlaybook()">';
+  h += '<div style="font-size:13px;font-weight:700;">Survey Week Playbook (reference)</div>';
+  h += '<div style="font-size:12px;color:var(--text-3);">' + items.length + " step" + (items.length === 1 ? "" : "s") + " &middot; " + (open ? "Hide &uarr;" : "Show &darr;") + '</div>';
+  h += '</div>';
+  if (open) {
+    h += '<div style="padding:12px 16px;">';
+    h += '<p style="font-size:12px;color:var(--text-3);margin:0 0 10px 0;">The standard Monday-Friday production checklist every survey launch follows. Not a campaign of its own - "Generate survey week" on a Survey Campaign above writes this playbook onto the Calendar for that campaign\'s launch week.</p>';
+    items.forEach(function(i) {
+      h += '<div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--divider);">';
+      h += '<div style="font-size:13px;font-weight:600;">' + esc(i.campaign_event) + '</div>';
+      if (i.launch_date) h += '<div style="font-size:13px;color:var(--text-2);margin-top:2px;">' + esc(i.launch_date) + '</div>';
+      if (i.notes) h += '<div style="font-size:12px;color:var(--text-3);margin-top:4px;">' + esc(i.notes) + '</div>';
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+function _tacQuarterlyAddFormHtml() {
+  var f = S.tacQuarterlyAddForm;
+  var h = '<div class="card mb20" style="padding:16px;">';
+  h += '<div style="font-size:14px;font-weight:700;margin-bottom:12px;">Add campaign / event</div>';
+  h += '<div class="fr" style="gap:12px;flex-wrap:wrap;align-items:flex-start;">';
+  h += '<div class="form-group" style="flex:1;min-width:100px;"><label>Item #</label><input class="form-input" value="' + escAttr(f.item_number) + '" oninput="S.tacQuarterlyAddForm.item_number=this.value"></div>';
+  h += '<div class="form-group" style="flex:2;min-width:200px;"><label>Campaign / event</label><input class="form-input" value="' + escAttr(f.campaign_event) + '" oninput="S.tacQuarterlyAddForm.campaign_event=this.value" placeholder="e.g. Graduate Salary Survey"></div>';
+  h += '<div class="form-group" style="flex:1;min-width:160px;"><label>Type</label><input class="form-input" value="' + escAttr(f.type) + '" oninput="S.tacQuarterlyAddForm.type=this.value" placeholder="e.g. Survey Campaign"></div>';
+  h += '</div>';
+  h += '<div class="fr" style="gap:12px;flex-wrap:wrap;align-items:flex-start;">';
+  h += '<div class="form-group" style="flex:1;min-width:150px;"><label>Launch date</label><input class="form-input" value="' + escAttr(f.launch_date) + '" oninput="S.tacQuarterlyAddForm.launch_date=this.value" placeholder="e.g. 2 Jun 2026"></div>';
+  h += '<div class="form-group" style="flex:1;min-width:150px;"><label>Close / event date</label><input class="form-input" value="' + escAttr(f.close_event_date) + '" oninput="S.tacQuarterlyAddForm.close_event_date=this.value"></div>';
+  h += '<div class="form-group" style="flex:1;min-width:150px;"><label>Results publish</label><input class="form-input" value="' + escAttr(f.results_publish) + '" oninput="S.tacQuarterlyAddForm.results_publish=this.value"></div>';
+  h += '</div>';
+  h += '<div class="fr" style="gap:12px;flex-wrap:wrap;align-items:center;">';
+  h += '<div class="form-group" style="flex:2;min-width:200px;"><label>Quarter label</label><input class="form-input" value="' + escAttr(f.quarter_label) + '" oninput="S.tacQuarterlyAddForm.quarter_label=this.value" placeholder="e.g. Q2 2026  ·  APR – JUN"></div>';
+  h += '<label class="fr" style="gap:6px;align-items:center;font-size:13px;"><input type="checkbox"' + (f.sponsor ? ' checked' : '') + ' onchange="S.tacQuarterlyAddForm.sponsor=this.checked"> Sponsor</label>';
+  h += '</div>';
+  h += '<div class="form-group"><label>Notes</label><textarea class="form-input" rows="2" oninput="S.tacQuarterlyAddForm.notes=this.value">' + esc(f.notes) + '</textarea></div>';
+  h += '<button class="btn btn-success" onclick="addTacQuarterlyItem()">Add campaign</button>';
+  h += '</div>';
+  return h;
+}
+
+function renderTacQuarterlyBody() {
+  var body = $("tac-quarterly-body");
+  if (!body) return;
+  var items = S.tacQuarterly || [];
+  var groups = _tacQuarterlyGroups(items);
+  var playbookItems = _tacQuarterlyPlaybookItems(items);
+  var realCount = items.length - playbookItems.length;
+
+  var h = '';
+  h += '<div class="fr" style="justify-content:space-between;align-items:center;margin-bottom:14px;">';
+  h += '<div style="font-size:12px;color:var(--text-3);">' + realCount + " campaign" + (realCount === 1 ? "" : "s") + " across " + groups.length + " quarter" + (groups.length === 1 ? "" : "s") + '</div>';
+  h += '<button class="btn btn-sm ' + (S.tacQuarterlyAddOpen ? "btn-secondary" : "btn-success") + '" onclick="toggleTacQuarterlyAddForm()">' + (S.tacQuarterlyAddOpen ? "Close" : "+ Add campaign") + '</button>';
+  h += '</div>';
+
+  if (S.tacQuarterlyAddOpen) h += _tacQuarterlyAddFormHtml();
+
+  if (!groups.length) {
+    h += '<p style="color:var(--text-3);font-size:13px;">No campaigns yet.</p>';
+  } else {
+    groups.forEach(function(g) { h += _tacQuarterlyGroupHtml(g); });
+  }
+
+  if (playbookItems.length) h += _tacQuarterlyPlaybookHtml(playbookItems);
 
   body.innerHTML = h;
 }
