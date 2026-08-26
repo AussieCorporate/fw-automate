@@ -112,7 +112,12 @@ def test_run_signal_intelligence_generates_for_movers(si_db):
 
         with patch("flatwhite.signals.signal_intelligence.get_current_week_iso", return_value="2026-W13"):
             with patch("flatwhite.signals.signal_intelligence._fetch_articles", return_value=mock_articles):
-                with patch("flatwhite.model_router.route", return_value="ASX rose sharply this week due to global risk sentiment."):
+                # signal_intelligence does `from flatwhite.model_router import route`,
+                # binding its own local name at import time - patching
+                # flatwhite.model_router.route does not touch that local binding
+                # (the module-level function call still hits the real, unpatched
+                # route()). Patch the name where it is actually looked up.
+                with patch("flatwhite.signals.signal_intelligence.route", return_value="ASX rose sharply this week due to global risk sentiment."):
                     from flatwhite.signals.signal_intelligence import run_signal_intelligence
                     run_signal_intelligence()
 

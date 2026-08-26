@@ -75,18 +75,50 @@ def test_anomaly_detection_short_baseline(temp_db: Path) -> None:
         assert result["reason"] == "insufficient_data"
 
 
+def _insert_signal_on_date(signal_name, lane, area, raw_value, normalised_score,
+                            source_weight, week_iso, pulled_at) -> None:
+    """Insert a signal row with an explicit pulled_at, unlike db_module.insert_signal
+    (which always stamps datetime('now')). detect_anomalies requires baseline rows
+    from at least 2 distinct pull dates (real ingest runs, not a single backfill
+    batch) - see flatwhite/pulse/anomaly.py's backfill_only guard - so tests that
+    build a multi-week baseline must spread pulled_at across days, matching how
+    real weekly ingests land one day apart."""
+    conn = db_module.get_connection()
+    conn.execute(
+        """INSERT OR REPLACE INTO signals
+        (signal_name, lane, area, raw_value, normalised_score, source_weight, pulled_at, week_iso)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (signal_name, lane, area, raw_value, normalised_score, source_weight, pulled_at, week_iso),
+    )
+    conn.commit()
+    conn.close()
+
+
 def test_anomaly_detection_with_enough_data(temp_db: Path) -> None:
-    """detect_anomalies with uniform baseline uses MAD floor and detects large deviation."""
+    """detect_anomalies with a near-uniform baseline uses the MAD floor and
+    detects a large deviation.
+
+    Uses a slightly-varied baseline (49-51), not a perfectly uniform one (all
+    50.0): a perfectly uniform baseline now hits anomaly.py's own
+    "uniform_baseline" guard (raw MAD == 0 and only one distinct value), which
+    deliberately suppresses the alert as having no meaningful pattern to
+    compare against. This test's actual target - the 5.0 MAD floor that
+    prevents tiny real variation from producing an exaggerated score - needs a
+    baseline with real (if small) variance, not zero variance.
+    """
     with patch.object(db_module, "DB_PATH", temp_db):
         from flatwhite.pulse.anomaly import detect_anomalies
 
         week_iso = db_module.get_current_week_iso()
 
-        # Insert 5 weeks of stable baseline data (scores all 50)
-        for i in range(5):
+        # Insert 5 weeks of near-stable baseline data (scores 49-51), each from
+        # a different ingest day so the backfill_only guard doesn't suppress detection.
+        baseline_scores = [49.0, 49.5, 50.0, 50.5, 51.0]
+        for i, score in enumerate(baseline_scores):
             week = f"2025-W{i + 1:02d}"
-            db_module.insert_signal(
-                "job_anxiety", "pulse", "labour_market", 50.0, 50.0, 1.0, week
+            _insert_signal_on_date(
+                "job_anxiety", "pulse", "labour_market", score, score, 1.0, week,
+                f"2025-{i + 1:02d}-01T00:00:00",
             )
 
         # Insert current week with extreme value
@@ -95,7 +127,7 @@ def test_anomaly_detection_with_enough_data(temp_db: Path) -> None:
         )
 
         result = detect_anomalies("job_anxiety")
-        # Baseline all 50.0 -> raw MAD = 0, but floor is 5.0
+        # Baseline median 50.0, raw MAD = 0.5, but floor is 5.0
         # Deviation = |95 - 50| / 5.0 = 9.0 MADs -> anomaly
         assert "deviation_mads" in result
         assert result["is_anomaly"] is True
@@ -109,12 +141,14 @@ def test_anomaly_detection_varied_baseline(temp_db: Path) -> None:
 
         week_iso = db_module.get_current_week_iso()
 
-        # Insert varied baseline (scores spread around 50)
+        # Insert varied baseline (scores spread around 50), each from a different
+        # ingest day so the backfill_only guard doesn't suppress detection.
         baseline_scores = [45.0, 48.0, 50.0, 52.0, 55.0]
         for i, score in enumerate(baseline_scores):
             week = f"2025-W{i + 1:02d}"
-            db_module.insert_signal(
-                "job_anxiety", "pulse", "labour_market", score, score, 1.0, week
+            _insert_signal_on_date(
+                "job_anxiety", "pulse", "labour_market", score, score, 1.0, week,
+                f"2025-{i + 1:02d}-01T00:00:00",
             )
 
         # Insert current week with high value

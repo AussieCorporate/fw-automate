@@ -16,21 +16,10 @@ def test_cold_start_absolute_midpoint():
 
 
 def test_cold_start_absolute_floor():
-    """Raw at floor should score 0."""
+    """Not inverted (high raw = good, e.g. job postings): raw at floor (worst
+    case) should score 100 stress."""
     score, _ = normalise_hybrid(
         raw_value=8000.0,
-        floor=8000.0,
-        ceiling=32000.0,
-        inverted=False,
-        history=[],
-    )
-    assert score == 0.0
-
-
-def test_cold_start_absolute_ceiling():
-    """Raw at ceiling should score 100."""
-    score, _ = normalise_hybrid(
-        raw_value=32000.0,
         floor=8000.0,
         ceiling=32000.0,
         inverted=False,
@@ -39,10 +28,10 @@ def test_cold_start_absolute_ceiling():
     assert score == 100.0
 
 
-def test_cold_start_absolute_clamped():
-    """Raw below floor should clamp to 0."""
+def test_cold_start_absolute_ceiling():
+    """Not inverted: raw at ceiling (best case) should score 0 stress."""
     score, _ = normalise_hybrid(
-        raw_value=5000.0,
+        raw_value=32000.0,
         floor=8000.0,
         ceiling=32000.0,
         inverted=False,
@@ -51,8 +40,21 @@ def test_cold_start_absolute_clamped():
     assert score == 0.0
 
 
+def test_cold_start_absolute_clamped():
+    """Not inverted: raw below floor (worse than worst case) should clamp to
+    100 stress."""
+    score, _ = normalise_hybrid(
+        raw_value=5000.0,
+        floor=8000.0,
+        ceiling=32000.0,
+        inverted=False,
+        history=[],
+    )
+    assert score == 100.0
+
+
 def test_cold_start_inverted():
-    """Inverted signal: high raw -> low score."""
+    """Inverted signal (high raw = bad, e.g. insolvencies): high raw -> high score."""
     score, _ = normalise_hybrid(
         raw_value=350.0,
         floor=100.0,
@@ -60,7 +62,7 @@ def test_cold_start_inverted():
         inverted=True,
         history=[],
     )
-    assert score == 0.0
+    assert score == 100.0
 
     score2, _ = normalise_hybrid(
         raw_value=100.0,
@@ -69,7 +71,7 @@ def test_cold_start_inverted():
         inverted=True,
         history=[],
     )
-    assert score2 == 100.0
+    assert score2 == 0.0
 
 
 def test_self_calibrating_at_median():
@@ -88,7 +90,7 @@ def test_self_calibrating_at_median():
 
 
 def test_self_calibrating_above_median():
-    """Raw well above median should score > 60."""
+    """Not inverted (high raw = good): raw well above median should score < 40 stress."""
     history = [20000.0] * 10
     score, _ = normalise_hybrid(
         raw_value=25000.0,
@@ -97,11 +99,11 @@ def test_self_calibrating_above_median():
         inverted=False,
         history=history,
     )
-    assert score > 60.0
+    assert score < 40.0
 
 
 def test_self_calibrating_inverted():
-    """Inverted + self-calibrating: raw above median = lower score."""
+    """Inverted + self-calibrating: raw above median = higher score."""
     history = [200.0] * 10
     score, _ = normalise_hybrid(
         raw_value=280.0,
@@ -110,7 +112,7 @@ def test_self_calibrating_inverted():
         inverted=True,
         history=history,
     )
-    assert score < 40.0
+    assert score > 60.0
 
 
 def test_transition_zone():
