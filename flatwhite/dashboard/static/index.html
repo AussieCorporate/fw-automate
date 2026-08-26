@@ -388,6 +388,7 @@ var S = {
                                     // collapsed reference section, not among the real campaigns - see the
                                     // Task 9 comment block above renderTacQuarterly()
   tacQuarterlyGenerating: {}, // {quarterlyItemId: bool} in-flight guard for "Generate survey week"
+  tacBankItems: null,       // GET /api/content-bank?segment_type=tac_instagram_carousel items (Task 11)
   page: "pulse",
   weekIso: "",
   models: [],
@@ -1135,6 +1136,7 @@ function renderTacPage() {
   if (page.id === "topic_bank") { renderTacTopicBank(); return; }
   if (page.id === "calendar") { renderTacCalendar(); return; }
   if (page.id === "quarterly_planner") { renderTacQuarterly(); return; }
+  if (page.id === "content_bank") { renderTacContentBank(); return; }
   pageEl.innerHTML = '<div class="page-h"><strong>' + esc(page.name) + '</strong></div>'
     + '<div class="page-b"><p style="color:var(--label2)">Coming in Task ' + page.task + '.</p></div>';
 }
@@ -2409,6 +2411,81 @@ function renderTacQuarterlyBody() {
   if (playbookItems.length) h += _tacQuarterlyPlaybookHtml(playbookItems);
 
   body.innerHTML = h;
+}
+
+/* ── TAC Instagram: Content Bank (Task 11) ────────────────
+   Read-only view over pieces already produced ahead of time for this
+   workspace - currently just Build carousel's output
+   (segment_type=tac_instagram_carousel), via the same GET /api/content-bank
+   route Flat White's own Content Bank page uses (renderBank(), in the
+   Content Bank section further below). That function isn't reused directly
+   - it isn't separable as-is: its add form and "pull into edition" target
+   list are Flat White segment ids (editorial/brains_trust/top_picks/...)
+   that don't apply here, and its Archive button re-renders the FW page via
+   render(), not this one. What IS reused is the endpoint and the same
+   card-preview markup (.block-preview, the same class FW's list uses).
+   Only Archive is offered here (once Victor's posted a carousel to
+   Instagram by hand, archiving clears it from this list) - no add form,
+   no pull; TAC Instagram has no "sections" to pull into. */
+function _tacBankSegmentTypes() {
+  // tac_instagram_carousel today; any future tac_instagram_* segment type
+  // (e.g. a single-image post) gets added here and shows in the same list.
+  return ["tac_instagram_carousel"];
+}
+
+function _tacContentBankFetch() {
+  var types = _tacBankSegmentTypes();
+  return Promise.all(types.map(function(t) {
+    return api("/api/content-bank?segment_type=" + encodeURIComponent(t));
+  })).then(function(results) {
+    var items = [];
+    results.forEach(function(d) { items = items.concat(d.items || []); });
+    items.sort(function(a, b) { return (b.id || 0) - (a.id || 0); });
+    S.tacBankItems = items;
+    renderTacContentBankBody();
+  }).catch(function(e) {
+    var body = $("tac-content-bank-body");
+    if (body) body.innerHTML = '<p style="color:var(--red)">Could not load the content bank (' + esc(e.message) + '). Refresh the page to try again.</p>';
+  });
+}
+
+function renderTacContentBank() {
+  var pageEl = $("tac-page");
+  if (!pageEl) return;
+  pageEl.innerHTML = '<div class="page-h"><strong>Content Bank</strong></div>'
+    + '<div class="page-b" id="tac-content-bank-body"><p style="color:var(--text-3)">Loading...</p></div>';
+  _tacContentBankFetch();
+}
+
+function renderTacContentBankBody() {
+  var body = $("tac-content-bank-body");
+  if (!body) return;
+  var items = S.tacBankItems || [];
+  var h = '<p style="font-size:13px;color:var(--text-2);margin:0 0 12px 0;">Carousels Build carousel has produced, ready to post. Archive one once it has been posted to Instagram.</p>';
+  if (!items.length) {
+    h += '<p style="color:var(--text-3);font-size:13px;">Nothing in the bank yet - use Build carousel on a farmed Today topic.</p>';
+  } else {
+    items.forEach(function(item) {
+      var bodyText = item.body_text || "";
+      var preview = bodyText.length > 400 ? bodyText.slice(0, 400) + "..." : bodyText;
+      h += '<div class="block-preview"><h4>' + esc(item.segment_type) + '</h4>';
+      h += '<div style="font-weight:600;margin-bottom:4px;">' + esc(item.title) + '</div>';
+      if (item.source_note) h += '<div style="color:var(--text-3);font-size:12px;margin-bottom:6px;">' + esc(item.source_note) + '</div>';
+      h += '<div style="color:var(--label2);font-size:13px;margin-bottom:8px;white-space:pre-wrap;">' + esc(preview) + '</div>';
+      h += '<button class="btn btn-sm" onclick="archiveTacBankItem(' + item.id + ')">Archive</button>';
+      h += '</div>';
+    });
+  }
+  body.innerHTML = h;
+}
+
+function archiveTacBankItem(bankId) {
+  api("/api/content-bank/" + bankId + "/archive", { method: "POST" })
+    .then(function() {
+      showToast("Archived");
+      return _tacContentBankFetch();
+    })
+    .catch(function(e) { showToast("Archive failed: " + e.message, "error"); });
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
