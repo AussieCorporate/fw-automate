@@ -4006,13 +4006,30 @@ def api_tac_build_carousel(topic_id: int) -> JSONResponse:
 
     out_dir = str(_bcb.INSTAGRAM_OUTPUT_DIR)
     script_path = _carousel_script_path(folder)
-    # Delete any stale script left over from a PREVIOUS build of this same
-    # topic before starting this run (code review round 2, 27 Aug 2026): the
-    # file has no per-run name or freshness check, so without this a rebuild
-    # whose model skips the write but still prints CAROUSEL_BUILD_DONE would
-    # have _read_carousel_script silently pick up the old file and re-save it
-    # as if it were THIS run's output. Deleting first means a file existing
-    # at on_complete time can only have been written by this run.
+    run_key = f"tac-carousel-{topic_id}"
+
+    # A run for this exact topic is already in flight - do NOT touch the
+    # script file below (code review round 3, 27 Aug 2026: the round-2 fix
+    # unlinked unconditionally, which could race a still-running build of
+    # the SAME topic - delete the live run's file out from under it, or wipe
+    # a file it had just finished writing right before on_complete reads it).
+    # Report the same in-progress shape the concurrency-cap RuntimeError
+    # below uses and stop here.
+    if _skill_runner.get_active_by_key(run_key):
+        return JSONResponse(
+            {"error": "A carousel build for this topic is already in "
+                      "progress. Wait for it to finish, then try again."},
+            status_code=429)
+
+    # Delete any stale script left over from a PREVIOUS (finished) build of
+    # this same topic before starting this run (code review round 2, 27 Aug
+    # 2026): the file has no per-run name or freshness check, so without
+    # this a rebuild whose model skips the write but still prints
+    # CAROUSEL_BUILD_DONE would have _read_carousel_script silently pick up
+    # the old file and re-save it as if it were THIS run's output. Deleting
+    # first means a file existing at on_complete time can only have been
+    # written by this run. Safe now that the active-run check above has
+    # already ruled out a live run owning this file.
     script_path.unlink(missing_ok=True)
     prompt = (
         f'Use the community-carousel skill to build an Instagram carousel from '
@@ -4027,7 +4044,6 @@ def api_tac_build_carousel(topic_id: int) -> JSONResponse:
         f'{script_path}\n'
         f'Then print exactly on its own line: CAROUSEL_BUILD_DONE'
     )
-    run_key = f"tac-carousel-{topic_id}"
 
     def _on_done(record: dict | None) -> None:
         if not record or record.get("status") not in ("done", "failed"):

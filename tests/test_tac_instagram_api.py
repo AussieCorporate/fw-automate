@@ -651,6 +651,31 @@ def test_build_carousel_deletes_stale_script_file_before_starting_run(client, ca
     assert not script_path.exists()
 
 
+# Round 3 (27 Aug 2026): the round-2 pre-delete above was unconditional, so
+# two POSTs for the SAME topic could race - a second request's unlink could
+# delete a still-running FIRST request's live file, or wipe one it had just
+# finished writing right before its own on_complete read it. Fix: check
+# skill_runner.get_active_by_key(run_key) BEFORE unlinking, and 429 without
+# touching the file at all if a run for this topic is already in progress.
+def test_build_carousel_429s_and_preserves_script_file_when_already_active(client, carousel_env):
+    script_path = carousel_env / "Sunday scaries" / "_CAROUSEL_SCRIPT.md"
+    script_path.write_text("output from the currently-running build", encoding="utf-8")
+    assert script_path.exists()
+
+    with patch(
+        "flatwhite.dashboard.skill_runner.get_active_by_key",
+        return_value={"id": "already-running-run", "status": "running"},
+    ), patch("flatwhite.dashboard.skill_runner.start_run") as mock_start:
+        resp = client.post("/api/tac-instagram/build-carousel/7")
+
+    assert resp.status_code == 429
+    assert "already in progress" in resp.json()["error"]
+    mock_start.assert_not_called()
+    # The live run's file must be untouched - not deleted out from under it.
+    assert script_path.exists()
+    assert script_path.read_text(encoding="utf-8") == "output from the currently-running build"
+
+
 # G1: verifyTacCarouselSaved's decision logic (_tacCarouselFindNewMatch,
 # index.html) is pure frontend JS with no browser/JS test harness in this
 # repo, so it's pinned by running a small Node assertion script directly -
