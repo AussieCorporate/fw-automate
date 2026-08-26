@@ -459,6 +459,34 @@ def test_add_quarterly_item_round_trip(temp_db):
     assert rows[0]["sponsor"] == 1
 
 
+def test_update_quarterly_item_round_trip(temp_db):
+    item_id = tis.add_quarterly_item(
+        campaign_event="Graduate Salary Survey", quarter_label="Q2 2026",
+    )
+
+    updated = tis.update_quarterly_item(
+        item_id, campaign_event="Graduate Salary Survey 2027", notes="Moved a week"
+    )
+
+    assert updated is True
+    rows = tis.list_quarterly()
+    assert rows[0]["campaign_event"] == "Graduate Salary Survey 2027"
+    assert rows[0]["notes"] == "Moved a week"
+
+
+def test_update_quarterly_item_returns_false_for_missing_id(temp_db):
+    result = tis.update_quarterly_item(99999, campaign_event="x")
+
+    assert result is False
+
+
+def test_update_quarterly_item_rejects_unknown_field(temp_db):
+    item_id = tis.add_quarterly_item(campaign_event="Graduate Salary Survey")
+
+    with pytest.raises(ValueError):
+        tis.update_quarterly_item(item_id, not_a_real_field="x")
+
+
 # ---------------------------------------------------------------------------
 # generate_survey_week_rows
 # ---------------------------------------------------------------------------

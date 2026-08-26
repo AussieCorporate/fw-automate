@@ -297,6 +297,40 @@ def test_post_calendar_unknown_field_returns_400_multiple_fields(client):
     assert resp.json()["error"] == "Unknown field: bogus, nope"
 
 
+def test_patch_quarterly_updates_an_item(client):
+    with patch.object(tis, "update_quarterly_item", return_value=True) as mock_update:
+        resp = client.patch(
+            "/api/tac-instagram/quarterly/5", json={"notes": "Moved a week"}
+        )
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True}
+    mock_update.assert_called_once_with(5, notes="Moved a week")
+
+
+def test_patch_quarterly_requires_at_least_one_field(client):
+    with patch.object(tis, "update_quarterly_item") as mock_update:
+        resp = client.patch("/api/tac-instagram/quarterly/5", json={})
+    assert resp.status_code == 400
+    mock_update.assert_not_called()
+
+
+def test_patch_quarterly_unknown_field_returns_400(client):
+    with patch.object(
+        tis,
+        "update_quarterly_item",
+        side_effect=ValueError("Unknown tac_quarterly_planner field(s): ['bogus']"),
+    ):
+        resp = client.patch("/api/tac-instagram/quarterly/5", json={"bogus": "x"})
+    assert resp.status_code == 400
+    assert resp.json()["error"] == "Unknown field: bogus"
+
+
+def test_patch_quarterly_404s_for_unknown_item(client):
+    with patch.object(tis, "update_quarterly_item", return_value=False):
+        resp = client.patch("/api/tac-instagram/quarterly/99999", json={"notes": "x"})
+    assert resp.status_code == 404
+
+
 def test_post_generate_survey_week_returns_created_row_ids(client):
     with patch.object(
         tis, "generate_survey_week_rows", return_value=[101, 102, 103, 104, 105]

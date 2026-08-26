@@ -1647,29 +1647,34 @@ function addTacCalendarRow() {
     });
 }
 
-// Per-cell in-flight tracker, keyed "rowId|field". Closes the double-edit
-// race: if a cell is blurred again while its PATCH is still in flight, the
-// new value is queued rather than firing a second overlapping request (two
-// overlapping PATCHes each carry their own captured oldVal, so whichever's
-// catch fires last can stomp the DOM with a stale revert even though the
-// server itself stayed correct - the queue means only one PATCH per cell is
-// ever in flight, and the input is re-synced from row[field], the state of
-// record, once it settles).
-var _tacCalendarCellInFlight = {};
+// Per-cell in-flight tracker, keyed by a namespaced string ("cal|rowId|field"
+// for Calendar cells, "qtr|itemId|field" for Quarterly Planner cells below -
+// see _tacQuarterlyCellInFlight usage further down). Shared across BOTH
+// screens' inline-edit mechanisms rather than each keeping its own map,
+// since the underlying race it closes is identical: if a cell is edited
+// again while its PATCH is still in flight, the new value is queued rather
+// than firing a second overlapping request (two overlapping PATCHes each
+// carry their own captured oldVal, so whichever's catch fires last can
+// stomp the DOM with a stale revert even though the server itself stayed
+// correct - the queue means only one PATCH per cell is ever in flight, and
+// the input is re-synced from the state of record once it settles). The
+// namespace prefix exists so a Calendar row id and a Quarterly item id that
+// happen to be numerically equal can never collide in this one shared map.
+var _tacCellInFlight = {};
 
 function tacCalendarCellBlur(el) {
   var rowId = parseInt(el.getAttribute("data-row"), 10);
   var field = el.getAttribute("data-field");
   var row = _tacCalendarRowById(rowId);
   if (!row) return;
-  var cellKey = rowId + "|" + field;
+  var cellKey = "cal|" + rowId + "|" + field;
   var newVal = el.value;
 
-  if (_tacCalendarCellInFlight[cellKey]) {
+  if (_tacCellInFlight[cellKey]) {
     // A PATCH for this exact cell is already in flight - don't race it.
     // Whatever's typed now gets sent (or discarded if it turns out to
     // already match the resolved state) once the in-flight one settles.
-    _tacCalendarCellInFlight[cellKey].nextVal = newVal;
+    _tacCellInFlight[cellKey].nextVal = newVal;
     return;
   }
 
@@ -1679,9 +1684,9 @@ function tacCalendarCellBlur(el) {
 }
 
 function _tacCalendarSendCellPatch(row, field, el, newVal) {
-  var cellKey = row.id + "|" + field;
+  var cellKey = "cal|" + row.id + "|" + field;
   var inFlight = { nextVal: null };
-  _tacCalendarCellInFlight[cellKey] = inFlight;
+  _tacCellInFlight[cellKey] = inFlight;
   el.disabled = true;
   var patchBody = {};
   patchBody[field] = newVal === "" ? null : newVal;
@@ -1696,7 +1701,7 @@ function _tacCalendarSendCellPatch(row, field, el, newVal) {
       showToast("Could not save (" + e.message + ")", "error");
     })
     .then(function() {
-      delete _tacCalendarCellInFlight[cellKey];
+      delete _tacCellInFlight[cellKey];
       el.disabled = false;
       var queued = inFlight.nextVal;
       var current = row[field] == null ? "" : String(row[field]);
@@ -1711,8 +1716,8 @@ function _tacCalendarSendCellPatch(row, field, el, newVal) {
     });
 }
 
-// Status shares _tacCalendarCellInFlight with the text cells (same key
-// scheme, "rowId|status" in place of "rowId|field") - a <select> can fire
+// Status shares _tacCellInFlight with the text cells (same key scheme,
+// "cal|rowId|status" in place of "cal|rowId|field") - a <select> can fire
 // back-to-back change events faster than any text blur, so it needs the same
 // queue-instead-of-race protection. The only difference from
 // _tacCalendarSendCellPatch is that settle-time resync has to write BOTH
@@ -1722,11 +1727,11 @@ function tacCalendarStatusChange(el) {
   var rowId = parseInt(el.getAttribute("data-row"), 10);
   var row = _tacCalendarRowById(rowId);
   if (!row) return;
-  var cellKey = rowId + "|status";
+  var cellKey = "cal|" + rowId + "|status";
   var newVal = el.value;
 
-  if (_tacCalendarCellInFlight[cellKey]) {
-    _tacCalendarCellInFlight[cellKey].nextVal = newVal;
+  if (_tacCellInFlight[cellKey]) {
+    _tacCellInFlight[cellKey].nextVal = newVal;
     return;
   }
 
@@ -1736,9 +1741,9 @@ function tacCalendarStatusChange(el) {
 }
 
 function _tacCalendarSendStatusPatch(row, el, newVal) {
-  var cellKey = row.id + "|status";
+  var cellKey = "cal|" + row.id + "|status";
   var inFlight = { nextVal: null };
-  _tacCalendarCellInFlight[cellKey] = inFlight;
+  _tacCellInFlight[cellKey] = inFlight;
   el.disabled = true;
   api("/api/tac-instagram/calendar/" + row.id, { method: "PATCH", body: { status: newVal } })
     .then(function() {
@@ -1750,7 +1755,7 @@ function _tacCalendarSendStatusPatch(row, el, newVal) {
       showToast("Could not update status (" + e.message + ")", "error");
     })
     .then(function() {
-      delete _tacCalendarCellInFlight[cellKey];
+      delete _tacCellInFlight[cellKey];
       el.disabled = false;
       var queued = inFlight.nextVal;
       if (queued !== null && queued !== row.status) {
@@ -1976,6 +1981,17 @@ function addTacQuarterlyItem() {
 // post_date once the insert succeeds. Disables the calling button for the
 // duration via S.tacQuarterlyGenerating and always re-enables it, on the
 // success path and the failure path alike.
+//
+// The POST and the /calendar refetch are NOT allowed to share one .catch.
+// By the time the refetch runs, the five rows already exist server-side -
+// the refetch is purely cosmetic (it only supplies the week text for the
+// toast). If the refetch itself blips, the outer .catch must never fire:
+// that would show "Could not generate the survey week" for a generate that
+// already succeeded, and generate_survey_week_rows has no dedup guard - a
+// natural retry off that false failure would insert a second five rows for
+// the same campaign. So the refetch gets its own inner .catch that still
+// reports success, just without the week text; only a failure of the POST
+// itself reaches the outer .catch.
 function generateTacSurveyWeek(itemId) {
   if (!S.tacQuarterlyGenerating) S.tacQuarterlyGenerating = {};
   if (S.tacQuarterlyGenerating[itemId]) return;
@@ -1984,16 +2000,23 @@ function generateTacSurveyWeek(itemId) {
   api("/api/tac-instagram/quarterly/" + itemId + "/generate-survey-week", { method: "POST" })
     .then(function(d) {
       var ids = d.created_row_ids || [];
-      return api("/api/tac-instagram/calendar").then(function(cd) {
-        var created = (cd.rows || []).filter(function(r) { return ids.indexOf(r.id) !== -1; });
-        var monday = created.filter(function(r) { return r.day_of_week === "Monday"; })[0];
-        var weekText = "";
-        if (monday && monday.post_date) {
-          var parts = String(monday.post_date).trim().split(/\s+/); // "2 Jun 2026" -> "2 Jun"
-          weekText = parts.slice(0, 2).join(" ");
-        }
-        showToast(ids.length + " row" + (ids.length === 1 ? "" : "s") + " added to the Calendar" + (weekText ? " for the week of " + weekText : ""));
-      });
+      var countMsg = ids.length + " row" + (ids.length === 1 ? "" : "s") + " added to the Calendar";
+      return api("/api/tac-instagram/calendar")
+        .then(function(cd) {
+          var created = (cd.rows || []).filter(function(r) { return ids.indexOf(r.id) !== -1; });
+          var monday = created.filter(function(r) { return r.day_of_week === "Monday"; })[0];
+          var weekText = "";
+          if (monday && monday.post_date) {
+            var parts = String(monday.post_date).trim().split(/\s+/); // "2 Jun 2026" -> "2 Jun"
+            weekText = parts.slice(0, 2).join(" ");
+          }
+          showToast(countMsg + (weekText ? " for the week of " + weekText : ""));
+        })
+        .catch(function() {
+          // The rows are already in - the refetch just couldn't name the
+          // week. Still a success, just a plainer one.
+          showToast(countMsg);
+        });
     })
     .catch(function(e) {
       showToast("Could not generate the survey week (" + e.message + ")", "error");
@@ -2020,24 +2043,155 @@ function _tacQuarterlyPlaybookItems(items) {
   return items.filter(function(i) { return i.type === "Survey Content"; });
 }
 
+// Inline edit for real-campaign cards (playbook reference rows never call
+// any of this - they stay read-only, per the Task 9 display decision above).
+// Mirrors Calendar's serialised-cell machinery exactly (Task 8): click a
+// field, edit it, blur/change fires a PATCH, the field disables while that
+// PATCH is in flight, and a second edit before it settles queues instead of
+// racing a new request. Rather than duplicate that machinery, this reuses
+// the SAME _tacCellInFlight map Calendar's cells use (see the comment above
+// it), just with "qtr|" keys instead of "cal|" ones so the two screens'
+// numerically-overlapping ids can never collide in the shared map.
+// quarter_label is deliberately left out of inline edit - it's this
+// screen's grouping key, and PATCHing it in place wouldn't move the card to
+// its new group until a refetch, exactly the same reason Calendar's own
+// week_label isn't inline-editable either (Task 8's report flags the same
+// tradeoff there).
+function _tacQuarterlyItemById(id) {
+  var items = S.tacQuarterly || [];
+  for (var i = 0; i < items.length; i++) { if (items[i].id === id) return items[i]; }
+  return null;
+}
+
+function _tacQuarterlyCoerce(field, raw) {
+  if (raw === "") return null;
+  if (field === "item_number") {
+    var n = parseInt(raw, 10);
+    return isNaN(n) ? raw : n;
+  }
+  return raw;
+}
+
+function tacQuarterlyCellBlur(el) {
+  var itemId = parseInt(el.getAttribute("data-item"), 10);
+  var field = el.getAttribute("data-field");
+  var item = _tacQuarterlyItemById(itemId);
+  if (!item) return;
+  var cellKey = "qtr|" + itemId + "|" + field;
+  var newVal = el.value;
+
+  if (_tacCellInFlight[cellKey]) {
+    _tacCellInFlight[cellKey].nextVal = newVal;
+    return;
+  }
+
+  var oldVal = item[field] == null ? "" : String(item[field]);
+  if (newVal === oldVal) return;
+  _tacQuarterlySendCellPatch(item, field, el, newVal);
+}
+
+function _tacQuarterlySendCellPatch(item, field, el, newVal) {
+  var cellKey = "qtr|" + item.id + "|" + field;
+  var inFlight = { nextVal: null };
+  _tacCellInFlight[cellKey] = inFlight;
+  el.disabled = true;
+  var patchBody = {};
+  patchBody[field] = _tacQuarterlyCoerce(field, newVal);
+  api("/api/tac-instagram/quarterly/" + item.id, { method: "PATCH", body: patchBody })
+    .then(function() {
+      item[field] = patchBody[field];
+      showToast("Saved");
+    })
+    .catch(function(e) {
+      // item[field] (the state of record) is untouched - nothing to revert here.
+      showToast("Could not save (" + e.message + ")", "error");
+    })
+    .then(function() {
+      delete _tacCellInFlight[cellKey];
+      el.disabled = false;
+      var queued = inFlight.nextVal;
+      var current = item[field] == null ? "" : String(item[field]);
+      if (queued !== null && queued !== current) {
+        _tacQuarterlySendCellPatch(item, field, el, queued);
+        return;
+      }
+      el.value = item[field] == null ? "" : item[field];
+    });
+}
+
+// Sponsor is a checkbox, not a text cell - same in-flight/queue protection
+// as the Status <select> gets on Calendar (a checkbox's change event can
+// fire back-to-back just as fast as a select's).
+function tacQuarterlySponsorChange(el) {
+  var itemId = parseInt(el.getAttribute("data-item"), 10);
+  var item = _tacQuarterlyItemById(itemId);
+  if (!item) return;
+  var cellKey = "qtr|" + itemId + "|sponsor";
+  var newVal = el.checked ? 1 : 0;
+
+  if (_tacCellInFlight[cellKey]) {
+    _tacCellInFlight[cellKey].nextVal = newVal;
+    return;
+  }
+  var oldVal = item.sponsor ? 1 : 0;
+  if (newVal === oldVal) return;
+  _tacQuarterlySendSponsorPatch(item, el, newVal);
+}
+
+function _tacQuarterlySendSponsorPatch(item, el, newVal) {
+  var cellKey = "qtr|" + item.id + "|sponsor";
+  var inFlight = { nextVal: null };
+  _tacCellInFlight[cellKey] = inFlight;
+  el.disabled = true;
+  api("/api/tac-instagram/quarterly/" + item.id, { method: "PATCH", body: { sponsor: newVal } })
+    .then(function() {
+      item.sponsor = newVal;
+      showToast("Saved");
+    })
+    .catch(function(e) {
+      showToast("Could not save (" + e.message + ")", "error");
+    })
+    .then(function() {
+      delete _tacCellInFlight[cellKey];
+      el.disabled = false;
+      var queued = inFlight.nextVal;
+      if (queued !== null && queued !== (item.sponsor ? 1 : 0)) {
+        _tacQuarterlySendSponsorPatch(item, el, queued);
+        return;
+      }
+      el.checked = !!item.sponsor;
+    });
+}
+
+function _tacQuarterlyEditableCell(item, field, multiline) {
+  var val = item[field] == null ? "" : item[field];
+  if (multiline) {
+    return '<textarea class="tac-cell-input" rows="2" data-item="' + item.id + '" data-field="' + field + '" onblur="tacQuarterlyCellBlur(this)">' + esc(val) + '</textarea>';
+  }
+  return '<input class="tac-cell-input" data-item="' + item.id + '" data-field="' + field + '" value="' + escAttr(val) + '" onblur="tacQuarterlyCellBlur(this)">';
+}
+
 function _tacQuarterlyCard(item) {
+  var generating = !!(S.tacQuarterlyGenerating && S.tacQuarterlyGenerating[item.id]);
   var h = '<div class="card mb8" style="padding:14px 16px;">';
-  h += '<div class="fr" style="justify-content:space-between;align-items:flex-start;gap:12px;">';
-  h += '<div style="flex:1;min-width:0;">';
-  h += '<div style="font-size:14px;font-weight:600;">' + esc(item.campaign_event) + '</div>';
-  h += '<div class="fr" style="gap:6px;flex-wrap:wrap;margin-top:6px;">';
-  if (item.type) h += '<span class="chip chip-default">' + esc(item.type) + '</span>';
-  if (item.sponsor) h += '<span class="chip chip-green">Sponsor</span>';
+  h += '<div class="fr" style="justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">';
+
+  h += '<div style="flex:1;min-width:240px;">';
+  h += '<div class="form-group" style="margin-bottom:6px;"><label style="font-size:10px;">Campaign / event</label>' + _tacQuarterlyEditableCell(item, "campaign_event") + '</div>';
+  h += '<div class="fr" style="gap:8px;flex-wrap:wrap;align-items:center;">';
+  h += '<div class="form-group" style="width:64px;"><label style="font-size:10px;">Item #</label>' + _tacQuarterlyEditableCell(item, "item_number") + '</div>';
+  h += '<div class="form-group" style="flex:1;min-width:130px;"><label style="font-size:10px;">Type</label>' + _tacQuarterlyEditableCell(item, "type") + '</div>';
+  h += '<label class="fr" style="gap:6px;align-items:center;font-size:12px;margin-top:16px;white-space:nowrap;"><input type="checkbox" data-item="' + item.id + '"' + (item.sponsor ? ' checked' : '') + ' onchange="tacQuarterlySponsorChange(this)"> Sponsor</label>';
   h += '</div>';
-  var dates = [];
-  if (item.launch_date) dates.push("Launch " + item.launch_date);
-  if (item.close_event_date) dates.push("Close " + item.close_event_date);
-  if (item.results_publish) dates.push("Results " + item.results_publish);
-  if (dates.length) h += '<div style="font-size:12px;color:var(--text-3);margin-top:6px;">' + esc(dates.join(" · ")) + '</div>';
-  if (item.notes) h += '<div style="font-size:13px;margin-top:8px;">' + esc(item.notes) + '</div>';
+  h += '<div class="fr" style="gap:8px;flex-wrap:wrap;margin-top:6px;">';
+  h += '<div class="form-group" style="flex:1;min-width:120px;"><label style="font-size:10px;">Launch date</label>' + _tacQuarterlyEditableCell(item, "launch_date") + '</div>';
+  h += '<div class="form-group" style="flex:1;min-width:120px;"><label style="font-size:10px;">Close / event date</label>' + _tacQuarterlyEditableCell(item, "close_event_date") + '</div>';
+  h += '<div class="form-group" style="flex:1;min-width:120px;"><label style="font-size:10px;">Results publish</label>' + _tacQuarterlyEditableCell(item, "results_publish") + '</div>';
   h += '</div>';
+  h += '<div class="form-group" style="margin-top:6px;margin-bottom:0;"><label style="font-size:10px;">Notes</label>' + _tacQuarterlyEditableCell(item, "notes", true) + '</div>';
+  h += '</div>';
+
   if (item.type === "Survey Campaign") {
-    var generating = !!(S.tacQuarterlyGenerating && S.tacQuarterlyGenerating[item.id]);
     h += '<button class="btn btn-sm btn-success" style="white-space:nowrap;" onclick="generateTacSurveyWeek(' + item.id + ')"' + (generating ? ' disabled' : '') + '>' + (generating ? "Generating…" : "Generate survey week") + '</button>';
   }
   h += '</div></div>';

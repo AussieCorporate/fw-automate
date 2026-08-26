@@ -1748,6 +1748,23 @@ async def api_tac_add_quarterly_item(request: Request) -> JSONResponse:
     return JSONResponse({"id": item_id})
 
 
+@app.patch("/api/tac-instagram/quarterly/{item_id}")
+async def api_tac_update_quarterly_item(item_id: int, request: Request) -> JSONResponse:
+    """Partially update a quarterly planner item. Body: fields to change."""
+    from flatwhite.dashboard import tac_instagram_state as _tis
+
+    body = await request.json()
+    if not body:
+        return JSONResponse({"error": "At least one field is required"}, status_code=400)
+    try:
+        updated = _tis.update_quarterly_item(item_id, **body)
+    except ValueError as e:
+        return JSONResponse({"error": _tac_unknown_field_error(e)}, status_code=400)
+    if not updated:
+        return JSONResponse({"error": "Quarterly planner item not found"}, status_code=404)
+    return JSONResponse({"ok": True})
+
+
 @app.post("/api/tac-instagram/quarterly/{item_id}/generate-survey-week")
 def api_tac_generate_survey_week(item_id: int) -> JSONResponse:
     """Insert the five standard survey-week calendar rows for a quarterly item."""

@@ -342,6 +342,25 @@ def add_quarterly_item(**fields: Any) -> int:
     return row_id
 
 
+def update_quarterly_item(item_id: int, **fields: Any) -> bool:
+    """Update a tac_quarterly_planner row by id. Returns True if a row was updated."""
+    if not fields:
+        return False
+    unknown = set(fields) - _QUARTERLY_FIELDS
+    if unknown:
+        raise ValueError(f"Unknown tac_quarterly_planner field(s): {sorted(unknown)}")
+    set_clause = ", ".join(f"{c} = ?" for c in fields)
+    conn = get_connection()
+    cursor = conn.execute(
+        f"UPDATE tac_quarterly_planner SET {set_clause}, updated_at = datetime('now') WHERE id = ?",
+        [*fields.values(), item_id],
+    )
+    conn.commit()
+    updated = cursor.rowcount > 0
+    conn.close()
+    return updated
+
+
 def generate_survey_week_rows(quarterly_item_id: int) -> list[int]:
     """Insert the five standard survey-week tac_calendar rows for a quarterly item.
 
