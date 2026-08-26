@@ -355,6 +355,7 @@ select.form-input { appearance: auto; }
 var S = {
   workspace: "flat_white",  // "flat_white" | "tac_instagram" (Task 5)
   tacPage: "today",         // Task 5 stub; Tasks 6-9 fill in the real pages
+  tacToday: null,           // [{time, task, day, suggested_topic}, ...] from /api/tac-instagram/today (Task 6)
   page: "pulse",
   weekIso: "",
   models: [],
@@ -1098,8 +1099,118 @@ function renderTacPage() {
   if (!pageEl) return;
   var page = TAC_PAGES.filter(function(p) { return p.id === S.tacPage; })[0];
   if (!page) { pageEl.innerHTML = '<p>Unknown page</p>'; return; }
+  if (page.id === "today") { renderTacToday(); return; }
   pageEl.innerHTML = '<div class="page-h"><strong>' + esc(page.name) + '</strong></div>'
     + '<div class="page-b"><p style="color:var(--label2)">Coming in Task ' + page.task + '.</p></div>';
+}
+
+/* ── TAC Instagram: Today (Task 6) ────────────────────────
+   Fetches the weekly farm-loop checklist for today, renders one card per
+   action with a "Mark done" toggle (same-day UI convenience, stored in
+   localStorage keyed by today's date + the task text - not worth a DB
+   column) and, where the backend attaches suggested_topic (only the
+   actual farm task on multi-item days), the topic name + community
+   question + a Copy button. Static Farm -> Collect -> Build -> Publish ->
+   Repeat strip below the cards. */
+function _tacTodayIso() {
+  var d = new Date();
+  var mm = String(d.getMonth() + 1).padStart(2, "0");
+  var dd = String(d.getDate()).padStart(2, "0");
+  return d.getFullYear() + "-" + mm + "-" + dd;
+}
+
+function _tacTodayDoneMap() {
+  try {
+    return JSON.parse(localStorage.getItem("tac_today_done_" + _tacTodayIso()) || "{}");
+  } catch (e) {
+    return {};
+  }
+}
+
+function toggleTacTodayDone(taskKey) {
+  var map = _tacTodayDoneMap();
+  map[taskKey] = !map[taskKey];
+  try {
+    localStorage.setItem("tac_today_done_" + _tacTodayIso(), JSON.stringify(map));
+  } catch (e) {
+    // localStorage unavailable (private browsing etc) - toggle still updates the view for this session
+  }
+  renderTacTodayBody();
+}
+
+function copyTacTodayTopic(text) {
+  navigator.clipboard.writeText(text).then(
+    function() { showToast("Copied"); },
+    function() { showToast("Copy failed - select and copy the text manually", "error"); }
+  );
+}
+
+function renderTacToday() {
+  var pageEl = $("tac-page");
+  if (!pageEl) return;
+  pageEl.innerHTML = '<div class="page-h"><strong>Today</strong></div>'
+    + '<div class="page-b" id="tac-today-body"><p style="color:var(--text-3)">Loading...</p></div>';
+  api("/api/tac-instagram/today")
+    .then(function(d) {
+      S.tacToday = d.actions || [];
+      renderTacTodayBody();
+    })
+    .catch(function(e) {
+      S.tacToday = null;
+      var body = $("tac-today-body");
+      if (body) body.innerHTML = '<p style="color:var(--red)">Could not load today\'s checklist (' + esc(e.message) + '). Refresh the page to try again.</p>';
+    });
+}
+
+function renderTacTodayBody() {
+  var body = $("tac-today-body");
+  if (!body) return;
+  var actions = S.tacToday || [];
+  var doneMap = _tacTodayDoneMap();
+  var dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  var monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  var now = new Date();
+  var heading = dayNames[now.getDay()] + ", " + now.getDate() + " " + monthNames[now.getMonth()];
+
+  var h = '<div style="font-size:16px;font-weight:700;margin-bottom:16px;">' + esc(heading) + '</div>';
+
+  if (!actions.length) {
+    h += '<p style="color:var(--text-3);font-size:13px;margin-bottom:20px;">No farm-loop tasks scheduled for today.</p>';
+  } else {
+    actions.forEach(function(a) {
+      var taskKey = (a.day || "") + "|" + (a.time || "") + "|" + (a.task || "");
+      var done = !!doneMap[taskKey];
+      h += '<div class="card mb8" style="padding:14px 16px;">';
+      h += '<div class="fr" style="justify-content:space-between;align-items:flex-start;gap:12px;">';
+      h += '<div style="flex:1;">';
+      h += '<div style="font-size:12px;color:var(--text-3);margin-bottom:2px;">' + esc(a.time) + '</div>';
+      h += '<div style="font-size:14px;' + (done ? 'text-decoration:line-through;color:var(--text-3);' : '') + '">' + esc(a.task) + '</div>';
+      h += '</div>';
+      h += '<label class="fr" style="gap:6px;font-size:12px;color:var(--text-3);white-space:nowrap;">';
+      h += '<input type="checkbox"' + (done ? ' checked' : '') + ' onchange="toggleTacTodayDone(' + jsq(taskKey) + ')"> Mark done';
+      h += '</label>';
+      h += '</div>';
+
+      if (a.suggested_topic) {
+        var t = a.suggested_topic;
+        var copyText = t.community_question || t.topic || "";
+        h += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">';
+        h += '<div style="font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:4px;">Suggested topic: ' + esc(t.topic) + '</div>';
+        if (t.community_question) {
+          h += '<div style="font-size:13px;margin-bottom:8px;">' + esc(t.community_question) + '</div>';
+        }
+        h += '<button class="btn btn-sm btn-secondary" onclick="copyTacTodayTopic(' + jsq(copyText) + ')">Copy</button>';
+        h += '</div>';
+      }
+      h += '</div>';
+    });
+  }
+
+  h += '<div class="card" style="margin-top:20px;padding:14px 16px;text-align:center;font-size:12px;color:var(--text-3);letter-spacing:0.3px;">';
+  h += 'Farm &rarr; Collect &rarr; Build &rarr; Publish &rarr; Repeat';
+  h += '</div>';
+
+  body.innerHTML = h;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
