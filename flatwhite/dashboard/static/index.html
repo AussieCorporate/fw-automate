@@ -356,6 +356,10 @@ var S = {
   workspace: "flat_white",  // "flat_white" | "tac_instagram" (Task 5)
   tacPage: "today",         // Task 5 stub; Tasks 6-9 fill in the real pages
   tacToday: null,           // [{time, task, day, suggested_topic}, ...] from /api/tac-instagram/today (Task 6)
+  tacTopics: null,          // full tac_topic_bank list from GET /api/tac-instagram/topics (Task 7)
+  tacTopicFilters: { pillar: "", best_format: "", engagement_level: "", used: "" },
+  tacTopicExpanded: {},     // {topicId: bool} which rows are expanded (Task 7)
+  tacTopicAddForm: { topic: "", best_format: "", content_pillar: "", engagement_level: "", angle_notes: "", community_question: "", tac_answer: "" },
   page: "pulse",
   weekIso: "",
   models: [],
@@ -1100,6 +1104,7 @@ function renderTacPage() {
   var page = TAC_PAGES.filter(function(p) { return p.id === S.tacPage; })[0];
   if (!page) { pageEl.innerHTML = '<p>Unknown page</p>'; return; }
   if (page.id === "today") { renderTacToday(); return; }
+  if (page.id === "topic_bank") { renderTacTopicBank(); return; }
   pageEl.innerHTML = '<div class="page-h"><strong>' + esc(page.name) + '</strong></div>'
     + '<div class="page-b"><p style="color:var(--label2)">Coming in Task ' + page.task + '.</p></div>';
 }
@@ -1209,6 +1214,210 @@ function renderTacTodayBody() {
   h += '<div class="card" style="margin-top:20px;padding:14px 16px;text-align:center;font-size:12px;color:var(--text-3);letter-spacing:0.3px;">';
   h += 'Farm &rarr; Collect &rarr; Build &rarr; Publish &rarr; Repeat';
   h += '</div>';
+
+  body.innerHTML = h;
+}
+
+/* ── TAC Instagram: Topic Bank (Task 7) ───────────────────
+   Filter row (pillar / format / engagement / used) over the full 118-row
+   tac_topic_bank, filter options derived from whatever's actually in the
+   fetched data (not hardcoded - Victor can add topics with new pillar/
+   format/engagement values via the Add topic form). Each row collapses to
+   number + topic + chips; expanding shows community question, TAC answer,
+   angle notes and a Mark used button. Mutating actions (mark used, add
+   topic) refetch the full list from the server rather than patching local
+   state, so the view always matches the DB. */
+function _tacTopicsFetch() {
+  return api("/api/tac-instagram/topics")
+    .then(function(d) {
+      S.tacTopics = d.topics || [];
+      renderTacTopicBankBody();
+    })
+    .catch(function(e) {
+      var body = $("tac-topic-bank-body");
+      if (body) body.innerHTML = '<p style="color:var(--red)">Could not load the topic bank (' + esc(e.message) + '). Refresh the page to try again.</p>';
+    });
+}
+
+function renderTacTopicBank() {
+  var pageEl = $("tac-page");
+  if (!pageEl) return;
+  if (!S.tacTopicFilters) S.tacTopicFilters = { pillar: "", best_format: "", engagement_level: "", used: "" };
+  if (!S.tacTopicExpanded) S.tacTopicExpanded = {};
+  if (!S.tacTopicAddForm) S.tacTopicAddForm = { topic: "", best_format: "", content_pillar: "", engagement_level: "", angle_notes: "", community_question: "", tac_answer: "" };
+  pageEl.innerHTML = '<div class="page-h"><strong>Topic Bank</strong></div>'
+    + '<div class="page-b" id="tac-topic-bank-body"><p style="color:var(--text-3)">Loading...</p></div>';
+  _tacTopicsFetch();
+}
+
+function _tacDistinct(topics, field) {
+  var seen = {};
+  var out = [];
+  topics.forEach(function(t) {
+    var v = t[field];
+    if (v && !seen[v]) { seen[v] = true; out.push(v); }
+  });
+  out.sort();
+  return out;
+}
+
+function _tacFilterSelect(id, label, options, selected, field) {
+  var h = '<select class="form-input" id="' + id + '" style="width:auto;min-width:150px;" onchange="setTacTopicFilter(' + jsq(field) + ', this.value)">';
+  h += '<option value=""' + (selected ? "" : " selected") + '>All ' + esc(label) + '</option>';
+  options.forEach(function(o) {
+    h += '<option value="' + escAttr(o) + '"' + (selected === o ? " selected" : "") + '>' + esc(o) + '</option>';
+  });
+  h += '</select>';
+  return h;
+}
+
+function setTacTopicFilter(field, value) {
+  S.tacTopicFilters[field] = value;
+  renderTacTopicBankBody();
+}
+
+function toggleTacTopicExpanded(id) {
+  S.tacTopicExpanded[id] = !S.tacTopicExpanded[id];
+  renderTacTopicBankBody();
+}
+
+function markTacTopicUsed(id) {
+  api("/api/tac-instagram/topics/" + id + "/mark-used", { method: "POST" })
+    .then(function() {
+      showToast("Marked used");
+      _tacTopicsFetch();
+    })
+    .catch(function(e) {
+      showToast("Could not mark used (" + e.message + ")", "error");
+    });
+}
+
+function addTacTopic() {
+  var f = S.tacTopicAddForm;
+  var topic = (f.topic || "").trim();
+  if (!topic) { showToast("Add the topic text first", "error"); return; }
+  var body = {
+    topic: topic,
+    best_format: (f.best_format || "").trim() || null,
+    content_pillar: (f.content_pillar || "").trim() || null,
+    engagement_level: (f.engagement_level || "").trim() || null,
+    angle_notes: (f.angle_notes || "").trim() || null,
+    community_question: (f.community_question || "").trim() || null,
+    tac_answer: (f.tac_answer || "").trim() || null
+  };
+  api("/api/tac-instagram/topics", { method: "POST", body: body })
+    .then(function() {
+      S.tacTopicAddForm = { topic: "", best_format: "", content_pillar: "", engagement_level: "", angle_notes: "", community_question: "", tac_answer: "" };
+      showToast("Topic added");
+      _tacTopicsFetch();
+    })
+    .catch(function(e) {
+      showToast("Could not add topic (" + e.message + ")", "error");
+    });
+}
+
+function _tacTopicRow(t) {
+  var expanded = !!S.tacTopicExpanded[t.id];
+  var h = '<div class="card mb8" style="padding:14px 16px;">';
+  h += '<div style="cursor:pointer;" onclick="toggleTacTopicExpanded(' + t.id + ')">';
+  h += '<div class="fr" style="justify-content:space-between;gap:12px;align-items:flex-start;">';
+  h += '<div style="flex:1;min-width:0;">';
+  h += '<span style="color:var(--text-3);font-size:12px;margin-right:8px;">#' + esc(t.topic_number != null ? t.topic_number : "-") + '</span>';
+  h += '<span style="font-size:14px;font-weight:600;">' + esc(t.topic) + '</span>';
+  h += '</div>';
+  h += '<div class="fr" style="gap:6px;flex-wrap:wrap;justify-content:flex-end;">';
+  if (t.best_format) h += '<span class="chip chip-default">' + esc(t.best_format) + '</span>';
+  if (t.content_pillar) h += '<span class="chip chip-default">' + esc(t.content_pillar) + '</span>';
+  if (t.engagement_level) h += '<span class="chip chip-amber">' + esc(t.engagement_level) + '</span>';
+  if (t.used) h += '<span class="chip chip-green">Used' + (t.used_date ? " " + esc(t.used_date) : "") + '</span>';
+  h += '</div></div></div>';
+
+  if (expanded) {
+    h += '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">';
+    if (t.community_question) {
+      h += '<div style="margin-bottom:8px;"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-3);margin-bottom:2px;">Community question</div><div style="font-size:13px;">' + esc(t.community_question) + '</div></div>';
+    }
+    if (t.tac_answer) {
+      h += '<div style="margin-bottom:8px;"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-3);margin-bottom:2px;">TAC answer</div><div style="font-size:13px;">' + esc(t.tac_answer) + '</div></div>';
+    }
+    if (t.angle_notes) {
+      h += '<div style="margin-bottom:8px;"><div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-3);margin-bottom:2px;">Angle notes</div><div style="font-size:13px;">' + esc(t.angle_notes) + '</div></div>';
+    }
+    if (!t.community_question && !t.tac_answer && !t.angle_notes) {
+      h += '<p style="color:var(--text-3);font-size:13px;margin:0 0 8px 0;">No extra detail on this topic.</p>';
+    }
+    if (t.used) {
+      h += '<p style="font-size:12px;color:var(--text-3);">Used' + (t.used_date ? " " + esc(t.used_date) : "") + '</p>';
+    } else {
+      h += '<button class="btn btn-sm btn-success" onclick="markTacTopicUsed(' + t.id + ')">Mark used</button>';
+    }
+    h += '</div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+function _tacTopicAddFormHtml() {
+  var f = S.tacTopicAddForm;
+  var h = '<div class="card" style="margin-top:20px;padding:16px;">';
+  h += '<div style="font-size:14px;font-weight:700;margin-bottom:12px;">Add topic</div>';
+  h += '<div class="form-group"><label>Topic</label><input class="form-input" value="' + escAttr(f.topic) + '" oninput="S.tacTopicAddForm.topic=this.value" placeholder="e.g. Salary negotiation scripts"></div>';
+  h += '<div class="fr" style="gap:12px;flex-wrap:wrap;align-items:flex-start;">';
+  h += '<div class="form-group" style="flex:1;min-width:160px;"><label>Format</label><input class="form-input" value="' + escAttr(f.best_format) + '" oninput="S.tacTopicAddForm.best_format=this.value" placeholder="e.g. Carousel"></div>';
+  h += '<div class="form-group" style="flex:1;min-width:160px;"><label>Pillar</label><input class="form-input" value="' + escAttr(f.content_pillar) + '" oninput="S.tacTopicAddForm.content_pillar=this.value" placeholder="e.g. Career growth"></div>';
+  h += '<div class="form-group" style="flex:1;min-width:160px;"><label>Engagement</label><input class="form-input" value="' + escAttr(f.engagement_level) + '" oninput="S.tacTopicAddForm.engagement_level=this.value" placeholder="e.g. High"></div>';
+  h += '</div>';
+  h += '<div class="form-group"><label>Community question</label><textarea class="form-input" rows="2" oninput="S.tacTopicAddForm.community_question=this.value">' + esc(f.community_question) + '</textarea></div>';
+  h += '<div class="form-group"><label>TAC answer</label><textarea class="form-input" rows="2" oninput="S.tacTopicAddForm.tac_answer=this.value">' + esc(f.tac_answer) + '</textarea></div>';
+  h += '<div class="form-group"><label>Angle notes</label><textarea class="form-input" rows="2" oninput="S.tacTopicAddForm.angle_notes=this.value">' + esc(f.angle_notes) + '</textarea></div>';
+  h += '<button class="btn btn-success" onclick="addTacTopic()">Add topic</button>';
+  h += '</div>';
+  return h;
+}
+
+function renderTacTopicBankBody() {
+  var body = $("tac-topic-bank-body");
+  if (!body) return;
+  var topics = S.tacTopics || [];
+  var filters = S.tacTopicFilters;
+
+  var pillars = _tacDistinct(topics, "content_pillar");
+  var formats = _tacDistinct(topics, "best_format");
+  var engagements = _tacDistinct(topics, "engagement_level");
+
+  var filtered = topics.filter(function(t) {
+    if (filters.pillar && t.content_pillar !== filters.pillar) return false;
+    if (filters.best_format && t.best_format !== filters.best_format) return false;
+    if (filters.engagement_level && t.engagement_level !== filters.engagement_level) return false;
+    if (filters.used === "used" && !t.used) return false;
+    if (filters.used === "unused" && t.used) return false;
+    return true;
+  });
+
+  var h = '';
+  h += '<div class="card mb20" style="padding:14px 16px;">';
+  h += '<div class="fr" style="gap:10px;flex-wrap:wrap;">';
+  h += _tacFilterSelect("tac-filter-pillar", "pillars", pillars, filters.pillar, "pillar");
+  h += _tacFilterSelect("tac-filter-format", "formats", formats, filters.best_format, "best_format");
+  h += _tacFilterSelect("tac-filter-engagement", "engagement levels", engagements, filters.engagement_level, "engagement_level");
+  h += '<select class="form-input" style="width:auto;min-width:150px;" onchange="setTacTopicFilter(\'used\', this.value)">'
+    + '<option value=""' + (filters.used === "" ? " selected" : "") + '>All topics</option>'
+    + '<option value="unused"' + (filters.used === "unused" ? " selected" : "") + '>Unused only</option>'
+    + '<option value="used"' + (filters.used === "used" ? " selected" : "") + '>Used only</option>'
+    + '</select>';
+  h += '</div></div>';
+
+  h += '<div style="font-size:12px;color:var(--text-3);margin-bottom:10px;">' + filtered.length + ' of ' + topics.length + ' topics</div>';
+
+  if (!filtered.length) {
+    h += '<p style="color:var(--text-3);font-size:13px;">No topics match these filters.</p>';
+  } else {
+    filtered.forEach(function(t) {
+      h += _tacTopicRow(t);
+    });
+  }
+
+  h += _tacTopicAddFormHtml();
 
   body.innerHTML = h;
 }
