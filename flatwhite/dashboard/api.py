@@ -1599,6 +1599,141 @@ async def api_pull_bank_item(bank_id: int, request: Request) -> JSONResponse:
     return JSONResponse({"pulled": True, "target_section": target_section, "week_iso": week_iso})
 
 
+# ── TAC Instagram tab ─────────────────────────────────────────────────────────
+# Thin wrappers over flatwhite.dashboard.tac_instagram_state's read/write
+# functions for the tac_topic_bank, tac_calendar and tac_quarterly_planner
+# tables. No LLM calls here - see tac_instagram_state.py for the DB layer.
+
+@app.get("/api/tac-instagram/topics")
+def api_tac_topics(
+    pillar: str | None = None,
+    best_format: str | None = None,
+    engagement_level: str | None = None,
+    used: bool | None = None,
+) -> JSONResponse:
+    """List topic bank rows, optionally filtered. All filters combine with AND."""
+    from flatwhite.dashboard import tac_instagram_state as _tis
+
+    topics = _tis.list_topics(
+        pillar=pillar, best_format=best_format, engagement_level=engagement_level, used=used
+    )
+    return JSONResponse({"topics": topics})
+
+
+@app.post("/api/tac-instagram/topics")
+async def api_tac_add_topic(request: Request) -> JSONResponse:
+    """Add a topic bank row.
+
+    Body: {"topic": str, "best_format": str?, "content_pillar": str?,
+    "engagement_level": str?, "angle_notes": str?, "community_question": str?,
+    "tac_answer": str?}
+    """
+    from flatwhite.dashboard import tac_instagram_state as _tis
+
+    body = await request.json()
+    topic = (body.get("topic") or "").strip()
+    if not topic:
+        return JSONResponse({"error": "topic is required"}, status_code=400)
+    topic_id = _tis.add_topic(
+        topic=topic,
+        best_format=body.get("best_format"),
+        content_pillar=body.get("content_pillar"),
+        engagement_level=body.get("engagement_level"),
+        angle_notes=body.get("angle_notes"),
+        community_question=body.get("community_question"),
+        tac_answer=body.get("tac_answer"),
+    )
+    return JSONResponse({"id": topic_id})
+
+
+@app.post("/api/tac-instagram/topics/{topic_id}/mark-used")
+def api_tac_mark_topic_used(topic_id: int) -> JSONResponse:
+    """Mark a topic bank row used (used_date defaults to today)."""
+    from flatwhite.dashboard import tac_instagram_state as _tis
+
+    updated = _tis.mark_topic_used(topic_id)
+    if not updated:
+        return JSONResponse({"error": "Topic not found"}, status_code=404)
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/tac-instagram/calendar")
+def api_tac_calendar(week_label: str | None = None, status: str | None = None) -> JSONResponse:
+    """List calendar rows, optionally filtered. Filters combine with AND."""
+    from flatwhite.dashboard import tac_instagram_state as _tis
+
+    rows = _tis.list_calendar(week_label=week_label, status=status)
+    return JSONResponse({"rows": rows})
+
+
+@app.post("/api/tac-instagram/calendar")
+async def api_tac_add_calendar_row(request: Request) -> JSONResponse:
+    """Add a calendar row. Body: fields matching add_calendar_row's kwargs."""
+    from flatwhite.dashboard import tac_instagram_state as _tis
+
+    body = await request.json()
+    if not body:
+        return JSONResponse({"error": "At least one field is required"}, status_code=400)
+    try:
+        row_id = _tis.add_calendar_row(**body)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return JSONResponse({"id": row_id})
+
+
+@app.patch("/api/tac-instagram/calendar/{row_id}")
+async def api_tac_update_calendar_row(row_id: int, request: Request) -> JSONResponse:
+    """Partially update a calendar row. Body: fields to change."""
+    from flatwhite.dashboard import tac_instagram_state as _tis
+
+    body = await request.json()
+    if not body:
+        return JSONResponse({"error": "At least one field is required"}, status_code=400)
+    try:
+        updated = _tis.update_calendar_row(row_id, **body)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    if not updated:
+        return JSONResponse({"error": "Calendar row not found"}, status_code=404)
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/tac-instagram/quarterly")
+def api_tac_quarterly(quarter_label: str | None = None) -> JSONResponse:
+    """List quarterly planner items, optionally filtered by quarter_label."""
+    from flatwhite.dashboard import tac_instagram_state as _tis
+
+    items = _tis.list_quarterly(quarter_label=quarter_label)
+    return JSONResponse({"items": items})
+
+
+@app.post("/api/tac-instagram/quarterly")
+async def api_tac_add_quarterly_item(request: Request) -> JSONResponse:
+    """Add a quarterly planner item. Body: fields matching add_quarterly_item's kwargs."""
+    from flatwhite.dashboard import tac_instagram_state as _tis
+
+    body = await request.json()
+    if not body:
+        return JSONResponse({"error": "At least one field is required"}, status_code=400)
+    try:
+        item_id = _tis.add_quarterly_item(**body)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return JSONResponse({"id": item_id})
+
+
+@app.post("/api/tac-instagram/quarterly/{item_id}/generate-survey-week")
+def api_tac_generate_survey_week(item_id: int) -> JSONResponse:
+    """Insert the five standard survey-week calendar rows for a quarterly item."""
+    from flatwhite.dashboard import tac_instagram_state as _tis
+
+    try:
+        row_ids = _tis.generate_survey_week_rows(item_id)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return JSONResponse({"created_row_ids": row_ids})
+
+
 # ── Assemble to beehiiv (Design B: format here, insert via beehiiv MCP) ──────
 # This endpoint does NOT call beehiiv. It reads each ready segment's saved text
 # from section_outputs, formats it into beehiiv-editor HTML (Task 4's
