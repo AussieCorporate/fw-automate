@@ -300,6 +300,10 @@ select.form-input { appearance: auto; }
 .block-preview{border:1px solid var(--sep);border-radius:10px;padding:10px 14px;margin-bottom:10px}
 .block-preview h4{margin:0 0 6px;font-size:13px;color:var(--label2);text-transform:uppercase;letter-spacing:.03em}
 .assemble-missing{color:var(--label2);font-size:13px;margin:8px 0}
+/* TAC Instagram tab (Task 5): workspace switcher */
+.ws-switch{max-width:1120px;margin:14px auto 0;padding:0 20px;display:flex;gap:8px}
+.ws-btn{padding:7px 16px;border-radius:999px;border:1px solid var(--sep);background:var(--card);color:var(--label2);font-weight:600;font-size:13px;cursor:pointer}
+.ws-btn.active{background:var(--accent-soft);color:var(--accent);border-color:transparent}
 </style>
 </head>
 <body>
@@ -307,6 +311,11 @@ select.form-input { appearance: auto; }
      now draws into #page below; the running-order sidebar (Task 2) plus
      #cmd-bar-container are the only top-level UI. -->
 <div id="cmd-bar-container"></div>
+<div class="ws-switch">
+  <button class="ws-btn active" id="ws-flat-white" onclick="switchWorkspace('flat_white')">Flat White</button>
+  <button class="ws-btn" id="ws-tac-instagram" onclick="switchWorkspace('tac_instagram')">TAC Instagram</button>
+</div>
+<div id="fw-layout">
 <div class="layout">
   <div class="side">
     <div class="side-cap"><span>Running order</span><span id="readyStat"></span></div>
@@ -321,6 +330,21 @@ select.form-input { appearance: auto; }
     <div class="page" id="page"></div>
   </div>
 </div>
+</div>
+<div id="tac-layout" style="display:none">
+<div class="layout">
+  <div class="side" id="tac-side">
+    <div class="nav-lite active" id="tnl-today" onclick="selectTacPage('today')">Today</div>
+    <div class="nav-lite" id="tnl-calendar" onclick="selectTacPage('calendar')">Calendar</div>
+    <div class="nav-lite" id="tnl-topic_bank" onclick="selectTacPage('topic_bank')">Topic Bank</div>
+    <div class="nav-lite" id="tnl-quarterly_planner" onclick="selectTacPage('quarterly_planner')">Quarterly Planner</div>
+    <div class="nav-lite" id="tnl-content_bank" onclick="selectTacPage('content_bank')">Content Bank</div>
+  </div>
+  <div class="main">
+    <div class="page" id="tac-page"></div>
+  </div>
+</div>
+</div>
 <div class="toast-container" id="toasts"></div>
 <div id="modal-root"></div>
 <script>
@@ -329,6 +353,8 @@ select.form-input { appearance: auto; }
    ═══════════════════════════════════════════════════════════════════════ */
 
 var S = {
+  workspace: "flat_white",  // "flat_white" | "tac_instagram" (Task 5)
+  tacPage: "today",         // Task 5 stub; Tasks 6-9 fill in the real pages
   page: "pulse",
   weekIso: "",
   models: [],
@@ -1018,6 +1044,62 @@ function render() {
   // Render modal overlay (outside main content)
   var modalEl = document.getElementById("modal-root");
   if (modalEl) modalEl.innerHTML = renderProceedModal();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   WORKSPACE SWITCHER (Task 5): Flat White | TAC Instagram
+   Does not touch SEGMENTS, renderSidebar() or any Flat White render*()
+   function above - it only shows/hides the two top-level containers and
+   draws into the separate #tac-page. Tasks 6-9 fill in the real
+   renderTacPage() bodies; these are stubs.
+   ═══════════════════════════════════════════════════════════════════════ */
+var TAC_PAGES = [
+  { id: "today", name: "Today", task: 6 },
+  { id: "calendar", name: "Calendar", task: 8 },
+  { id: "topic_bank", name: "Topic Bank", task: 7 },
+  { id: "quarterly_planner", name: "Quarterly Planner", task: 9 },
+  { id: "content_bank", name: "Content Bank", task: 11 }
+];
+
+function switchWorkspace(ws) {
+  S.workspace = ws;
+  var fwBtn = $("ws-flat-white");
+  var tacBtn = $("ws-tac-instagram");
+  if (fwBtn) fwBtn.classList.toggle("active", ws === "flat_white");
+  if (tacBtn) tacBtn.classList.toggle("active", ws === "tac_instagram");
+  renderWorkspace();
+}
+
+function renderWorkspace() {
+  var fwEl = $("fw-layout");
+  var tacEl = $("tac-layout");
+  if (fwEl) fwEl.style.display = S.workspace === "flat_white" ? "" : "none";
+  if (tacEl) tacEl.style.display = S.workspace === "tac_instagram" ? "" : "none";
+  if (S.workspace === "tac_instagram") {
+    TAC_PAGES.forEach(function(p) {
+      var el = $("tnl-" + p.id);
+      if (el) el.classList.toggle("active", p.id === S.tacPage);
+    });
+    renderTacPage();
+  }
+}
+
+function selectTacPage(id) {
+  S.tacPage = id;
+  TAC_PAGES.forEach(function(p) {
+    var el = $("tnl-" + p.id);
+    if (el) el.classList.toggle("active", p.id === id);
+  });
+  renderTacPage();
+}
+
+function renderTacPage() {
+  var pageEl = $("tac-page");
+  if (!pageEl) return;
+  var page = TAC_PAGES.filter(function(p) { return p.id === S.tacPage; })[0];
+  if (!page) { pageEl.innerHTML = '<p>Unknown page</p>'; return; }
+  pageEl.innerHTML = '<div class="page-h"><strong>' + esc(page.name) + '</strong></div>'
+    + '<div class="page-b"><p style="color:var(--label2)">Coming in Task ' + page.task + '.</p></div>';
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -3472,6 +3554,7 @@ function init() {
   });
 }
 
+renderWorkspace();  // Task 5: draws the TAC stub if a future default ever flips S.workspace
 init();
 </script>
 </body>
