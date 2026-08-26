@@ -1538,9 +1538,7 @@ function _tacCalendarGroups(rows) {
   return order.map(function(key) { return { week_label: key, rows: map[key] }; });
 }
 
-function _tacWeekIsPast(rows) {
-  var today = new Date();
-  today.setHours(0, 0, 0, 0);
+function _tacCalendarGroupMaxDate(rows) {
   var maxDate = null;
   rows.forEach(function(r) {
     if (!r.post_date) return;
@@ -1548,14 +1546,41 @@ function _tacWeekIsPast(rows) {
     if (isNaN(d.getTime())) return;
     if (!maxDate || d > maxDate) maxDate = d;
   });
+  return maxDate;
+}
+
+function _tacWeekIsPast(rows) {
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+  var maxDate = _tacCalendarGroupMaxDate(rows);
   if (!maxDate) return false; // can't parse any date in the group - don't hide it
   return maxDate < today;
 }
 
+// Current/future weeks default expanded, past weeks default collapsed - EXCEPT
+// when every single week in the calendar is past (the real imported data is
+// entirely May-Aug 2026, all behind today's clock), collapsing everything
+// would open the screen looking empty. In that case the most recent past
+// week opens by default instead, so there's always something to see on
+// first load. Once Victor manually toggles a week that choice sticks
+// (never overwritten here - see the hasOwnProperty guard below).
 function _tacCalendarEnsureCollapsedDefaults(groups) {
+  var anyCurrentOrFuture = groups.some(function(g) { return !_tacWeekIsPast(g.rows); });
+  var mostRecentPastKey = null;
+  if (!anyCurrentOrFuture && groups.length) {
+    var bestDate = null;
+    groups.forEach(function(g) {
+      var d = _tacCalendarGroupMaxDate(g.rows);
+      if (d && (!bestDate || d > bestDate)) { bestDate = d; mostRecentPastKey = g.week_label; }
+    });
+  }
   groups.forEach(function(g) {
     if (Object.prototype.hasOwnProperty.call(S.tacCalendarCollapsed, g.week_label)) return;
-    S.tacCalendarCollapsed[g.week_label] = _tacWeekIsPast(g.rows);
+    if (!anyCurrentOrFuture && g.week_label === mostRecentPastKey) {
+      S.tacCalendarCollapsed[g.week_label] = false;
+    } else {
+      S.tacCalendarCollapsed[g.week_label] = _tacWeekIsPast(g.rows);
+    }
   });
 }
 
@@ -1614,24 +1639,67 @@ function addTacCalendarRow() {
     });
 }
 
+// Per-cell in-flight tracker, keyed "rowId|field". Closes the double-edit
+// race: if a cell is blurred again while its PATCH is still in flight, the
+// new value is queued rather than firing a second overlapping request (two
+// overlapping PATCHes each carry their own captured oldVal, so whichever's
+// catch fires last can stomp the DOM with a stale revert even though the
+// server itself stayed correct - the queue means only one PATCH per cell is
+// ever in flight, and the input is re-synced from row[field], the state of
+// record, once it settles).
+var _tacCalendarCellInFlight = {};
+
 function tacCalendarCellBlur(el) {
   var rowId = parseInt(el.getAttribute("data-row"), 10);
   var field = el.getAttribute("data-field");
   var row = _tacCalendarRowById(rowId);
   if (!row) return;
+  var cellKey = rowId + "|" + field;
   var newVal = el.value;
+
+  if (_tacCalendarCellInFlight[cellKey]) {
+    // A PATCH for this exact cell is already in flight - don't race it.
+    // Whatever's typed now gets sent (or discarded if it turns out to
+    // already match the resolved state) once the in-flight one settles.
+    _tacCalendarCellInFlight[cellKey].nextVal = newVal;
+    return;
+  }
+
   var oldVal = row[field] == null ? "" : String(row[field]);
   if (newVal === oldVal) return;
+  _tacCalendarSendCellPatch(row, field, el, newVal);
+}
+
+function _tacCalendarSendCellPatch(row, field, el, newVal) {
+  var cellKey = row.id + "|" + field;
+  var inFlight = { nextVal: null };
+  _tacCalendarCellInFlight[cellKey] = inFlight;
+  el.disabled = true;
   var patchBody = {};
   patchBody[field] = newVal === "" ? null : newVal;
-  api("/api/tac-instagram/calendar/" + rowId, { method: "PATCH", body: patchBody })
+  api("/api/tac-instagram/calendar/" + row.id, { method: "PATCH", body: patchBody })
     .then(function() {
       row[field] = patchBody[field];
       showToast("Saved");
     })
     .catch(function(e) {
-      el.value = oldVal; // never leave the cell showing an unsaved value as if it saved
+      // row[field] (the state of record) is untouched - the PATCH failed,
+      // nothing changed server-side - so there's nothing to revert here.
       showToast("Could not save (" + e.message + ")", "error");
+    })
+    .then(function() {
+      delete _tacCalendarCellInFlight[cellKey];
+      el.disabled = false;
+      var queued = inFlight.nextVal;
+      var current = row[field] == null ? "" : String(row[field]);
+      if (queued !== null && queued !== current) {
+        _tacCalendarSendCellPatch(row, field, el, queued);
+        return;
+      }
+      // Nothing queued (or the queued edit already matches the state of
+      // record) - make sure the visible cell matches row[field], never a
+      // stale in-flight value or an unsaved one shown as if it saved.
+      el.value = row[field] == null ? "" : row[field];
     });
 }
 
