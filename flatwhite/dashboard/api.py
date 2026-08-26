@@ -3940,15 +3940,32 @@ async def api_run_screenshot_sort(request: Request) -> JSONResponse:
     return JSONResponse({"run_id": run_id, "started": started})
 
 
-_CAROUSEL_SCRIPT_RE = re.compile(
-    r"CAROUSEL_SCRIPT_START\n(.*?)\nCAROUSEL_SCRIPT_END", re.DOTALL
-)
+_CAROUSEL_SCRIPT_FILENAME = "_CAROUSEL_SCRIPT.md"
 
 
-def _parse_carousel_body(output: str | None) -> str | None:
-    """Pull the finished slide script the run printed between its markers."""
-    m = _CAROUSEL_SCRIPT_RE.search(output or "")
-    return m.group(1).strip() if m else None
+def _carousel_script_path(topic_folder: Path) -> Path:
+    return topic_folder / _CAROUSEL_SCRIPT_FILENAME
+
+
+def _read_carousel_script(topic_folder: Path) -> str | None:
+    """The finished slide script the skill wrote to disk, or None if it's
+    missing or empty.
+
+    Read from a REAL file, never parsed out of the run's captured stdout.
+    skill_runner keeps only the last _OUTPUT_TAIL_CHARS (6000) of a run's
+    output, so a verbose build (curation notes, a cut list printed after the
+    script) can push earlier content out of the captured tail even though
+    the run still reports "done" - the exact silent-run failure class
+    docs/bigconv-silent-run-report.md records. Big Conversation never hits
+    this: its piece is read back from the .md file the skill wrote
+    (big_conversation_bank.get_topic_detail), never from captured process
+    output. This mirrors that - the file is the ground truth, not the tail.
+    """
+    try:
+        text = _carousel_script_path(topic_folder).read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return text or None
 
 
 @app.post("/api/tac-instagram/build-carousel/{topic_id}")
@@ -3957,10 +3974,16 @@ def api_tac_build_carousel(topic_id: int) -> JSONResponse:
     screenshots, headless, via the community-carousel skill. Same engine as
     the Big Conversation skill run (skill_runner.start_run) - a real `claude
     -p` subprocess, cwd'd into the Instagram DM screenshotter output folder.
-    Progress is polled via the pre-existing GET /api/skill-run/{run_id}; once
-    the run finishes, on_complete parses the printed slide script out of the
-    run's output and saves it to the Content Bank so it shows up there ready
-    to use."""
+    Progress is polled via the pre-existing GET /api/skill-run/{run_id}, but
+    that status is NOT proof the carousel was saved (skill_runner marks a run
+    "done" on exit 0 + the CAROUSEL_BUILD_DONE marker alone - a run can hit
+    both without ever writing a usable script). Once the run finishes,
+    on_complete reads the script back from the file the skill wrote and only
+    then saves it to the Content Bank; either way it persists the TRUE
+    outcome via save_skill_run_outcome so a "done" run that didn't actually
+    save is never indistinguishable from one that did - see
+    api_tac_build_carousel_status below, which the frontend checks before
+    ever toasting success (docs/bigconv-silent-run-report.md)."""
     from flatwhite.dashboard import tac_instagram_state as _tis
 
     topic = next((t for t in _tis.list_topics() if t["id"] == topic_id), None)
@@ -3982,6 +4005,7 @@ def api_tac_build_carousel(topic_id: int) -> JSONResponse:
                       "screenshots for this topic first."}, status_code=404)
 
     out_dir = str(_bcb.INSTAGRAM_OUTPUT_DIR)
+    script_path = _carousel_script_path(folder)
     prompt = (
         f'Use the community-carousel skill to build an Instagram carousel from '
         f'the community submissions in the topic folder "{topic_name}" (its '
@@ -3990,30 +4014,48 @@ def api_tac_build_carousel(topic_id: int) -> JSONResponse:
         f'order them into the A/B conversation-scroll format (or the '
         f'structured-takes format if the responses cluster into clean camps), '
         f'6-8 slides. Do not ask me any questions; complete the whole skill '
-        f'and finish. When the carousel is built, print the finished '
-        f'slide-by-slide script between these two markers, each on its own '
-        f'line, with nothing else on those lines:\n'
-        f'CAROUSEL_SCRIPT_START\n'
-        f'<the full slide script here>\n'
-        f'CAROUSEL_SCRIPT_END\n'
+        f'and finish. Write ONLY the finished slide-by-slide script (no '
+        f'preamble, no curation notes, no cut list) to this file: '
+        f'{script_path}\n'
         f'Then print exactly on its own line: CAROUSEL_BUILD_DONE'
     )
     run_key = f"tac-carousel-{topic_id}"
 
     def _on_done(record: dict | None) -> None:
-        if not record or record.get("status") != "done":
+        if not record or record.get("status") not in ("done", "failed"):
             return
-        body_text = _parse_carousel_body(record.get("output"))
+        if record["status"] == "failed":
+            # The run itself failed (bad exit, timeout, or - via
+            # skill_runner's success_marker check - exited 0 without ever
+            # printing CAROUSEL_BUILD_DONE). skill_runner already produced a
+            # plain-English error; persist it as-is.
+            save_skill_run_outcome(run_key, record["id"], "tac-carousel-build",
+                                    "failed", record.get("error"))
+            return
+        body_text = _read_carousel_script(folder)
         if not body_text:
+            save_skill_run_outcome(
+                run_key, record["id"], "tac-carousel-build", "failed",
+                "The run finished, but no carousel script file was found "
+                "afterwards. Nothing was saved to the Content Bank - try "
+                "Build carousel again.")
             return
-        from flatwhite.db import save_bank_item
+        try:
+            from flatwhite.db import save_bank_item
 
-        save_bank_item(
-            segment_type="tac_instagram_carousel",
-            title=topic_name,
-            body_text=body_text,
-            source_note=f"Built {_dt.date.today().isoformat()}",
-        )
+            save_bank_item(
+                segment_type="tac_instagram_carousel",
+                title=topic_name,
+                body_text=body_text,
+                source_note=f"Built {_dt.date.today().isoformat()}",
+            )
+        except Exception as exc:  # noqa: BLE001 - a DB hiccup must never look like a silent "done"
+            save_skill_run_outcome(
+                run_key, record["id"], "tac-carousel-build", "failed",
+                f"The carousel was built, but saving it to the Content Bank "
+                f"failed ({exc}). Try Build carousel again.")
+            return
+        save_skill_run_outcome(run_key, record["id"], "tac-carousel-build", "done", None)
 
     try:
         run_id, started = _skill_runner.start_run(
@@ -4029,6 +4071,20 @@ def api_tac_build_carousel(topic_id: int) -> JSONResponse:
     except RuntimeError as exc:
         return JSONResponse({"error": str(exc)}, status_code=429)
     return JSONResponse({"run_id": run_id, "started": started})
+
+
+@app.get("/api/tac-instagram/build-carousel/{topic_id}/status")
+def api_tac_build_carousel_status(topic_id: int) -> JSONResponse:
+    """The persisted TERMINAL outcome of this topic's last carousel build, if
+    any. Mirrors /api/big-conversation/topic/{topic}/run-status: the
+    frontend re-verifies against the Content Bank before ever toasting
+    success, and calls this for the honest plain-English reason when that
+    verification comes up empty (or after a page reload/reconnect) - never
+    trusts GET /api/skill-run/{run_id}'s raw "done" status alone."""
+    persisted = load_skill_run_outcome(f"tac-carousel-{topic_id}")
+    if not persisted:
+        return JSONResponse({"status": None, "error": None})
+    return JSONResponse({"status": persisted["status"], "error": persisted["error"]})
 
 
 @app.get("/api/skill-run/{run_id}")

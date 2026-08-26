@@ -17,9 +17,11 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
+import flatwhite.db as db_module
 import flatwhite.dashboard.api as api_module
 from flatwhite.dashboard import tac_instagram_state as tis
 from flatwhite.dashboard import big_conversation_bank as bcb
+from flatwhite.dashboard.state import load_skill_run_outcome, save_skill_run_outcome
 
 
 @pytest.fixture
@@ -404,23 +406,39 @@ def test_topic_count_is_118_through_the_live_endpoint(tmp_path: Path):
 # real `claude -p` run. big_conversation_bank.INSTAGRAM_OUTPUT_DIR is
 # monkeypatched to a tmp_path tree, same as tests/test_big_conversation_api.py,
 # so no test touches the real Instagram output folder either.
+#
+# carousel_env ALSO patches flatwhite.db.DB_PATH to a temp DB (mirrors
+# tests/test_big_conversation_api.py's bc_env fixture) so the on_complete
+# tests below can exercise the REAL save_bank_item / save_skill_run_outcome /
+# load_skill_run_outcome round trip - no test touches the developer's live
+# DB, but nothing about the persistence path is mocked away either. This
+# matters because the bug this section regression-tests (a run that reports
+# "done" without ever actually saving anything - the same silent-run failure
+# class docs/bigconv-silent-run-report.md records) is exactly the kind of
+# thing a mocked-out save_bank_item can't catch: the earlier version of these
+# tests only asserted save_bank_item was/wasn't called, which says nothing
+# about whether the TRUE outcome (saved vs silently not-saved) was ever made
+# observable to the frontend.
 
 
 @pytest.fixture
 def carousel_env(tmp_path, monkeypatch):
-    """A fake sorted topic folder with one screenshot, and list_topics()
-    patched to return one matching topic bank row."""
+    """A fake sorted topic folder with one screenshot, list_topics() patched
+    to return one matching topic bank row, and a temp DB."""
+    db_path = tmp_path / "carousel_api_test.db"
     output_dir = tmp_path / "output"
     topic_folder = output_dir / "Sunday scaries"
     topic_folder.mkdir(parents=True)
     (topic_folder / "screenshot_0001.png").write_bytes(b"x")
     monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", output_dir)
     monkeypatch.setattr(api_module, "_claude_available", lambda: True)
-    with patch.object(
-        tis, "list_topics",
-        return_value=[{"id": 7, "topic": "Sunday scaries"}],
-    ):
-        yield output_dir
+    with patch.object(db_module, "DB_PATH", db_path):
+        db_module.init_db()
+        with patch.object(
+            tis, "list_topics",
+            return_value=[{"id": 7, "topic": "Sunday scaries"}],
+        ):
+            yield output_dir
 
 
 def test_build_carousel_starts_a_run(client, carousel_env):
@@ -439,6 +457,12 @@ def test_build_carousel_starts_a_run(client, carousel_env):
     assert "-p" in argv
     assert kwargs["cwd"] == str(carousel_env)
     assert callable(kwargs.get("on_complete"))
+    # The prompt names the exact file on_complete will read back - not a
+    # captured-stdout marker (see the module docstring above and
+    # _read_carousel_script's docstring in api.py for why).
+    prompt = argv[2]
+    assert "_CAROUSEL_SCRIPT.md" in prompt
+    assert str(carousel_env / "Sunday scaries") in prompt
 
 
 def test_build_carousel_429s_on_concurrency_cap(client, carousel_env):
@@ -473,58 +497,124 @@ def test_build_carousel_404s_when_no_sorted_folder(client, tmp_path, monkeypatch
     mock_start.assert_not_called()
 
 
-def test_build_carousel_on_complete_saves_bank_item(client, carousel_env):
+def _post_and_get_on_complete(client, topic_id=7):
+    """POST the route (start_run mocked) and hand back the real on_complete
+    closure it wired up, so a test can invoke it directly with a fake
+    finished-run record - same technique tests/test_brains_trust_refresh.py
+    doesn't need (it has no on_complete) but tests/test_big_conversation_api.py's
+    equivalent flows do."""
     with patch(
         "flatwhite.dashboard.skill_runner.start_run",
         return_value=("carrun1", True),
     ) as mock_start:
-        client.post("/api/tac-instagram/build-carousel/7")
-    on_complete = mock_start.call_args.kwargs["on_complete"]
+        client.post(f"/api/tac-instagram/build-carousel/{topic_id}")
+    return mock_start.call_args.kwargs["on_complete"]
 
-    fake_record = {
-        "id": "carrun1",
-        "status": "done",
-        "output": (
-            "some preamble\n"
-            "CAROUSEL_SCRIPT_START\n"
-            "Slide 1: hook\nSlide 2: A vs B\n"
-            "CAROUSEL_SCRIPT_END\n"
-            "CAROUSEL_BUILD_DONE\n"
-        ),
-    }
-    with patch("flatwhite.db.save_bank_item", return_value=42) as mock_save:
+
+def test_build_carousel_on_complete_saves_bank_item_and_persists_done_outcome(client, carousel_env):
+    on_complete = _post_and_get_on_complete(client)
+
+    script_path = carousel_env / "Sunday scaries" / "_CAROUSEL_SCRIPT.md"
+    script_path.write_text("Slide 1: hook\nSlide 2: A vs B", encoding="utf-8")
+
+    fake_record = {"id": "carrun1", "status": "done", "output": "CAROUSEL_BUILD_DONE\n"}
+    on_complete(fake_record)
+
+    rows = db_module.list_bank_items(segment_type="tac_instagram_carousel")
+    assert len(rows) == 1
+    assert rows[0]["title"] == "Sunday scaries"
+    assert rows[0]["body_text"] == "Slide 1: hook\nSlide 2: A vs B"
+    assert rows[0]["source_note"].startswith("Built ")
+
+    outcome = load_skill_run_outcome("tac-carousel-7")
+    assert outcome["status"] == "done"
+    assert outcome["error"] is None
+
+
+def test_build_carousel_on_complete_persists_failure_when_run_itself_failed(client, carousel_env):
+    on_complete = _post_and_get_on_complete(client)
+
+    fake_record = {"id": "carrun1", "status": "failed", "error": "boom", "output": "boom"}
+    on_complete(fake_record)
+
+    assert db_module.list_bank_items(segment_type="tac_instagram_carousel") == []
+    outcome = load_skill_run_outcome("tac-carousel-7")
+    assert outcome["status"] == "failed"
+    assert outcome["error"] == "boom"
+
+
+def test_build_carousel_on_complete_persists_failure_when_script_file_missing(client, carousel_env):
+    # CRITICAL regression test (code review, 27 Aug 2026): skill_runner marks
+    # a run "done" on exit 0 + the CAROUSEL_BUILD_DONE marker ALONE - a run
+    # can hit both without ever writing a script (the skill errored partway,
+    # or just never wrote the file). The pre-fix on_complete just `return`ed
+    # here with no observable trace, so pollTacCarouselRun's r.status ===
+    # "done" toasted "saved to the Content Bank" on a run that saved nothing
+    # - the exact silent-run failure class docs/bigconv-silent-run-report.md
+    # records. This must persist an honest FAILURE outcome instead.
+    on_complete = _post_and_get_on_complete(client)
+
+    # No _CAROUSEL_SCRIPT.md ever written in the topic folder.
+    fake_record = {"id": "carrun1", "status": "done", "output": "CAROUSEL_BUILD_DONE\n"}
+    on_complete(fake_record)
+
+    assert db_module.list_bank_items(segment_type="tac_instagram_carousel") == []
+    outcome = load_skill_run_outcome("tac-carousel-7")
+    assert outcome is not None
+    assert outcome["status"] == "failed"
+    assert "no carousel script file" in outcome["error"].lower()
+
+
+def test_build_carousel_on_complete_persists_failure_when_script_file_truncation_shaped(client, carousel_env):
+    # Truncation-shaped regression test: the ORIGINAL implementation parsed
+    # the finished script out of the run's captured stdout, which
+    # skill_runner keeps only the last 6000 chars of (_OUTPUT_TAIL_CHARS) -
+    # a verbose run (curation notes, a cut list printed after the script,
+    # exactly what the real live-acceptance run for this task produced)
+    # could push the script's start marker out of that captured tail while
+    # the completion marker at the very end survived, making a genuine drop
+    # look identical to success. The fix reads the script back from a real
+    # file instead of parsed stdout, so this proves that path stays honest
+    # even when "output" is huge and the file itself is empty/unwritten -
+    # never a silent "done".
+    on_complete = _post_and_get_on_complete(client)
+
+    script_path = carousel_env / "Sunday scaries" / "_CAROUSEL_SCRIPT.md"
+    script_path.write_text("   \n\n  ", encoding="utf-8")  # written, but blank
+
+    huge_verbose_output = "some curation note line\n" * 2000  # far past 6000 chars
+    fake_record = {"id": "carrun1", "status": "done", "output": huge_verbose_output}
+    on_complete(fake_record)
+
+    assert db_module.list_bank_items(segment_type="tac_instagram_carousel") == []
+    outcome = load_skill_run_outcome("tac-carousel-7")
+    assert outcome["status"] == "failed"
+
+
+def test_build_carousel_on_complete_persists_failure_when_save_bank_item_raises(client, carousel_env):
+    on_complete = _post_and_get_on_complete(client)
+
+    script_path = carousel_env / "Sunday scaries" / "_CAROUSEL_SCRIPT.md"
+    script_path.write_text("Slide 1: hook", encoding="utf-8")
+
+    fake_record = {"id": "carrun1", "status": "done", "output": "CAROUSEL_BUILD_DONE\n"}
+    with patch("flatwhite.db.save_bank_item", side_effect=RuntimeError("db locked")):
         on_complete(fake_record)
-    mock_save.assert_called_once()
-    call_kwargs = mock_save.call_args.kwargs
-    assert call_kwargs["segment_type"] == "tac_instagram_carousel"
-    assert call_kwargs["title"] == "Sunday scaries"
-    assert call_kwargs["body_text"] == "Slide 1: hook\nSlide 2: A vs B"
-    assert call_kwargs["source_note"].startswith("Built ")
+
+    outcome = load_skill_run_outcome("tac-carousel-7")
+    assert outcome["status"] == "failed"
+    assert "db locked" in outcome["error"]
 
 
-def test_build_carousel_on_complete_skips_save_when_run_failed(client, carousel_env):
-    with patch(
-        "flatwhite.dashboard.skill_runner.start_run",
-        return_value=("carrun1", True),
-    ) as mock_start:
-        client.post("/api/tac-instagram/build-carousel/7")
-    on_complete = mock_start.call_args.kwargs["on_complete"]
-
-    fake_record = {"id": "carrun1", "status": "failed", "output": "boom"}
-    with patch("flatwhite.db.save_bank_item") as mock_save:
-        on_complete(fake_record)
-    mock_save.assert_not_called()
+def test_build_carousel_status_returns_persisted_outcome(client, carousel_env):
+    save_skill_run_outcome("tac-carousel-7", "carrun1", "tac-carousel-build",
+                            "failed", "No carousel script file was found.")
+    resp = client.get("/api/tac-instagram/build-carousel/7/status")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "failed", "error": "No carousel script file was found."}
 
 
-def test_build_carousel_on_complete_skips_save_when_no_markers(client, carousel_env):
-    with patch(
-        "flatwhite.dashboard.skill_runner.start_run",
-        return_value=("carrun1", True),
-    ) as mock_start:
-        client.post("/api/tac-instagram/build-carousel/7")
-    on_complete = mock_start.call_args.kwargs["on_complete"]
-
-    fake_record = {"id": "carrun1", "status": "done", "output": "no markers here"}
-    with patch("flatwhite.db.save_bank_item") as mock_save:
-        on_complete(fake_record)
-    mock_save.assert_not_called()
+def test_build_carousel_status_returns_nulls_when_never_run(client, carousel_env):
+    resp = client.get("/api/tac-instagram/build-carousel/999/status")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": None, "error": None}

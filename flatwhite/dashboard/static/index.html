@@ -1186,14 +1186,28 @@ function copyTacTodayTopic(text) {
 // GET /api/skill-run/{run_id} pollBigConvRun/pollBrainsRefreshRun use.
 // Keyed per topic id (not a single global run) so it disables just this
 // card's button, not every farmed card at once.
+//
+// r.status "done" from that poll is NOT proof the carousel was actually
+// saved - skill_runner marks a run "done" on exit 0 + the completion marker
+// alone, which a run can hit without ever leaving a usable script behind
+// (docs/bigconv-silent-run-report.md is the same failure class). So "done"
+// only triggers verifyTacCarouselSaved, which re-fetches the Content Bank
+// (like pollBigConvRun re-fetches the topic detail) before ever toasting
+// success - beforeMaxId is snapshotted here so that check can tell a NEW
+// item from one already sitting there from a previous build.
 function buildTacCarousel(topicId) {
   var cur = S.tacCarouselRuns[topicId];
   if (cur && (cur.status === "queued" || cur.status === "running")) return;  // already running
-  S.tacCarouselRuns[topicId] = { status: "queued", run_id: null, error: null };
+  S.tacCarouselRuns[topicId] = { status: "queued", run_id: null, error: null, beforeMaxId: 0 };
   renderTacTodayBody();
-  api("/api/tac-instagram/build-carousel/" + topicId, { method: "POST" })
+  var beforeMaxId = 0;
+  api("/api/content-bank?segment_type=tac_instagram_carousel")
     .then(function(d) {
-      S.tacCarouselRuns[topicId] = { status: "running", run_id: d.run_id, error: null };
+      (d.items || []).forEach(function(it) { if (it.id > beforeMaxId) beforeMaxId = it.id; });
+      return api("/api/tac-instagram/build-carousel/" + topicId, { method: "POST" });
+    })
+    .then(function(d) {
+      S.tacCarouselRuns[topicId] = { status: "running", run_id: d.run_id, error: null, beforeMaxId: beforeMaxId };
       renderTacTodayBody();
       pollTacCarouselRun(topicId, d.run_id);
     })
@@ -1209,9 +1223,7 @@ function pollTacCarouselRun(topicId, runId) {
       var cur = S.tacCarouselRuns[topicId];
       if (!cur || cur.run_id !== runId) return;  // a newer run replaced this one, or the user moved on
       if (r.status === "done") {
-        delete S.tacCarouselRuns[topicId];
-        showToast("Carousel built - saved to the Content Bank", "success");
-        renderTacTodayBody();
+        verifyTacCarouselSaved(topicId, runId, cur.beforeMaxId || 0);
       } else if (r.status === "failed") {
         S.tacCarouselRuns[topicId] = { status: "failed", run_id: runId, error: r.error, output_tail: r.output_tail };
         renderTacTodayBody();
@@ -1221,6 +1233,46 @@ function pollTacCarouselRun(topicId, runId) {
     })
     .catch(function() {
       setTimeout(function() { pollTacCarouselRun(topicId, runId); }, 4000);  // transient, keep polling
+    });
+}
+
+// Load the piece before declaring victory (same lesson pollBigConvRun's
+// loadBigConvTopicDetail check encodes): a "done" run only becomes a success
+// toast once a genuinely NEW Content Bank item is confirmed on the server.
+// If it isn't there, ask the dashboard for the honest persisted reason
+// (api_tac_build_carousel_status - backed by save_skill_run_outcome, set
+// even when the run itself reported "done") rather than just saying "failed".
+function verifyTacCarouselSaved(topicId, runId, beforeMaxId) {
+  api("/api/content-bank?segment_type=tac_instagram_carousel")
+    .then(function(d) {
+      var cur = S.tacCarouselRuns[topicId];
+      if (!cur || cur.run_id !== runId) return;  // user moved on
+      var saved = (d.items || []).some(function(it) { return it.id > beforeMaxId; });
+      if (saved) {
+        delete S.tacCarouselRuns[topicId];
+        showToast("Carousel built - saved to the Content Bank", "success");
+        renderTacTodayBody();
+        return;
+      }
+      var fallback = "The run finished, but no carousel was found in the "
+        + "Content Bank afterwards. Nothing was lost - the topic's "
+        + "screenshots are still there; try Build carousel again.";
+      api("/api/tac-instagram/build-carousel/" + topicId + "/status")
+        .then(function(s) {
+          var cur2 = S.tacCarouselRuns[topicId];
+          if (!cur2 || cur2.run_id !== runId) return;
+          S.tacCarouselRuns[topicId] = { status: "failed", run_id: runId, error: (s && s.error) || fallback };
+          renderTacTodayBody();
+        })
+        .catch(function() {
+          var cur2 = S.tacCarouselRuns[topicId];
+          if (!cur2 || cur2.run_id !== runId) return;
+          S.tacCarouselRuns[topicId] = { status: "failed", run_id: runId, error: fallback };
+          renderTacTodayBody();
+        });
+    })
+    .catch(function() {
+      setTimeout(function() { verifyTacCarouselSaved(topicId, runId, beforeMaxId); }, 3000);  // transient, keep trying
     });
 }
 
