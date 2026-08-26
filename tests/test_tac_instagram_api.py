@@ -113,6 +113,34 @@ def test_post_mark_used_404s_for_unknown_topic(client):
 
 
 # ---------------------------------------------------------------------------
+# Today
+# ---------------------------------------------------------------------------
+
+
+def test_get_today_returns_actions_from_state(client):
+    fake_actions = [
+        {
+            "time": "9:00 AM",
+            "task": "Post a submission-question story to farm the week's theme",
+            "day": "Monday",
+            "suggested_topic": {"id": 1, "topic": "Sunday scaries"},
+        },
+    ]
+    with patch.object(tis, "today_actions", return_value=fake_actions) as mock_today:
+        resp = client.get("/api/tac-instagram/today")
+    assert resp.status_code == 200
+    assert resp.json() == {"actions": fake_actions}
+    mock_today.assert_called_once_with()
+
+
+def test_get_today_returns_empty_list_on_weekend(client):
+    with patch.object(tis, "today_actions", return_value=[]):
+        resp = client.get("/api/tac-instagram/today")
+    assert resp.status_code == 200
+    assert resp.json() == {"actions": []}
+
+
+# ---------------------------------------------------------------------------
 # Calendar
 # ---------------------------------------------------------------------------
 

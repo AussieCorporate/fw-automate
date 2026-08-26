@@ -38,6 +38,49 @@ _SURVEY_WEEK_PLAN = [
     (4, "Friday", "Open Floor Questions", "Open Floor questions for {campaign}"),
 ]
 
+# Weekly farm-loop cadence for the Today screen, straight from the source
+# workbook's own "How To Use" tab (reproduced in
+# docs/superpowers/specs/2026-08-26-tac-instagram-tab.md, "1. Today" section).
+# No day is invented; Saturday/Sunday simply have no entry and return [].
+#
+# Keyed by datetime.date.weekday() (Monday=0 .. Friday=4). Each entry is
+# (time, task, topic_filter) where topic_filter is:
+#   - "plain"          -> next_unused_topic() with no format filter
+#   - a best_format substring (e.g. "Big Conversation", "Meme")
+#                       -> next_unused_topic(best_format_contains=...)
+#   - None              -> no topic suggestion for that checklist item
+# Only the first checklist item of a day carries a topic suggestion - it's
+# the one "farm" task the topic is actually for; the rest of that day's
+# tasks (newsletter post, carousels, later story questions) don't need one.
+_TODAY_CADENCE: dict[int, list[tuple[str, str, str | None]]] = {
+    0: [  # Monday
+        ("9:00 AM", "Post a submission-question story to farm the week's theme", "plain"),
+    ],
+    1: [  # Tuesday
+        ("9:00 AM", "Post the newsletter story with the Flat White link", None),
+        ("2:00 PM", "Post a follow-up farm question", None),
+        ("2:10 PM", "Post The Inside Track carousel", None),
+        ("2:30 PM", "Post the best community submissions carousel", None),
+    ],
+    2: [  # Wednesday
+        ("11:00 AM", "Post the Big Conversation carousel on the most topical issue", "Big Conversation"),
+    ],
+    3: [  # Thursday
+        ("12:00 PM", "Post a meme/relatable carousel, kept light, for shares", "Meme"),
+    ],
+    4: [  # Friday
+        ("9:00 AM", "Post Open Floor story question 1 of 3, farming the week's theme", "plain"),
+        ("9:05 AM", "Post Open Floor story question 2 of 3", None),
+        ("9:10 AM", "Post Open Floor story question 3 of 3", None),
+        ("11:30 AM", "Compile last Friday's best replies into a carousel", None),
+    ],
+}
+
+_DAY_NAMES = {
+    0: "Monday", 1: "Tuesday", 2: "Wednesday", 3: "Thursday",
+    4: "Friday", 5: "Saturday", 6: "Sunday",
+}
+
 
 def _parse_date(date_str: str) -> datetime.date:
     for fmt in _DATE_FORMATS:
@@ -169,6 +212,36 @@ def next_unused_topic(best_format_contains: str | None = None) -> dict | None:
     ).fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def today_actions(today: datetime.date | None = None) -> list[dict]:
+    """Return the checklist for what today calls for, from the hardcoded
+    weekly farm-loop cadence (see _TODAY_CADENCE above).
+
+    Each item is {"time": "9:00 AM", "task": "...", "day": "Monday",
+    "suggested_topic": {...} | None}. Saturday/Sunday return [].
+    """
+    if today is None:
+        today = datetime.date.today()
+    weekday = today.weekday()
+    day_name = _DAY_NAMES[weekday]
+    plan = _TODAY_CADENCE.get(weekday, [])
+
+    actions = []
+    for time_str, task, topic_filter in plan:
+        if topic_filter == "plain":
+            suggested_topic = next_unused_topic()
+        elif topic_filter is not None:
+            suggested_topic = next_unused_topic(best_format_contains=topic_filter)
+        else:
+            suggested_topic = None
+        actions.append({
+            "time": time_str,
+            "task": task,
+            "day": day_name,
+            "suggested_topic": suggested_topic,
+        })
+    return actions
 
 
 # ---------------------------------------------------------------------------

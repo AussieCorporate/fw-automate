@@ -9,12 +9,32 @@ picks up the patched path.
 
 from __future__ import annotations
 
+import datetime
 import sqlite3
 
 import pytest
 
 import flatwhite.db as db_module
 from flatwhite.dashboard import tac_instagram_state as tis
+
+
+def _frozen_today(monkeypatch, iso_date):
+    """Freeze tis's notion of "today" so today_actions' default-arg branch
+    is deterministic. Mirrors tests/test_brains_trust_refresh.py's
+    _frozen_today helper."""
+    fixed = datetime.datetime.strptime(iso_date, "%Y%m%d").date()
+
+    class _FixedDate(datetime.date):
+        @classmethod
+        def today(cls):
+            return fixed
+
+    class _FixedDateTimeModule:
+        date = _FixedDate
+        timedelta = datetime.timedelta
+        datetime = datetime.datetime
+
+    monkeypatch.setattr(tis, "datetime", _FixedDateTimeModule)
 
 
 # ---------------------------------------------------------------------------
@@ -534,3 +554,100 @@ def test_generate_survey_week_rows_raises_for_missing_launch_date(temp_db):
 
     with pytest.raises(ValueError):
         tis.generate_survey_week_rows(item_id)
+
+
+# ---------------------------------------------------------------------------
+# today_actions
+# ---------------------------------------------------------------------------
+# All dates below are real 2026 dates: 24-30 Aug 2026 is Mon-Sun.
+
+
+def test_today_actions_monday_suggests_plain_oldest_unused_topic(temp_db):
+    _insert_topic(topic_number=2, topic="Second", best_format="Reel", used=0)
+    _insert_topic(topic_number=1, topic="First", best_format="Carousel", used=0)
+
+    actions = tis.today_actions(today=datetime.date(2026, 8, 24))
+
+    assert len(actions) == 1
+    assert actions[0]["time"] == "9:00 AM"
+    assert actions[0]["day"] == "Monday"
+    assert "farm the week's theme" in actions[0]["task"]
+    assert actions[0]["suggested_topic"]["topic"] == "First"
+
+
+def test_today_actions_tuesday_has_four_items_none_suggest_topics(temp_db):
+    _insert_topic(topic_number=1, topic="Unused", used=0)
+
+    actions = tis.today_actions(today=datetime.date(2026, 8, 25))
+
+    assert len(actions) == 4
+    assert [a["time"] for a in actions] == ["9:00 AM", "2:00 PM", "2:10 PM", "2:30 PM"]
+    assert all(a["day"] == "Tuesday" for a in actions)
+    assert all(a["suggested_topic"] is None for a in actions)
+
+
+def test_today_actions_wednesday_filters_big_conversation_format(temp_db):
+    _insert_topic(topic_number=1, topic="Reel topic", best_format="Reel", used=0)
+    _insert_topic(topic_number=2, topic="BC topic", best_format="Big Conversation", used=0)
+
+    actions = tis.today_actions(today=datetime.date(2026, 8, 26))
+
+    assert len(actions) == 1
+    assert actions[0]["time"] == "11:00 AM"
+    assert actions[0]["day"] == "Wednesday"
+    assert actions[0]["suggested_topic"]["topic"] == "BC topic"
+
+
+def test_today_actions_thursday_filters_meme_format(temp_db):
+    _insert_topic(topic_number=1, topic="Reel topic", best_format="Reel", used=0)
+    _insert_topic(topic_number=2, topic="Meme topic", best_format="Meme", used=0)
+
+    actions = tis.today_actions(today=datetime.date(2026, 8, 27))
+
+    assert len(actions) == 1
+    assert actions[0]["time"] == "12:00 PM"
+    assert actions[0]["day"] == "Thursday"
+    assert actions[0]["suggested_topic"]["topic"] == "Meme topic"
+
+
+def test_today_actions_friday_has_four_items_first_suggests_plain_topic(temp_db):
+    _insert_topic(topic_number=1, topic="Oldest", used=0)
+
+    actions = tis.today_actions(today=datetime.date(2026, 8, 28))
+
+    assert len(actions) == 4
+    assert [a["time"] for a in actions] == ["9:00 AM", "9:05 AM", "9:10 AM", "11:30 AM"]
+    assert all(a["day"] == "Friday" for a in actions)
+    assert actions[0]["suggested_topic"]["topic"] == "Oldest"
+    assert all(a["suggested_topic"] is None for a in actions[1:])
+
+
+def test_today_actions_saturday_is_empty(temp_db):
+    actions = tis.today_actions(today=datetime.date(2026, 8, 29))
+
+    assert actions == []
+
+
+def test_today_actions_sunday_is_empty(temp_db):
+    actions = tis.today_actions(today=datetime.date(2026, 8, 30))
+
+    assert actions == []
+
+
+def test_today_actions_no_matching_unused_topic_returns_none(temp_db):
+    _insert_topic(topic_number=1, topic="Used already", used=1, used_date="1 Jun 2026")
+
+    actions = tis.today_actions(today=datetime.date(2026, 8, 24))
+
+    assert actions[0]["suggested_topic"] is None
+
+
+def test_today_actions_defaults_to_real_today(temp_db, monkeypatch):
+    _insert_topic(topic_number=1, topic="Frozen Monday topic", used=0)
+    _frozen_today(monkeypatch, "20260824")  # a Monday
+
+    actions = tis.today_actions()
+
+    assert len(actions) == 1
+    assert actions[0]["day"] == "Monday"
+    assert actions[0]["suggested_topic"]["topic"] == "Frozen Monday topic"

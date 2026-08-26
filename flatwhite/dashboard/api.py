@@ -1673,6 +1673,16 @@ def api_tac_mark_topic_used(topic_id: int) -> JSONResponse:
     return JSONResponse({"ok": True})
 
 
+@app.get("/api/tac-instagram/today")
+def api_tac_today() -> JSONResponse:
+    """Today screen checklist: what today's weekly farm-loop cadence calls
+    for, with a suggested next-unused topic where the task needs one."""
+    from flatwhite.dashboard import tac_instagram_state as _tis
+
+    actions = _tis.today_actions()
+    return JSONResponse({"actions": actions})
+
+
 @app.get("/api/tac-instagram/calendar")
 def api_tac_calendar(week_label: str | None = None, status: str | None = None) -> JSONResponse:
     """List calendar rows, optionally filtered. Filters combine with AND."""
