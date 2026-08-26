@@ -166,7 +166,8 @@ def test_post_calendar_unknown_field_returns_400(client):
     ):
         resp = client.post("/api/tac-instagram/calendar", json={"bogus": "x"})
     assert resp.status_code == 400
-    assert "bogus" in resp.json()["error"]
+    # Plain-English detail only - no brackets, quotes, or internal table name.
+    assert resp.json()["error"] == "Unknown field: bogus"
 
 
 def test_patch_calendar_updates_a_row(client):
@@ -192,7 +193,7 @@ def test_patch_calendar_unknown_field_returns_400(client):
     ):
         resp = client.patch("/api/tac-instagram/calendar/5", json={"bogus": "x"})
     assert resp.status_code == 400
-    assert "bogus" in resp.json()["error"]
+    assert resp.json()["error"] == "Unknown field: bogus"
 
 
 def test_patch_calendar_404s_for_unknown_row(client):
@@ -254,7 +255,18 @@ def test_post_quarterly_unknown_field_returns_400(client):
     ):
         resp = client.post("/api/tac-instagram/quarterly", json={"bogus": "x"})
     assert resp.status_code == 400
-    assert "bogus" in resp.json()["error"]
+    assert resp.json()["error"] == "Unknown field: bogus"
+
+
+def test_post_calendar_unknown_field_returns_400_multiple_fields(client):
+    with patch.object(
+        tis,
+        "add_calendar_row",
+        side_effect=ValueError("Unknown tac_calendar field(s): ['bogus', 'nope']"),
+    ):
+        resp = client.post("/api/tac-instagram/calendar", json={"bogus": "x", "nope": "y"})
+    assert resp.status_code == 400
+    assert resp.json()["error"] == "Unknown field: bogus, nope"
 
 
 def test_post_generate_survey_week_returns_created_row_ids(client):
@@ -267,7 +279,7 @@ def test_post_generate_survey_week_returns_created_row_ids(client):
     mock_gen.assert_called_once_with(3)
 
 
-def test_post_generate_survey_week_400s_on_value_error(client):
+def test_post_generate_survey_week_400s_on_unknown_item(client):
     with patch.object(
         tis,
         "generate_survey_week_rows",
@@ -275,7 +287,18 @@ def test_post_generate_survey_week_400s_on_value_error(client):
     ):
         resp = client.post("/api/tac-instagram/quarterly/99999/generate-survey-week")
     assert resp.status_code == 400
-    assert "not found" in resp.json()["error"]
+    assert resp.json()["error"] == "That planner item was not found"
+
+
+def test_post_generate_survey_week_400s_on_missing_launch_date(client):
+    with patch.object(
+        tis,
+        "generate_survey_week_rows",
+        side_effect=ValueError("tac_quarterly_planner row 3 has no launch_date"),
+    ):
+        resp = client.post("/api/tac-instagram/quarterly/3/generate-survey-week")
+    assert resp.status_code == 400
+    assert resp.json()["error"] == "That planner item has no launch date"
 
 
 # ---------------------------------------------------------------------------

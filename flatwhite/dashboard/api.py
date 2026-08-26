@@ -1603,6 +1603,22 @@ async def api_pull_bank_item(bank_id: int, request: Request) -> JSONResponse:
 # Thin wrappers over flatwhite.dashboard.tac_instagram_state's read/write
 # functions for the tac_topic_bank, tac_calendar and tac_quarterly_planner
 # tables. No LLM calls here - see tac_instagram_state.py for the DB layer.
+#
+# tac_instagram_state's ValueErrors are developer-facing (they name internal
+# table/column shapes, e.g. "Unknown tac_calendar field(s): ['bogus']"). The
+# routes below translate them into plain-English 400 details before they
+# reach the frontend - never pass str(exc) through raw.
+
+_TAC_UNKNOWN_FIELD_RE = re.compile(r"Unknown \w+ field\(s\): \[(.*)\]")
+
+
+def _tac_unknown_field_error(exc: ValueError) -> str:
+    """Turn "Unknown tac_calendar field(s): ['bogus']" into "Unknown field: bogus"."""
+    match = _TAC_UNKNOWN_FIELD_RE.search(str(exc))
+    if not match:
+        return "Unknown field"
+    fields = [f.strip().strip("'\"") for f in match.group(1).split(",") if f.strip()]
+    return "Unknown field: " + ", ".join(fields)
 
 @app.get("/api/tac-instagram/topics")
 def api_tac_topics(
@@ -1677,7 +1693,7 @@ async def api_tac_add_calendar_row(request: Request) -> JSONResponse:
     try:
         row_id = _tis.add_calendar_row(**body)
     except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
+        return JSONResponse({"error": _tac_unknown_field_error(e)}, status_code=400)
     return JSONResponse({"id": row_id})
 
 
@@ -1692,7 +1708,7 @@ async def api_tac_update_calendar_row(row_id: int, request: Request) -> JSONResp
     try:
         updated = _tis.update_calendar_row(row_id, **body)
     except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
+        return JSONResponse({"error": _tac_unknown_field_error(e)}, status_code=400)
     if not updated:
         return JSONResponse({"error": "Calendar row not found"}, status_code=404)
     return JSONResponse({"ok": True})
@@ -1718,7 +1734,7 @@ async def api_tac_add_quarterly_item(request: Request) -> JSONResponse:
     try:
         item_id = _tis.add_quarterly_item(**body)
     except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
+        return JSONResponse({"error": _tac_unknown_field_error(e)}, status_code=400)
     return JSONResponse({"id": item_id})
 
 
@@ -1730,7 +1746,11 @@ def api_tac_generate_survey_week(item_id: int) -> JSONResponse:
     try:
         row_ids = _tis.generate_survey_week_rows(item_id)
     except ValueError as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
+        if "launch_date" in str(e):
+            detail = "That planner item has no launch date"
+        else:
+            detail = "That planner item was not found"
+        return JSONResponse({"error": detail}, status_code=400)
     return JSONResponse({"created_row_ids": row_ids})
 
 
