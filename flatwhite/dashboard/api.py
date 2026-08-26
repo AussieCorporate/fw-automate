@@ -4006,6 +4006,14 @@ def api_tac_build_carousel(topic_id: int) -> JSONResponse:
 
     out_dir = str(_bcb.INSTAGRAM_OUTPUT_DIR)
     script_path = _carousel_script_path(folder)
+    # Delete any stale script left over from a PREVIOUS build of this same
+    # topic before starting this run (code review round 2, 27 Aug 2026): the
+    # file has no per-run name or freshness check, so without this a rebuild
+    # whose model skips the write but still prints CAROUSEL_BUILD_DONE would
+    # have _read_carousel_script silently pick up the old file and re-save it
+    # as if it were THIS run's output. Deleting first means a file existing
+    # at on_complete time can only have been written by this run.
+    script_path.unlink(missing_ok=True)
     prompt = (
         f'Use the community-carousel skill to build an Instagram carousel from '
         f'the community submissions in the topic folder "{topic_name}" (its '

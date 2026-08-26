@@ -618,3 +618,58 @@ def test_build_carousel_status_returns_nulls_when_never_run(client, carousel_env
     resp = client.get("/api/tac-instagram/build-carousel/999/status")
     assert resp.status_code == 200
     assert resp.json() == {"status": None, "error": None}
+
+
+# --- Code review round 2 (27 Aug 2026) -------------------------------------
+# G2: a stale _CAROUSEL_SCRIPT.md from a PREVIOUS build of the same topic has
+# no per-run name or freshness check. A rebuild whose model skips the write
+# but still prints CAROUSEL_BUILD_DONE would otherwise have
+# _read_carousel_script silently pick up the old file and re-save it as if
+# it were this run's output. Fix: the route deletes the file (missing_ok)
+# BEFORE calling start_run, so a file existing at on_complete time can only
+# have been written by THIS run.
+def test_build_carousel_deletes_stale_script_file_before_starting_run(client, carousel_env):
+    script_path = carousel_env / "Sunday scaries" / "_CAROUSEL_SCRIPT.md"
+    script_path.write_text("stale content from a previous build", encoding="utf-8")
+    assert script_path.exists()
+
+    captured = {}
+
+    def fake_start_run(*args, **kwargs):
+        # By the time start_run is called (i.e. before this run's `claude -p`
+        # process even launches), the stale file must already be gone.
+        captured["file_existed_at_start"] = script_path.exists()
+        return ("carrun1", True)
+
+    with patch(
+        "flatwhite.dashboard.skill_runner.start_run", side_effect=fake_start_run
+    ):
+        resp = client.post("/api/tac-instagram/build-carousel/7")
+
+    assert resp.status_code == 200
+    assert captured["file_existed_at_start"] is False
+    assert not script_path.exists()
+
+
+# G1: verifyTacCarouselSaved's decision logic (_tacCarouselFindNewMatch,
+# index.html) is pure frontend JS with no browser/JS test harness in this
+# repo, so it's pinned by running a small Node assertion script directly -
+# this keeps it inside the normal `pytest` run (foreground, same command as
+# every other test here) rather than a separate manual step someone has to
+# remember to run. See tests/js/tac_carousel_frontend_test.js for the actual
+# assertions (cross-topic contamination is the one that matters: a new
+# Content Bank row from a DIFFERENT topic - possible because
+# _MAX_CONCURRENT lets two builds run at once - must never be read as proof
+# THIS topic's carousel saved).
+def test_tac_carousel_frontend_js_pinning_tests_pass():
+    import subprocess
+
+    script = Path(__file__).parent / "js" / "tac_carousel_frontend_test.js"
+    result = subprocess.run(
+        ["node", str(script)], capture_output=True, text=True, timeout=30
+    )
+    assert result.returncode == 0, (
+        "tac_carousel_frontend_test.js failed:\n"
+        + result.stdout + result.stderr
+    )
+    assert "all assertions passed" in result.stdout
