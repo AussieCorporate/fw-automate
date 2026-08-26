@@ -64,6 +64,22 @@ input, textarea, select { font-family: var(--font-sans); font-size: 14px; }
 .chip-amber { background: var(--amber-light); color: var(--amber-dark); border: 1px solid var(--border-gold); }
 .chip-default { background: var(--surface-warm); color: var(--text-2); border: 1px solid var(--border); }
 
+/* ── TAC Instagram: Calendar (Task 8) ──
+   Status select colours match the source spreadsheet's own colour legend
+   (grey/yellow/blue/green/red). tac-cell-input is the inline-edit look for
+   every other column: invisible until hovered/focused so a 143-row table
+   doesn't look like a form by default. */
+.tac-status-select { border-radius: 6px; padding: 4px 8px; font-size: 12px; font-weight: 600; border: 1px solid transparent; cursor: pointer; }
+.status-not-started { background: #ECEAE6; color: #5A5048; border-color: #DCD8D1; }
+.status-in-progress { background: var(--amber-light); color: var(--amber-dark); border-color: var(--border-gold); }
+.status-scheduled { background: #E3EEFC; color: var(--blue); border-color: #C6DEF8; }
+.status-published { background: var(--green-bg); color: var(--green); border-color: #C8E6C9; }
+.status-skipped { background: var(--red-bg); color: var(--red); border-color: #FFCDD2; }
+.tac-cell-input { width: 100%; min-width: 90px; border: 1px solid transparent; background: transparent; font: inherit; font-size: 12px; padding: 4px 6px; border-radius: 4px; color: var(--text); box-sizing: border-box; }
+.tac-cell-input:hover { border-color: var(--border); }
+.tac-cell-input:focus { border-color: var(--accent, #6c63ff); background: var(--surface); outline: none; }
+textarea.tac-cell-input { resize: vertical; min-height: 32px; }
+
 /* ── Buttons ── */
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 20px; border-radius: 9px; font-size: 13px; font-weight: 600; letter-spacing: 0.2px; min-height: 40px; transition: all 0.15s ease; }
 .btn-sm { padding: 6px 13px; font-size: 12px; min-height: 32px; }
@@ -360,6 +376,10 @@ var S = {
   tacTopicFilters: { pillar: "", best_format: "", engagement_level: "", used: "" },
   tacTopicExpanded: {},     // {topicId: bool} which rows are expanded (Task 7)
   tacTopicAddForm: { topic: "", best_format: "", content_pillar: "", engagement_level: "", angle_notes: "", community_question: "", tac_answer: "" },
+  tacCalendar: null,        // full tac_calendar list from GET /api/tac-instagram/calendar (Task 8)
+  tacCalendarCollapsed: {}, // {week_label: bool} which week groups are collapsed; survives refetches
+  tacCalendarAddOpen: false,
+  tacCalendarAddForm: null, // filled by _tacCalendarBlankAddForm() when the Add row form first opens
   page: "pulse",
   weekIso: "",
   models: [],
@@ -1105,6 +1125,7 @@ function renderTacPage() {
   if (!page) { pageEl.innerHTML = '<p>Unknown page</p>'; return; }
   if (page.id === "today") { renderTacToday(); return; }
   if (page.id === "topic_bank") { renderTacTopicBank(); return; }
+  if (page.id === "calendar") { renderTacCalendar(); return; }
   pageEl.innerHTML = '<div class="page-h"><strong>' + esc(page.name) + '</strong></div>'
     + '<div class="page-b"><p style="color:var(--label2)">Coming in Task ' + page.task + '.</p></div>';
 }
@@ -1418,6 +1439,333 @@ function renderTacTopicBankBody() {
   }
 
   h += _tacTopicAddFormHtml();
+
+  body.innerHTML = h;
+}
+
+/* ── TAC Instagram: Calendar (Task 8) ─────────────────────
+   Rows grouped under their week_label heading (matching the spreadsheet's
+   "WEEK n · d Mon - d Mon YYYY" bands), rendered as a table so 143 rows over
+   13 weeks stays readable. Every non-status column is inline-editable: click
+   the cell, edit, blur saves via PATCH. On a PATCH failure the cell's value
+   (or the status select's value + colour class) is put back to what it was
+   before the edit and a toast explains why - never left showing an unsaved
+   value as if it saved.
+
+   Real imported rows are 143 rows / 13 weeks, all dated May-Aug 2026 (the
+   source spreadsheet's original plan), so on today's clock every week is
+   "past". Weeks whose rows are all dated before today collapse by default
+   (spec/brief didn't say either way; current + future weeks stay expanded).
+   Once Victor manually expands/collapses a week that choice sticks across
+   refetches (see S.tacCalendarCollapsed, never overwritten once set). */
+var TAC_STATUS_OPTIONS = ["Not Started", "In Progress", "Scheduled", "Published", "Skipped"];
+
+// The spreadsheet's 12 real columns (scripts/import_tac_instagram_calendar.py
+// CALENDAR_COLUMNS): Date, Day, Post Type, Content Pillar, Caption/Hook,
+// Story CTA + Link, Canva Project, Visual/Asset, Collab/Tag, Publish Time,
+// Status, Notes. Status gets its own always-visible <select> below; these
+// eleven are the plain inline-edit text/textarea cells.
+var TAC_CAL_COLUMNS = [
+  { field: "post_date", label: "Date" },
+  { field: "day_of_week", label: "Day" },
+  { field: "post_type", label: "Post Type" },
+  { field: "content_pillar", label: "Pillar" },
+  { field: "caption_hook", label: "Caption / Hook", multiline: true },
+  { field: "story_cta_link", label: "Story CTA + Link", multiline: true },
+  { field: "canva_project", label: "Canva Project" },
+  { field: "visual_asset", label: "Visual / Asset" },
+  { field: "collab_tag", label: "Collab / Tag" },
+  { field: "publish_time", label: "Publish Time" },
+  { field: "notes", label: "Notes", multiline: true }
+];
+
+function _tacStatusClass(status) {
+  switch (status) {
+    case "Not Started": return "status-not-started";
+    case "In Progress": return "status-in-progress";
+    case "Scheduled": return "status-scheduled";
+    case "Published": return "status-published";
+    case "Skipped": return "status-skipped";
+    default: return "status-not-started";
+  }
+}
+
+function _tacCalendarBlankAddForm() {
+  return {
+    post_date: "", day_of_week: "", post_type: "", content_pillar: "",
+    caption_hook: "", story_cta_link: "", canva_project: "", visual_asset: "",
+    collab_tag: "", publish_time: "", status: "Not Started", notes: "", week_label: ""
+  };
+}
+
+function _tacCalendarFetch() {
+  return api("/api/tac-instagram/calendar")
+    .then(function(d) {
+      S.tacCalendar = d.rows || [];
+      renderTacCalendarBody();
+    })
+    .catch(function(e) {
+      S.tacCalendar = null;
+      var body = $("tac-calendar-body");
+      if (body) body.innerHTML = '<p style="color:var(--red)">Could not load the calendar (' + esc(e.message) + '). Refresh the page to try again.</p>';
+    });
+}
+
+function renderTacCalendar() {
+  var pageEl = $("tac-page");
+  if (!pageEl) return;
+  if (!S.tacCalendarCollapsed) S.tacCalendarCollapsed = {};
+  if (!S.tacCalendarAddForm) S.tacCalendarAddForm = _tacCalendarBlankAddForm();
+  pageEl.innerHTML = '<div class="page-h"><strong>Calendar</strong></div>'
+    + '<div class="page-b" id="tac-calendar-body"><p style="color:var(--text-3)">Loading...</p></div>';
+  _tacCalendarFetch();
+}
+
+function _tacCalendarRowById(id) {
+  var rows = S.tacCalendar || [];
+  for (var i = 0; i < rows.length; i++) { if (rows[i].id === id) return rows[i]; }
+  return null;
+}
+
+function _tacCalendarGroups(rows) {
+  var order = [];
+  var map = {};
+  rows.forEach(function(r) {
+    var key = r.week_label || "";
+    if (!Object.prototype.hasOwnProperty.call(map, key)) { map[key] = []; order.push(key); }
+    map[key].push(r);
+  });
+  return order.map(function(key) { return { week_label: key, rows: map[key] }; });
+}
+
+function _tacWeekIsPast(rows) {
+  var today = new Date();
+  today.setHours(0, 0, 0, 0);
+  var maxDate = null;
+  rows.forEach(function(r) {
+    if (!r.post_date) return;
+    var d = new Date(r.post_date);
+    if (isNaN(d.getTime())) return;
+    if (!maxDate || d > maxDate) maxDate = d;
+  });
+  if (!maxDate) return false; // can't parse any date in the group - don't hide it
+  return maxDate < today;
+}
+
+function _tacCalendarEnsureCollapsedDefaults(groups) {
+  groups.forEach(function(g) {
+    if (Object.prototype.hasOwnProperty.call(S.tacCalendarCollapsed, g.week_label)) return;
+    S.tacCalendarCollapsed[g.week_label] = _tacWeekIsPast(g.rows);
+  });
+}
+
+function toggleTacCalendarWeek(key) {
+  S.tacCalendarCollapsed[key] = !S.tacCalendarCollapsed[key];
+  renderTacCalendarBody();
+}
+
+function toggleTacCalendarAddForm() {
+  S.tacCalendarAddOpen = !S.tacCalendarAddOpen;
+  if (S.tacCalendarAddOpen && !S.tacCalendarAddForm) S.tacCalendarAddForm = _tacCalendarBlankAddForm();
+  renderTacCalendarBody();
+}
+
+function fillTacCalendarPreset(kind) {
+  if (kind === "blank") {
+    S.tacCalendarAddForm = _tacCalendarBlankAddForm();
+    renderTacCalendarBody();
+    return;
+  }
+  var f = S.tacCalendarAddForm;
+  if (kind === "breaking_news") {
+    f.post_type = "Big Conversation (Breaking News Bump)";
+    f.content_pillar = "Breaking News";
+    f.notes = "Breaking news bump - replaces this week's planned Big Conversation. Move the bumped piece to next week.";
+  } else if (kind === "partner_promo") {
+    f.post_type = "Partner Promo";
+    f.content_pillar = "Partner Promo";
+    f.notes = "Partner promo - add the partner's handle in Collab / Tag.";
+  } else if (kind === "event_recap") {
+    f.post_type = "Reel";
+    f.content_pillar = "Event Recap";
+    f.notes = "Event recap Reel - post within 48 hours of the event. Also add 2-3 promo story rows about two weeks before it, timed off the Quarterly Planner.";
+  }
+  renderTacCalendarBody();
+}
+
+function addTacCalendarRow() {
+  var f = S.tacCalendarAddForm;
+  var body = {};
+  Object.keys(f).forEach(function(k) {
+    var v = (f[k] || "").toString().trim();
+    if (v) body[k] = v;
+  });
+  if (!body.post_date) { showToast("Add a date first", "error"); return; }
+  if (!body.status) body.status = "Not Started";
+  api("/api/tac-instagram/calendar", { method: "POST", body: body })
+    .then(function() {
+      S.tacCalendarAddForm = _tacCalendarBlankAddForm();
+      S.tacCalendarAddOpen = false;
+      showToast("Row added");
+      _tacCalendarFetch();
+    })
+    .catch(function(e) {
+      showToast("Could not add row (" + e.message + ")", "error");
+    });
+}
+
+function tacCalendarCellBlur(el) {
+  var rowId = parseInt(el.getAttribute("data-row"), 10);
+  var field = el.getAttribute("data-field");
+  var row = _tacCalendarRowById(rowId);
+  if (!row) return;
+  var newVal = el.value;
+  var oldVal = row[field] == null ? "" : String(row[field]);
+  if (newVal === oldVal) return;
+  var patchBody = {};
+  patchBody[field] = newVal === "" ? null : newVal;
+  api("/api/tac-instagram/calendar/" + rowId, { method: "PATCH", body: patchBody })
+    .then(function() {
+      row[field] = patchBody[field];
+      showToast("Saved");
+    })
+    .catch(function(e) {
+      el.value = oldVal; // never leave the cell showing an unsaved value as if it saved
+      showToast("Could not save (" + e.message + ")", "error");
+    });
+}
+
+function tacCalendarStatusChange(el) {
+  var rowId = parseInt(el.getAttribute("data-row"), 10);
+  var row = _tacCalendarRowById(rowId);
+  if (!row) return;
+  var newVal = el.value;
+  var oldVal = row.status;
+  if (newVal === oldVal) return;
+  api("/api/tac-instagram/calendar/" + rowId, { method: "PATCH", body: { status: newVal } })
+    .then(function() {
+      row.status = newVal;
+      el.className = "tac-status-select " + _tacStatusClass(newVal);
+      showToast("Status updated");
+    })
+    .catch(function(e) {
+      el.value = oldVal;
+      el.className = "tac-status-select " + _tacStatusClass(oldVal);
+      showToast("Could not update status (" + e.message + ")", "error");
+    });
+}
+
+function _tacCalendarEditableCell(row, field, multiline) {
+  var val = row[field] == null ? "" : row[field];
+  if (multiline) {
+    return '<textarea class="tac-cell-input" rows="2" data-row="' + row.id + '" data-field="' + field + '" onblur="tacCalendarCellBlur(this)">' + esc(val) + '</textarea>';
+  }
+  return '<input class="tac-cell-input" data-row="' + row.id + '" data-field="' + field + '" value="' + escAttr(val) + '" onblur="tacCalendarCellBlur(this)">';
+}
+
+function _tacCalendarStatusSelect(row) {
+  var h = '<select class="tac-status-select ' + _tacStatusClass(row.status) + '" data-row="' + row.id + '" onchange="tacCalendarStatusChange(this)">';
+  TAC_STATUS_OPTIONS.forEach(function(opt) {
+    h += '<option value="' + escAttr(opt) + '"' + (row.status === opt ? " selected" : "") + '>' + esc(opt) + '</option>';
+  });
+  h += '</select>';
+  return h;
+}
+
+function _tacCalendarTableHtml(rows) {
+  var h = '<table style="width:100%;border-collapse:collapse;">';
+  h += '<thead><tr style="border-bottom:1px solid var(--border);">';
+  TAC_CAL_COLUMNS.forEach(function(c) {
+    h += '<th style="text-align:left;padding:6px 8px;white-space:nowrap;font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.3px;">' + esc(c.label) + '</th>';
+  });
+  h += '<th style="text-align:left;padding:6px 8px;white-space:nowrap;font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.3px;">Status</th>';
+  h += '</tr></thead><tbody>';
+  rows.forEach(function(r, idx) {
+    h += '<tr style="border-bottom:1px solid var(--divider);' + (idx % 2 ? "background:var(--surface-warm);" : "") + '">';
+    TAC_CAL_COLUMNS.forEach(function(c) {
+      h += '<td style="padding:2px 4px;vertical-align:top;min-width:' + (c.multiline ? "160px" : "90px") + ';">' + _tacCalendarEditableCell(r, c.field, c.multiline) + '</td>';
+    });
+    h += '<td style="padding:2px 4px;vertical-align:top;">' + _tacCalendarStatusSelect(r) + '</td>';
+    h += '</tr>';
+  });
+  h += '</tbody></table>';
+  return h;
+}
+
+function _tacCalendarGroupHtml(g) {
+  var collapsed = !!S.tacCalendarCollapsed[g.week_label];
+  var label = g.week_label || "Ungrouped";
+  var h = '<div class="card mb8" style="padding:0;overflow:hidden;">';
+  h += '<div class="fr" style="justify-content:space-between;align-items:center;padding:10px 16px;cursor:pointer;background:var(--surface-warm);" onclick="toggleTacCalendarWeek(' + jsq(g.week_label) + ')">';
+  h += '<div style="font-size:13px;font-weight:700;">' + esc(label) + '</div>';
+  h += '<div style="font-size:12px;color:var(--text-3);">' + g.rows.length + " row" + (g.rows.length === 1 ? "" : "s") + " &middot; " + (collapsed ? "Show &darr;" : "Hide &uarr;") + '</div>';
+  h += '</div>';
+  if (!collapsed) {
+    h += '<div style="overflow-x:auto;">' + _tacCalendarTableHtml(g.rows) + '</div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+function _tacCalendarAddFormHtml() {
+  var f = S.tacCalendarAddForm;
+  var h = '<div class="card mb20" style="padding:16px;">';
+  h += '<div style="font-size:14px;font-weight:700;margin-bottom:10px;">Add row</div>';
+  h += '<div class="fr" style="gap:8px;flex-wrap:wrap;margin-bottom:14px;">';
+  h += '<button class="btn btn-sm btn-secondary" onclick="fillTacCalendarPreset(\'breaking_news\')">Breaking news bump</button>';
+  h += '<button class="btn btn-sm btn-secondary" onclick="fillTacCalendarPreset(\'partner_promo\')">Partner promo</button>';
+  h += '<button class="btn btn-sm btn-secondary" onclick="fillTacCalendarPreset(\'event_recap\')">Event recap</button>';
+  h += '<button class="btn btn-sm btn-secondary" onclick="fillTacCalendarPreset(\'blank\')">Blank</button>';
+  h += '</div>';
+
+  h += '<div class="fr" style="gap:12px;flex-wrap:wrap;align-items:flex-start;">';
+  h += '<div class="form-group" style="flex:1;min-width:130px;"><label>Date</label><input class="form-input" value="' + escAttr(f.post_date) + '" oninput="S.tacCalendarAddForm.post_date=this.value" placeholder="e.g. 3 Sep 2026"></div>';
+  h += '<div class="form-group" style="flex:1;min-width:110px;"><label>Day</label><input class="form-input" value="' + escAttr(f.day_of_week) + '" oninput="S.tacCalendarAddForm.day_of_week=this.value" placeholder="e.g. Thursday"></div>';
+  h += '<div class="form-group" style="flex:1;min-width:150px;"><label>Post type</label><input class="form-input" value="' + escAttr(f.post_type) + '" oninput="S.tacCalendarAddForm.post_type=this.value"></div>';
+  h += '<div class="form-group" style="flex:1;min-width:150px;"><label>Content pillar</label><input class="form-input" value="' + escAttr(f.content_pillar) + '" oninput="S.tacCalendarAddForm.content_pillar=this.value"></div>';
+  h += '</div>';
+  h += '<div class="fr" style="gap:12px;flex-wrap:wrap;align-items:flex-start;">';
+  h += '<div class="form-group" style="flex:1;min-width:150px;"><label>Canva project</label><input class="form-input" value="' + escAttr(f.canva_project) + '" oninput="S.tacCalendarAddForm.canva_project=this.value"></div>';
+  h += '<div class="form-group" style="flex:1;min-width:150px;"><label>Visual / asset</label><input class="form-input" value="' + escAttr(f.visual_asset) + '" oninput="S.tacCalendarAddForm.visual_asset=this.value"></div>';
+  h += '<div class="form-group" style="flex:1;min-width:130px;"><label>Collab / tag</label><input class="form-input" value="' + escAttr(f.collab_tag) + '" oninput="S.tacCalendarAddForm.collab_tag=this.value"></div>';
+  h += '<div class="form-group" style="flex:1;min-width:110px;"><label>Publish time</label><input class="form-input" value="' + escAttr(f.publish_time) + '" oninput="S.tacCalendarAddForm.publish_time=this.value" placeholder="e.g. 9:00 AM"></div>';
+  h += '</div>';
+  h += '<div class="fr" style="gap:12px;flex-wrap:wrap;align-items:flex-start;">';
+  h += '<div class="form-group" style="flex:1;min-width:200px;"><label>Week label</label><input class="form-input" value="' + escAttr(f.week_label) + '" oninput="S.tacCalendarAddForm.week_label=this.value" placeholder="Blank goes into Ungrouped"></div>';
+  h += '<div class="form-group" style="flex:1;min-width:150px;"><label>Status</label><select class="form-input" onchange="S.tacCalendarAddForm.status=this.value">';
+  TAC_STATUS_OPTIONS.forEach(function(opt) {
+    h += '<option value="' + escAttr(opt) + '"' + (f.status === opt ? " selected" : "") + '>' + esc(opt) + '</option>';
+  });
+  h += '</select></div>';
+  h += '</div>';
+  h += '<div class="form-group"><label>Caption / hook</label><textarea class="form-input" rows="2" oninput="S.tacCalendarAddForm.caption_hook=this.value">' + esc(f.caption_hook) + '</textarea></div>';
+  h += '<div class="form-group"><label>Story CTA + link</label><textarea class="form-input" rows="2" oninput="S.tacCalendarAddForm.story_cta_link=this.value">' + esc(f.story_cta_link) + '</textarea></div>';
+  h += '<div class="form-group"><label>Notes</label><textarea class="form-input" rows="2" oninput="S.tacCalendarAddForm.notes=this.value">' + esc(f.notes) + '</textarea></div>';
+  h += '<button class="btn btn-success" onclick="addTacCalendarRow()">Add row</button>';
+  h += '</div>';
+  return h;
+}
+
+function renderTacCalendarBody() {
+  var body = $("tac-calendar-body");
+  if (!body) return;
+  var rows = S.tacCalendar || [];
+  var groups = _tacCalendarGroups(rows);
+  _tacCalendarEnsureCollapsedDefaults(groups);
+
+  var h = '';
+  h += '<div class="fr" style="justify-content:space-between;align-items:center;margin-bottom:14px;">';
+  h += '<div style="font-size:12px;color:var(--text-3);">' + rows.length + " row" + (rows.length === 1 ? "" : "s") + " across " + groups.length + " week" + (groups.length === 1 ? "" : "s") + '</div>';
+  h += '<button class="btn btn-sm ' + (S.tacCalendarAddOpen ? "btn-secondary" : "btn-success") + '" onclick="toggleTacCalendarAddForm()">' + (S.tacCalendarAddOpen ? "Close" : "+ Add row") + '</button>';
+  h += '</div>';
+
+  if (S.tacCalendarAddOpen) h += _tacCalendarAddFormHtml();
+
+  if (!rows.length) {
+    h += '<p style="color:var(--text-3);font-size:13px;">No calendar rows yet.</p>';
+  } else {
+    groups.forEach(function(g) { h += _tacCalendarGroupHtml(g); });
+  }
 
   body.innerHTML = h;
 }
