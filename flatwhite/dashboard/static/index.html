@@ -1703,23 +1703,57 @@ function _tacCalendarSendCellPatch(row, field, el, newVal) {
     });
 }
 
+// Status shares _tacCalendarCellInFlight with the text cells (same key
+// scheme, "rowId|status" in place of "rowId|field") - a <select> can fire
+// back-to-back change events faster than any text blur, so it needs the same
+// queue-instead-of-race protection. The only difference from
+// _tacCalendarSendCellPatch is that settle-time resync has to write BOTH
+// el.value and el.className from row.status - the colour class is part of
+// the state of record here too, not just the text.
 function tacCalendarStatusChange(el) {
   var rowId = parseInt(el.getAttribute("data-row"), 10);
   var row = _tacCalendarRowById(rowId);
   if (!row) return;
+  var cellKey = rowId + "|status";
   var newVal = el.value;
+
+  if (_tacCalendarCellInFlight[cellKey]) {
+    _tacCalendarCellInFlight[cellKey].nextVal = newVal;
+    return;
+  }
+
   var oldVal = row.status;
   if (newVal === oldVal) return;
-  api("/api/tac-instagram/calendar/" + rowId, { method: "PATCH", body: { status: newVal } })
+  _tacCalendarSendStatusPatch(row, el, newVal);
+}
+
+function _tacCalendarSendStatusPatch(row, el, newVal) {
+  var cellKey = row.id + "|status";
+  var inFlight = { nextVal: null };
+  _tacCalendarCellInFlight[cellKey] = inFlight;
+  el.disabled = true;
+  api("/api/tac-instagram/calendar/" + row.id, { method: "PATCH", body: { status: newVal } })
     .then(function() {
       row.status = newVal;
-      el.className = "tac-status-select " + _tacStatusClass(newVal);
       showToast("Status updated");
     })
     .catch(function(e) {
-      el.value = oldVal;
-      el.className = "tac-status-select " + _tacStatusClass(oldVal);
+      // row.status (the state of record) is untouched - nothing to revert here.
       showToast("Could not update status (" + e.message + ")", "error");
+    })
+    .then(function() {
+      delete _tacCalendarCellInFlight[cellKey];
+      el.disabled = false;
+      var queued = inFlight.nextVal;
+      if (queued !== null && queued !== row.status) {
+        _tacCalendarSendStatusPatch(row, el, queued);
+        return;
+      }
+      // Nothing queued (or it already matches the state of record) - resync
+      // both the value AND the colour class from row.status, never leave
+      // either showing an in-flight or reverted-to-stale value.
+      el.value = row.status;
+      el.className = "tac-status-select " + _tacStatusClass(row.status);
     });
 }
 
