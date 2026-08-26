@@ -487,6 +487,27 @@ def test_generate_survey_week_rows_content_pillar_and_notes(temp_db):
         assert "Graduate Salary Survey" in r["notes"]
 
 
+def test_generate_survey_week_rows_month_and_year_boundary(temp_db):
+    # 1 Jan 2027 is a Friday - the Monday of that week is 28 Dec 2026, which
+    # crosses both a month boundary and a year boundary from the launch_date.
+    item_id = _insert_quarterly(
+        campaign_event="New Year Survey", launch_date="1 Jan 2027",
+    )
+
+    row_ids = tis.generate_survey_week_rows(item_id)
+
+    rows = tis.list_calendar()
+    by_id = {r["id"]: r for r in rows}
+    ordered = [by_id[i] for i in row_ids]
+
+    expected_dates = [
+        "28 Dec 2026", "29 Dec 2026", "30 Dec 2026", "31 Dec 2026", "1 Jan 2027",
+    ]
+    expected_days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+    assert [r["post_date"] for r in ordered] == expected_dates
+    assert [r["day_of_week"] for r in ordered] == expected_days
+
+
 def test_generate_survey_week_rows_monday_already_a_monday(temp_db):
     # 1 Jun 2026 is already a Monday - Monday of that week should stay 1 Jun 2026.
     item_id = _insert_quarterly(
