@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 
 import flatwhite.dashboard.api as api_module
 from flatwhite.dashboard import tac_instagram_state as tis
+from flatwhite.dashboard import big_conversation_bank as bcb
 
 
 @pytest.fixture
@@ -393,3 +394,137 @@ def test_topic_count_is_118_through_the_live_endpoint(tmp_path: Path):
 
     assert resp.status_code == 200
     assert len(resp.json()["topics"]) == 118
+
+
+# ---------------------------------------------------------------------------
+# Build carousel (headless community-carousel skill run)
+# ---------------------------------------------------------------------------
+# Mirrors tests/test_brains_trust_refresh.py's endpoint tests: skill_runner
+# .start_run is always patched here, so no test in this file ever launches a
+# real `claude -p` run. big_conversation_bank.INSTAGRAM_OUTPUT_DIR is
+# monkeypatched to a tmp_path tree, same as tests/test_big_conversation_api.py,
+# so no test touches the real Instagram output folder either.
+
+
+@pytest.fixture
+def carousel_env(tmp_path, monkeypatch):
+    """A fake sorted topic folder with one screenshot, and list_topics()
+    patched to return one matching topic bank row."""
+    output_dir = tmp_path / "output"
+    topic_folder = output_dir / "Sunday scaries"
+    topic_folder.mkdir(parents=True)
+    (topic_folder / "screenshot_0001.png").write_bytes(b"x")
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", output_dir)
+    monkeypatch.setattr(api_module, "_claude_available", lambda: True)
+    with patch.object(
+        tis, "list_topics",
+        return_value=[{"id": 7, "topic": "Sunday scaries"}],
+    ):
+        yield output_dir
+
+
+def test_build_carousel_starts_a_run(client, carousel_env):
+    with patch(
+        "flatwhite.dashboard.skill_runner.start_run",
+        return_value=("carrun1", True),
+    ) as mock_start:
+        resp = client.post("/api/tac-instagram/build-carousel/7")
+    assert resp.status_code == 200
+    assert resp.json() == {"run_id": "carrun1", "started": True}
+    args, kwargs = mock_start.call_args
+    assert args[0] == "tac-carousel-build"
+    assert args[1] == "tac-carousel-7"
+    argv = args[2]
+    assert argv[0].endswith("claude")
+    assert "-p" in argv
+    assert kwargs["cwd"] == str(carousel_env)
+    assert callable(kwargs.get("on_complete"))
+
+
+def test_build_carousel_429s_on_concurrency_cap(client, carousel_env):
+    with patch(
+        "flatwhite.dashboard.skill_runner.start_run",
+        side_effect=RuntimeError("Another skill run is already in progress."),
+    ):
+        resp = client.post("/api/tac-instagram/build-carousel/7")
+    assert resp.status_code == 429
+    assert "already in progress" in resp.json()["error"]
+
+
+def test_build_carousel_404s_when_topic_not_found(client, carousel_env):
+    with patch.object(tis, "list_topics", return_value=[]), patch(
+        "flatwhite.dashboard.skill_runner.start_run",
+    ) as mock_start:
+        resp = client.post("/api/tac-instagram/build-carousel/999")
+    assert resp.status_code == 404
+    mock_start.assert_not_called()
+
+
+def test_build_carousel_404s_when_no_sorted_folder(client, tmp_path, monkeypatch):
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    monkeypatch.setattr(bcb, "INSTAGRAM_OUTPUT_DIR", output_dir)
+    monkeypatch.setattr(api_module, "_claude_available", lambda: True)
+    with patch.object(
+        tis, "list_topics", return_value=[{"id": 7, "topic": "No Folder Topic"}]
+    ), patch("flatwhite.dashboard.skill_runner.start_run") as mock_start:
+        resp = client.post("/api/tac-instagram/build-carousel/7")
+    assert resp.status_code == 404
+    mock_start.assert_not_called()
+
+
+def test_build_carousel_on_complete_saves_bank_item(client, carousel_env):
+    with patch(
+        "flatwhite.dashboard.skill_runner.start_run",
+        return_value=("carrun1", True),
+    ) as mock_start:
+        client.post("/api/tac-instagram/build-carousel/7")
+    on_complete = mock_start.call_args.kwargs["on_complete"]
+
+    fake_record = {
+        "id": "carrun1",
+        "status": "done",
+        "output": (
+            "some preamble\n"
+            "CAROUSEL_SCRIPT_START\n"
+            "Slide 1: hook\nSlide 2: A vs B\n"
+            "CAROUSEL_SCRIPT_END\n"
+            "CAROUSEL_BUILD_DONE\n"
+        ),
+    }
+    with patch("flatwhite.db.save_bank_item", return_value=42) as mock_save:
+        on_complete(fake_record)
+    mock_save.assert_called_once()
+    call_kwargs = mock_save.call_args.kwargs
+    assert call_kwargs["segment_type"] == "tac_instagram_carousel"
+    assert call_kwargs["title"] == "Sunday scaries"
+    assert call_kwargs["body_text"] == "Slide 1: hook\nSlide 2: A vs B"
+    assert call_kwargs["source_note"].startswith("Built ")
+
+
+def test_build_carousel_on_complete_skips_save_when_run_failed(client, carousel_env):
+    with patch(
+        "flatwhite.dashboard.skill_runner.start_run",
+        return_value=("carrun1", True),
+    ) as mock_start:
+        client.post("/api/tac-instagram/build-carousel/7")
+    on_complete = mock_start.call_args.kwargs["on_complete"]
+
+    fake_record = {"id": "carrun1", "status": "failed", "output": "boom"}
+    with patch("flatwhite.db.save_bank_item") as mock_save:
+        on_complete(fake_record)
+    mock_save.assert_not_called()
+
+
+def test_build_carousel_on_complete_skips_save_when_no_markers(client, carousel_env):
+    with patch(
+        "flatwhite.dashboard.skill_runner.start_run",
+        return_value=("carrun1", True),
+    ) as mock_start:
+        client.post("/api/tac-instagram/build-carousel/7")
+    on_complete = mock_start.call_args.kwargs["on_complete"]
+
+    fake_record = {"id": "carrun1", "status": "done", "output": "no markers here"}
+    with patch("flatwhite.db.save_bank_item") as mock_save:
+        on_complete(fake_record)
+    mock_save.assert_not_called()

@@ -3940,6 +3940,97 @@ async def api_run_screenshot_sort(request: Request) -> JSONResponse:
     return JSONResponse({"run_id": run_id, "started": started})
 
 
+_CAROUSEL_SCRIPT_RE = re.compile(
+    r"CAROUSEL_SCRIPT_START\n(.*?)\nCAROUSEL_SCRIPT_END", re.DOTALL
+)
+
+
+def _parse_carousel_body(output: str | None) -> str | None:
+    """Pull the finished slide script the run printed between its markers."""
+    m = _CAROUSEL_SCRIPT_RE.search(output or "")
+    return m.group(1).strip() if m else None
+
+
+@app.post("/api/tac-instagram/build-carousel/{topic_id}")
+def api_tac_build_carousel(topic_id: int) -> JSONResponse:
+    """Build an Instagram carousel from a farmed topic's sorted community
+    screenshots, headless, via the community-carousel skill. Same engine as
+    the Big Conversation skill run (skill_runner.start_run) - a real `claude
+    -p` subprocess, cwd'd into the Instagram DM screenshotter output folder.
+    Progress is polled via the pre-existing GET /api/skill-run/{run_id}; once
+    the run finishes, on_complete parses the printed slide script out of the
+    run's output and saves it to the Content Bank so it shows up there ready
+    to use."""
+    from flatwhite.dashboard import tac_instagram_state as _tis
+
+    topic = next((t for t in _tis.list_topics() if t["id"] == topic_id), None)
+    if topic is None:
+        return JSONResponse({"error": "Topic not found"}, status_code=404)
+    topic_name = topic["topic"]
+
+    if not _claude_available():
+        return JSONResponse(
+            {"error": "Claude Code isn't installed on this machine, so the "
+                      "dashboard can't run the skill. Run it in a Claude session "
+                      "instead."}, status_code=503)
+
+    folder = _bcb.INSTAGRAM_OUTPUT_DIR / topic_name
+    if not folder.is_dir():
+        return JSONResponse(
+            {"error": f'No sorted screenshot folder found for "{topic_name}" '
+                      f"under {_bcb.INSTAGRAM_OUTPUT_DIR}. Sort the Instagram DM "
+                      "screenshots for this topic first."}, status_code=404)
+
+    out_dir = str(_bcb.INSTAGRAM_OUTPUT_DIR)
+    prompt = (
+        f'Use the community-carousel skill to build an Instagram carousel from '
+        f'the community submissions in the topic folder "{topic_name}" (its '
+        f'sorted tiers and RED HOT picks, inside {out_dir}, the current '
+        f'directory). Follow the skill exactly: filter the responses, then '
+        f'order them into the A/B conversation-scroll format (or the '
+        f'structured-takes format if the responses cluster into clean camps), '
+        f'6-8 slides. Do not ask me any questions; complete the whole skill '
+        f'and finish. When the carousel is built, print the finished '
+        f'slide-by-slide script between these two markers, each on its own '
+        f'line, with nothing else on those lines:\n'
+        f'CAROUSEL_SCRIPT_START\n'
+        f'<the full slide script here>\n'
+        f'CAROUSEL_SCRIPT_END\n'
+        f'Then print exactly on its own line: CAROUSEL_BUILD_DONE'
+    )
+    run_key = f"tac-carousel-{topic_id}"
+
+    def _on_done(record: dict | None) -> None:
+        if not record or record.get("status") != "done":
+            return
+        body_text = _parse_carousel_body(record.get("output"))
+        if not body_text:
+            return
+        from flatwhite.db import save_bank_item
+
+        save_bank_item(
+            segment_type="tac_instagram_carousel",
+            title=topic_name,
+            body_text=body_text,
+            source_note=f"Built {_dt.date.today().isoformat()}",
+        )
+
+    try:
+        run_id, started = _skill_runner.start_run(
+            "tac-carousel-build", run_key,
+            _skill_argv(prompt, out_dir), cwd=out_dir,
+            success_marker="CAROUSEL_BUILD_DONE",
+            marker_fail_error=(
+                "The carousel build ended without finishing (it may have "
+                "errored partway). Nothing was lost - try Build carousel "
+                "again, or run the community-carousel skill in a Claude "
+                "session."),
+            on_complete=_on_done)
+    except RuntimeError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=429)
+    return JSONResponse({"run_id": run_id, "started": started})
+
+
 @app.get("/api/skill-run/{run_id}")
 def api_skill_run_status(run_id: str) -> JSONResponse:
     """Poll a headless skill run's status."""
