@@ -209,6 +209,57 @@ CREATE TABLE IF NOT EXISTS content_bank (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS tac_topic_bank (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    topic_number INTEGER,
+    topic TEXT NOT NULL,
+    best_format TEXT,
+    content_pillar TEXT,
+    engagement_level TEXT,
+    used INTEGER NOT NULL DEFAULT 0,
+    used_date TEXT,
+    angle_notes TEXT,
+    community_question TEXT,
+    tac_answer TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS tac_calendar (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_date TEXT,
+    day_of_week TEXT,
+    post_type TEXT,
+    content_pillar TEXT,
+    caption_hook TEXT,
+    story_cta_link TEXT,
+    canva_project TEXT,
+    visual_asset TEXT,
+    collab_tag TEXT,
+    publish_time TEXT,
+    status TEXT NOT NULL DEFAULT 'Not Started',
+    notes TEXT,
+    week_label TEXT,
+    topic_bank_id INTEGER REFERENCES tac_topic_bank(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS tac_quarterly_planner (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_number INTEGER,
+    campaign_event TEXT NOT NULL,
+    type TEXT,
+    launch_date TEXT,
+    close_event_date TEXT,
+    results_publish TEXT,
+    sponsor INTEGER NOT NULL DEFAULT 0,
+    notes TEXT,
+    quarter_label TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 

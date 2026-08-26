@@ -14,6 +14,12 @@ __pycache__/
 !data/beehiiv_fw_ground_truth.json
 !data/beehiiv_fw_ground_truth_ANALYSIS.md
 
+# TAC Instagram tab: source workbook copy is corpus, not transient state -
+# keep it tracked (the blanket "data/" rule above also matches flatwhite/data/).
+!flatwhite/data/
+!flatwhite/data/tac_instagram/
+!flatwhite/data/tac_instagram/TAC_Instagram_Content_Calendar_2026.xlsx
+
 # Never commit env backups - they carry live API keys (blocked by GitHub push
 # protection 10 Aug 2026 after a git add -A swept one in).
 .env.*
