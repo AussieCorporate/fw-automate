@@ -530,8 +530,21 @@ function jsq(s) {
   // A JS single-quoted string literal, safe to embed inside a
   // double-quoted HTML attribute (e.g. onclick="fn(' + jsq(x) + ')").
   // Topic names can contain colons/spaces (e.g. "Teams:Slack Monitoring")
-  // so plain concatenation is not safe here.
-  return "'" + String(s).replace(/\\/g, "\\\\").replace(/'/g, "\\'") + "'";
+  // so plain concatenation is not safe here. Attribute-embedded ONLY - every
+  // call site in this file wraps the result inside a double-quoted on*
+  // attribute (onclick=/onchange=/ondragstart=), never a single-quoted one
+  // and never a bare JS context, so escaping " (the attribute's own
+  // delimiter) here is always correct and never over-escapes. Also escapes
+  // \r/\n - a raw line break inside a JS string literal is a SyntaxError,
+  // and free-text fields (community questions, notes) can carry one. See
+  // tests/js/tac_jsq_frontend_test.js.
+  return "'" + String(s)
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'")
+    .replace(/"/g, "&quot;")
+    .replace(/\r/g, "\\r")
+    .replace(/\n/g, "\\n")
+    + "'";
 }
 
 // esc() round-trips through a text node, so it escapes & < > but leaves a

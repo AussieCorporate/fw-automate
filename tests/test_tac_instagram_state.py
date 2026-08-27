@@ -333,6 +333,34 @@ def test_add_topic_minimal_args(temp_db):
     assert rows[0]["best_format"] is None
 
 
+def test_add_topic_rejects_exact_duplicate(temp_db):
+    # F4 (fix wave): duplicate topic text defeats the carousel verification
+    # title-match (_tacCarouselFindNewMatch relies on title being distinct
+    # enough to identify THIS run's save) AND shares the script-file path
+    # (both duplicates would sort into the same output folder by topic name,
+    # so a second build would silently read/overwrite the first's script).
+    tis.add_topic(topic="Sunday scaries")
+
+    with pytest.raises(ValueError):
+        tis.add_topic(topic="Sunday scaries")
+
+    # Only the first insert persisted.
+    rows = tis.list_topics()
+    assert len(rows) == 1
+
+
+def test_add_topic_dedup_is_case_sensitive(temp_db):
+    # Explicitly case-SENSITIVE per spec - "Sunday Scaries" and
+    # "sunday scaries" are different topic bank rows, not a collision.
+    tis.add_topic(topic="Sunday scaries")
+
+    new_id = tis.add_topic(topic="sunday scaries")
+
+    rows = tis.list_topics()
+    assert len(rows) == 2
+    assert any(r["id"] == new_id and r["topic"] == "sunday scaries" for r in rows)
+
+
 # ---------------------------------------------------------------------------
 # tac_calendar CRUD
 # ---------------------------------------------------------------------------
@@ -416,6 +444,17 @@ def test_update_calendar_row_rejects_unknown_field(temp_db):
         tis.update_calendar_row(row_id, not_a_real_field="x")
 
 
+def test_update_calendar_row_blanking_status_raises_integrity_error(temp_db):
+    # tac_calendar.status is NOT NULL (DEFAULT only applies on INSERT, not on
+    # an explicit UPDATE ... SET status = NULL). Pins the real sqlite3
+    # exception this layer raises - the API route (F2, fix wave) is what
+    # turns this into a plain-English 400, not this function.
+    row_id = tis.add_calendar_row(post_date="11 May 2026", status="Scheduled")
+
+    with pytest.raises(sqlite3.IntegrityError):
+        tis.update_calendar_row(row_id, status=None)
+
+
 # ---------------------------------------------------------------------------
 # tac_quarterly_planner
 # ---------------------------------------------------------------------------
@@ -485,6 +524,17 @@ def test_update_quarterly_item_rejects_unknown_field(temp_db):
 
     with pytest.raises(ValueError):
         tis.update_quarterly_item(item_id, not_a_real_field="x")
+
+
+def test_update_quarterly_item_blanking_campaign_event_raises_integrity_error(temp_db):
+    # tac_quarterly_planner.campaign_event is NOT NULL with no DEFAULT.
+    # Pins the real sqlite3 exception this layer raises - the API route (F2,
+    # fix wave) is what turns this into a plain-English 400, not this
+    # function.
+    item_id = tis.add_quarterly_item(campaign_event="Graduate Salary Survey")
+
+    with pytest.raises(sqlite3.IntegrityError):
+        tis.update_quarterly_item(item_id, campaign_event=None)
 
 
 # ---------------------------------------------------------------------------
@@ -581,6 +631,20 @@ def test_generate_survey_week_rows_raises_for_missing_launch_date(temp_db):
     )
 
     with pytest.raises(ValueError):
+        tis.generate_survey_week_rows(item_id)
+
+
+def test_generate_survey_week_rows_raises_unparseable_date_error_for_bad_format(temp_db):
+    # "TBD Sep 2026" is real data in Victor's planner (rows 2 and 7) - launch
+    # dates are inline-editable so this shape can land in the DB for real,
+    # not just a hypothetical. Must raise the DISTINCT UnparseableDateError
+    # type (a ValueError subclass), not be indistinguishable from a missing
+    # item or a missing launch_date.
+    item_id = _insert_quarterly(
+        campaign_event="Graduate Salary Survey", launch_date="TBD Sep 2026",
+    )
+
+    with pytest.raises(tis.UnparseableDateError):
         tis.generate_survey_week_rows(item_id)
 
 

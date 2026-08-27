@@ -101,6 +101,18 @@ def test_post_topics_requires_topic_field(client):
     mock_add.assert_not_called()
 
 
+def test_post_topics_400s_on_exact_duplicate(client):
+    # F4 (fix wave): tis.add_topic raises ValueError on an exact-match
+    # duplicate (case-sensitive) - the route must turn that into a plain
+    # 400, not let it bubble up as a raw 500.
+    with patch.object(
+        tis, "add_topic", side_effect=ValueError("Topic already exists: 'Sunday scaries'")
+    ):
+        resp = client.post("/api/tac-instagram/topics", json={"topic": "Sunday scaries"})
+    assert resp.status_code == 400
+    assert resp.json()["error"] == "That topic is already in the bank"
+
+
 def test_post_mark_used_returns_ok(client):
     with patch.object(tis, "mark_topic_used", return_value=True) as mock_mark:
         resp = client.post("/api/tac-instagram/topics/7/mark-used")
@@ -233,6 +245,26 @@ def test_patch_calendar_404s_for_unknown_row(client):
     assert resp.status_code == 404
 
 
+def test_patch_calendar_blank_status_returns_400_not_raw_500(client):
+    # F2 (fix wave): tac_calendar.status is NOT NULL (with a DEFAULT that
+    # only applies on INSERT, not on an explicit UPDATE ... SET status =
+    # NULL). Before the fix, sqlite3.IntegrityError propagated straight out
+    # of the route as an unhandled exception -> FastAPI's raw 500, which the
+    # frontend toast shows as JSON-parse garbage. Must be a plain 400.
+    import sqlite3
+
+    with patch.object(
+        tis,
+        "update_calendar_row",
+        side_effect=sqlite3.IntegrityError(
+            "NOT NULL constraint failed: tac_calendar.status"
+        ),
+    ):
+        resp = client.patch("/api/tac-instagram/calendar/5", json={"status": None})
+    assert resp.status_code == 400
+    assert resp.json()["error"] == "Status needs a value"
+
+
 # ---------------------------------------------------------------------------
 # Quarterly planner
 # ---------------------------------------------------------------------------
@@ -334,6 +366,27 @@ def test_patch_quarterly_404s_for_unknown_item(client):
     assert resp.status_code == 404
 
 
+def test_patch_quarterly_blank_campaign_event_returns_400_not_raw_500(client):
+    # F2 (fix wave): PATCH {"campaign_event": null} (what the frontend sends
+    # when an inline cell is cleared - see _tacQuarterlyCoerce in index.html,
+    # "" is coerced to null before the PATCH) hits tac_quarterly_planner
+    # .campaign_event's NOT NULL column -> sqlite3.IntegrityError. Before the
+    # fix this was an unhandled exception -> raw 500 -> the frontend toast
+    # showed JSON-parse garbage instead of a plain-English error.
+    import sqlite3
+
+    with patch.object(
+        tis,
+        "update_quarterly_item",
+        side_effect=sqlite3.IntegrityError(
+            "NOT NULL constraint failed: tac_quarterly_planner.campaign_event"
+        ),
+    ):
+        resp = client.patch("/api/tac-instagram/quarterly/5", json={"campaign_event": None})
+    assert resp.status_code == 400
+    assert resp.json()["error"] == "The campaign or event needs a name"
+
+
 def test_post_generate_survey_week_returns_created_row_ids(client):
     with patch.object(
         tis, "generate_survey_week_rows", return_value=[101, 102, 103, 104, 105]
@@ -364,6 +417,25 @@ def test_post_generate_survey_week_400s_on_missing_launch_date(client):
         resp = client.post("/api/tac-instagram/quarterly/3/generate-survey-week")
     assert resp.status_code == 400
     assert resp.json()["error"] == "That planner item has no launch date"
+
+
+def test_post_generate_survey_week_400s_on_unparseable_launch_date(client):
+    # F1 (fix wave): "TBD Sep 2026" is real data in Victor's planner (rows 2
+    # and 7) and launch dates are inline-editable, so this is not a
+    # hypothetical. Before the fix, tac_instagram_state.UnparseableDateError
+    # is a ValueError whose message doesn't contain "launch_date", so the old
+    # string-sniffing route code fell through to the wrong "not found"
+    # message. Must get its own plain-English detail instead.
+    with patch.object(
+        tis,
+        "generate_survey_week_rows",
+        side_effect=tis.UnparseableDateError("Unrecognised date format: 'TBD Sep 2026'"),
+    ):
+        resp = client.post("/api/tac-instagram/quarterly/2/generate-survey-week")
+    assert resp.status_code == 400
+    assert resp.json()["error"] == (
+        "That launch date could not be read as a date - try a format like 2 Jun 2026"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -695,6 +767,25 @@ def test_tac_carousel_frontend_js_pinning_tests_pass():
     )
     assert result.returncode == 0, (
         "tac_carousel_frontend_test.js failed:\n"
+        + result.stdout + result.stderr
+    )
+    assert "all assertions passed" in result.stdout
+
+
+# F3 (fix wave, 27 Aug 2026): same pattern as the carousel pinning test above
+# - no browser/JS harness in this repo, so jsq()'s hardening (escape " and
+# \n/\r, not just \ and ') is pinned by running a real Node assertion script
+# that simulates a browser's HTML-attribute tokenizer + inline-handler
+# compile step. See tests/js/tac_jsq_frontend_test.js for the assertions.
+def test_tac_jsq_frontend_js_pinning_tests_pass():
+    import subprocess
+
+    script = Path(__file__).parent / "js" / "tac_jsq_frontend_test.js"
+    result = subprocess.run(
+        ["node", str(script)], capture_output=True, text=True, timeout=30
+    )
+    assert result.returncode == 0, (
+        "tac_jsq_frontend_test.js failed:\n"
         + result.stdout + result.stderr
     )
     assert "all assertions passed" in result.stdout

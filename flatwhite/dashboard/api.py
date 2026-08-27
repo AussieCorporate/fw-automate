@@ -17,6 +17,7 @@ import re
 import json
 import os
 import secrets
+import sqlite3
 import threading
 import time as _time
 from pathlib import Path
@@ -1620,6 +1621,26 @@ def _tac_unknown_field_error(exc: ValueError) -> str:
     fields = [f.strip().strip("'\"") for f in match.group(1).split(",") if f.strip()]
     return "Unknown field: " + ", ".join(fields)
 
+
+# Inline cell edits can blank a NOT NULL column (e.g. clearing the Campaign /
+# Event text cell sends {"campaign_event": null} - see _tacQuarterlyCoerce in
+# index.html, which turns "" into null before the PATCH). SQLite raises
+# sqlite3.IntegrityError for that, which FastAPI would otherwise let through
+# as a raw 500 - the frontend toast then shows JSON-parse garbage instead of
+# a plain-English error. Mapped by column name (sqlite3's message is "NOT
+# NULL constraint failed: <table>.<column>") so both PATCH routes below can
+# share one lookup.
+_TAC_BLANK_FIELD_MESSAGES = {
+    "campaign_event": "The campaign or event needs a name",
+    "status": "Status needs a value",
+}
+
+
+def _tac_integrity_error(exc: sqlite3.IntegrityError) -> str:
+    """Turn a NOT NULL constraint failure into a plain-English detail."""
+    column = str(exc).rsplit(".", 1)[-1]
+    return _TAC_BLANK_FIELD_MESSAGES.get(column, "That field can't be left blank")
+
 @app.get("/api/tac-instagram/topics")
 def api_tac_topics(
     pillar: str | None = None,
@@ -1650,15 +1671,18 @@ async def api_tac_add_topic(request: Request) -> JSONResponse:
     topic = (body.get("topic") or "").strip()
     if not topic:
         return JSONResponse({"error": "topic is required"}, status_code=400)
-    topic_id = _tis.add_topic(
-        topic=topic,
-        best_format=body.get("best_format"),
-        content_pillar=body.get("content_pillar"),
-        engagement_level=body.get("engagement_level"),
-        angle_notes=body.get("angle_notes"),
-        community_question=body.get("community_question"),
-        tac_answer=body.get("tac_answer"),
-    )
+    try:
+        topic_id = _tis.add_topic(
+            topic=topic,
+            best_format=body.get("best_format"),
+            content_pillar=body.get("content_pillar"),
+            engagement_level=body.get("engagement_level"),
+            angle_notes=body.get("angle_notes"),
+            community_question=body.get("community_question"),
+            tac_answer=body.get("tac_answer"),
+        )
+    except ValueError:
+        return JSONResponse({"error": "That topic is already in the bank"}, status_code=400)
     return JSONResponse({"id": topic_id})
 
 
@@ -1717,6 +1741,8 @@ async def api_tac_update_calendar_row(row_id: int, request: Request) -> JSONResp
         return JSONResponse({"error": "At least one field is required"}, status_code=400)
     try:
         updated = _tis.update_calendar_row(row_id, **body)
+    except sqlite3.IntegrityError as e:
+        return JSONResponse({"error": _tac_integrity_error(e)}, status_code=400)
     except ValueError as e:
         return JSONResponse({"error": _tac_unknown_field_error(e)}, status_code=400)
     if not updated:
@@ -1758,6 +1784,8 @@ async def api_tac_update_quarterly_item(item_id: int, request: Request) -> JSONR
         return JSONResponse({"error": "At least one field is required"}, status_code=400)
     try:
         updated = _tis.update_quarterly_item(item_id, **body)
+    except sqlite3.IntegrityError as e:
+        return JSONResponse({"error": _tac_integrity_error(e)}, status_code=400)
     except ValueError as e:
         return JSONResponse({"error": _tac_unknown_field_error(e)}, status_code=400)
     if not updated:
@@ -1772,6 +1800,9 @@ def api_tac_generate_survey_week(item_id: int) -> JSONResponse:
 
     try:
         row_ids = _tis.generate_survey_week_rows(item_id)
+    except _tis.UnparseableDateError:
+        detail = "That launch date could not be read as a date - try a format like 2 Jun 2026"
+        return JSONResponse({"error": detail}, status_code=400)
     except ValueError as e:
         if "launch_date" in str(e):
             detail = "That planner item has no launch date"

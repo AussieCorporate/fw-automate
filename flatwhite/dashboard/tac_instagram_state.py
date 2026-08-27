@@ -82,13 +82,25 @@ _DAY_NAMES = {
 }
 
 
+class UnparseableDateError(ValueError):
+    """Raised when a stored date string doesn't match any of _DATE_FORMATS.
+
+    Kept distinct from a plain ValueError (rather than relying on callers
+    string-sniffing the message) so routes can tell "the date is there but
+    unreadable" apart from "the row/field is missing" without guessing from
+    text. See generate_survey_week_rows, which stores real free-text launch
+    dates (e.g. "TBD Sep 2026" - real data in Victor's planner) and needs to
+    map this case to its own plain-English error.
+    """
+
+
 def _parse_date(date_str: str) -> datetime.date:
     for fmt in _DATE_FORMATS:
         try:
             return datetime.datetime.strptime(date_str.strip(), fmt).date()
         except ValueError:
             continue
-    raise ValueError(f"Unrecognised date format: {date_str!r}")
+    raise UnparseableDateError(f"Unrecognised date format: {date_str!r}")
 
 
 def _format_date(d: datetime.date) -> str:
@@ -168,9 +180,20 @@ def add_topic(
 ) -> int:
     """Insert a new topic bank row. topic_number is set to one past the current max.
 
+    Raises ValueError on an exact (case-sensitive) duplicate of an existing
+    topic's text - duplicate topic text defeats the carousel verification
+    title-match (_tacCarouselFindNewMatch in index.html) and both duplicates
+    would share the same sorted-output script-file path.
+
     Returns the new row's id.
     """
     conn = get_connection()
+    existing = conn.execute(
+        "SELECT 1 FROM tac_topic_bank WHERE topic = ?", (topic,)
+    ).fetchone()
+    if existing is not None:
+        conn.close()
+        raise ValueError(f"Topic already exists: {topic!r}")
     max_num = conn.execute("SELECT MAX(topic_number) FROM tac_topic_bank").fetchone()[0]
     next_num = (max_num or 0) + 1
     cursor = conn.execute(
@@ -371,7 +394,9 @@ def generate_survey_week_rows(quarterly_item_id: int) -> list[int]:
     and notes referencing the campaign name.
 
     Raises ValueError if the quarterly item id doesn't exist or has no
-    launch_date. Returns the five new tac_calendar row ids, Monday to Friday.
+    launch_date, or UnparseableDateError (a ValueError subclass) if its
+    launch_date is set but doesn't match any of _DATE_FORMATS. Returns the
+    five new tac_calendar row ids, Monday to Friday.
     """
     conn = get_connection()
     row = conn.execute(
@@ -387,7 +412,11 @@ def generate_survey_week_rows(quarterly_item_id: int) -> list[int]:
         conn.close()
         raise ValueError(f"tac_quarterly_planner row {quarterly_item_id} has no launch_date")
 
-    parsed = _parse_date(launch_date)
+    try:
+        parsed = _parse_date(launch_date)
+    except UnparseableDateError:
+        conn.close()
+        raise
     monday = parsed - datetime.timedelta(days=parsed.weekday())
     campaign_name = item.get("campaign_event") or "the campaign"
 
