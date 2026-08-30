@@ -241,3 +241,44 @@ The current tier system ("RED HOT" / "Tier 1..4") parameters are WRONG per Victo
 
 ### UI
 - The left running-order rail should sit on a WHITE CARD background (like a proper sidebar panel), not transparent items floating on grey - it looked disjointed.
+
+## THE BRAINS TRUST IS ABOUT THE INDUSTRY, NOT THE COMPANY (31 Aug 2026, from Victor)
+
+Victor, on a Flight Centre results draft: "people don't want to know about the
+results, that's just one line that flags a trend, any brains trust isn't about
+individual companies, it matters because it's a reflection of the industry or
+whatever, which is what we care about."
+
+**A company result is the FLAG, not the subject.** It earns roughly one line. The
+segment is about the trend the result exposes and what it costs or changes for the
+reader. Never build the spine out of a P&L (TTV, underlying profit, divisional
+earnings, dividends) - that is a stock-analyst read and the wrong newsletter.
+
+The published 24 Aug Brains Trust is the model: the theme is "your lunch is getting
+more expensive". Morgan Stanley, the supermarkets, fast-food margins and Guzman y
+Gomez all appear, but purely as evidence of what is happening to consumers. No
+company is the subject of any paragraph.
+
+Working shape (matches published): open on what it now costs the reader ->
+the mechanism driving it -> what people are actually doing in response ->
+the read on where the pressure is landing. Charts under most paragraphs.
+
+## Research segments stay on ONE topic (31 Aug 2026, from Victor)
+
+The same Flight Centre draft also drifted off topic: two of four paragraphs were
+built on national house values and the CBA wealth effect, closing on house prices
+plus core inflation. Victor: "it looped in house values - I know we need to pull
+from other internet points but they need to be built on the same topic."
+
+Every supporting data point and chart must come from the segment's own subject. Do
+not import an adjacent macro story (property, inflation, rates) as supporting
+evidence, however plausible the causal link. If the piece needs more depth, find
+more data WITHIN the topic - the sector's input costs, its price data, consumer
+spend on that category, what the category's operators are seeing.
+
+Third failure in the same output, worth guarding against: it claimed "the
+strongest July leisure profit since 2015" when FY26 underlying profit FELL 4% to
+$278M and leisure was the drag. July was a TURNOVER (TTV) record and belongs to
+the following financial year. Never blend a results announcement with the
+post-balance-date trading update, and never upgrade a turnover record into a
+profit record.
