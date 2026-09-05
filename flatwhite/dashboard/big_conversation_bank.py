@@ -257,6 +257,35 @@ _HEADER_BLOCK_RE = re.compile(
 )
 
 
+def extract_piece_section(text: str) -> str:
+    """Return just the finished-piece prose from a `_<TOPIC>_BIG_CONVERSATION.md`.
+
+    The file is a run of `---`-separated sections. Historically the piece was
+    the FIRST one, so both this and `strip_stage._prose_only` took everything
+    before the first divider. That broke on 4 Sep 2026 ("Speaking Another
+    Language at Work"): the skill wrote a build header ABOVE the piece - word
+    count, "stage 3 has not been run", a calibration note - so the first
+    section was the build notes, not the prose. The dashboard then showed
+    those notes as the piece, GPT-5.4 "stripped" them and reported no changes
+    (a false pass on prose it never saw), and they were saved as the week's
+    Big Conversation output, ready to be inserted into beehiiv.
+
+    So the piece is found by its own header block rather than by position:
+    the first section whose first block is the "THE BIG CONVERSATION" header
+    (see _HEADER_BLOCK_RE). Only if no section carries that header do we fall
+    back to the first section, which keeps the older files parsing as before.
+    """
+    sections = text.split("\n---\n")
+    for section in sections:
+        section = section.strip()
+        if not section:
+            continue
+        first = re.split(r"\n\s*\n", section, 1)[0].strip()
+        if _HEADER_BLOCK_RE.match(first):
+            return section
+    return sections[0].strip() if sections else ""
+
+
 def parse_piece_markdown(text: str) -> dict:
     """Split a `_<TOPIC>_BIG_CONVERSATION.md` file's finished-piece section
     into {"headline": str, "paragraphs": list[str]}.
@@ -265,11 +294,11 @@ def parse_piece_markdown(text: str) -> dict:
     "THE BIG CONVERSATION" header line (decoration varies - see
     _HEADER_BLOCK_RE), a one-line headline, then one paragraph per
     screenshot group (p1, p2, ...), then a `---` divider before the BUILD
-    map. Only the text before the first such divider is the piece;
-    everything after is the paragraph->screenshot map, read separately from
-    the assets folder's own filenames (Task 5).
+    map. `extract_piece_section` locates that section; everything after it is
+    the paragraph->screenshot map, read separately from the assets folder's
+    own filenames (Task 5).
     """
-    piece = text.split("\n---\n", 1)[0].strip()
+    piece = extract_piece_section(text)
     blocks = [b.strip() for b in re.split(r"\n\s*\n", piece) if b.strip()]
     if blocks and _HEADER_BLOCK_RE.match(blocks[0]):
         blocks = blocks[1:]

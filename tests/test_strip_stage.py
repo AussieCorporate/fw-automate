@@ -338,3 +338,25 @@ def test_a_failed_shape_is_a_warning_not_a_dead_stop(tmp_path):
         shape_fn=boom, recut_fn=lambda d, s, w: "\n\n".join("word " * 80 for _ in range(4)))
     assert r["status"] == "stripped"
     assert any("Shape pass failed" in w for w in r["length_warnings"])
+
+
+def test_prose_only_skips_a_build_header_above_the_piece():
+    """4 Sep 2026: the skill wrote its build notes ABOVE the piece, so the
+    stripper was handed the notes and answered "no changes" - a strip that
+    reads as done on prose it never saw."""
+    text = (
+        "# _Topic_ — THE BIG CONVERSATION\n\n"
+        "Stage-1 GENERATE draft, 340 words.\n\n"
+        "**Stage 3 (STRIP THE CLAUDE PHRASING) has NOT been run**.\n\n"
+        "---\n\n"
+        "**THE BIG CONVERSATION**\n\n"
+        "Switching languages was never private.\n\n"
+        "Nobody minds two colleagues speaking a language they don't understand.\n\n"
+        "---\n\n"
+        "## BUILD: paragraph → screenshot map\n\n"
+        "| # | File |\n"
+    )
+    prose = strip_stage._prose_only(text)
+    assert prose.startswith("**THE BIG CONVERSATION**")
+    assert "Stage-1 GENERATE draft" not in prose
+    assert "BUILD: paragraph" not in prose

@@ -31,9 +31,18 @@ def stripped_path_for(piece_path: Path) -> Path:
 
 
 def _prose_only(text: str) -> str:
-    """The piece is everything before the first `---` divider - the same
-    split `big_conversation_bank.parse_piece_markdown` uses."""
-    return text.split("\n---\n", 1)[0].strip()
+    """Just the piece prose - the same section `parse_piece_markdown` shows.
+
+    Imported lazily so this module stays importable without the Instagram
+    output directory existing (same reason as `_find_piece_markdown`).
+
+    This used to be `text.split("\\n---\\n", 1)[0]`, i.e. "everything before
+    the first divider". A piece written with a build header ABOVE it then fed
+    the header to the stripper instead of the prose, which came back "no
+    changes" - a strip that reads as done on prose it never saw.
+    """
+    from . import big_conversation_bank as bcb
+    return bcb.extract_piece_section(text)
 
 
 def _count_changes(changes: str) -> int:

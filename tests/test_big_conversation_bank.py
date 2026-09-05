@@ -643,3 +643,63 @@ def test_resolve_asset_path_rejects_symlink_loop(tmp_path, monkeypatch):
     loop.symlink_to(loop)
 
     assert bcb.resolve_asset_path("topic/_BIG_CONVERSATION_assets/a.png") is None
+
+
+# --- Build header ABOVE the piece (regression, 4 Sep 2026) -----------------
+#
+# "Speaking Another Language at Work" was written with the skill's build
+# notes ABOVE the piece, so the FIRST `---` section was the notes. Taking
+# "everything before the first divider" therefore fed the dashboard, the
+# GPT-5.4 strip and the week's saved section output the build notes instead
+# of the prose. The piece must be found by its own header block, not by
+# position.
+
+_HEADER_ABOVE_PIECE = """# _Speaking Another Language at Work_ — THE BIG CONVERSATION
+
+Stage-1 GENERATE draft, shaped to the published band. 340 words, 4 paragraphs.
+
+**Stage 3 (STRIP THE CLAUDE PHRASING) has NOT been run** and must not be run
+by a Claude model or by hand.
+
+**Calibration note:** beehiiv tools were not available in this session.
+
+---
+
+**THE BIG CONVERSATION**
+
+Switching languages was never private.
+
+Nobody minds two colleagues speaking a language they don't understand.
+
+The disagreement is narrower than it looks.
+
+---
+
+## BUILD: paragraph → screenshot map
+
+| # | File | Pole |
+|---|------|------|
+| 1 | `p1_1_Someone.png` | con |
+"""
+
+
+def test_parse_piece_markdown_skips_a_build_header_above_the_piece():
+    parsed = bcb.parse_piece_markdown(_HEADER_ABOVE_PIECE)
+    assert parsed["headline"] == "Switching languages was never private."
+    assert parsed["paragraphs"] == [
+        "Nobody minds two colleagues speaking a language they don't understand.",
+        "The disagreement is narrower than it looks.",
+    ]
+
+
+def test_extract_piece_section_returns_the_prose_not_the_build_notes():
+    section = bcb.extract_piece_section(_HEADER_ABOVE_PIECE)
+    assert section.startswith("**THE BIG CONVERSATION**")
+    assert "Stage-1 GENERATE draft" not in section
+    assert "Calibration note" not in section
+    assert "BUILD: paragraph" not in section
+
+
+def test_extract_piece_section_still_takes_the_first_section_when_unheaded():
+    text = "Some headline.\n\nA paragraph.\n\n---\n\n## BUILD\n\nmap here\n"
+    assert bcb.extract_piece_section(text) == "Some headline.\n\nA paragraph."
